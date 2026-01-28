@@ -193,10 +193,14 @@ export function Navbar() {
                                     <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
                                         {searchResults.length > 0 ? (
                                             searchResults.map((result) => (
-                                                <button
+                                                <Link
                                                     key={result.symbol}
+                                                    href={`/stock/${result.symbol}`}
                                                     className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 group"
-                                                    onClick={() => handleSelectStock(result.symbol)}
+                                                    onClick={() => {
+                                                        setSearchOpen(false);
+                                                        setSearchQuery('');
+                                                    }}
                                                 >
                                                     <div className="flex items-center gap-3">
                                                         <div className="flex flex-col">
@@ -211,7 +215,7 @@ export function Navbar() {
                                                     <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
                                                         {result.exchange}
                                                     </span>
-                                                </button>
+                                                </Link>
                                             ))
                                         ) : (
                                             <div className="py-8 text-center text-gray-500 dark:text-gray-400">
@@ -290,17 +294,22 @@ export function Navbar() {
                             {searchResults.length > 0 && (
                                 <div className="mt-2 max-h-64 overflow-y-auto">
                                     {searchResults.map((result) => (
-                                        <button
+                                        <Link
                                             key={result.symbol}
+                                            href={`/stock/${result.symbol}`}
                                             className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-900"
-                                            onClick={() => handleSelectStock(result.symbol)}
+                                            onClick={() => {
+                                                setSearchOpen(false);
+                                                setSearchQuery('');
+                                                setOpen(false); // Also close mobile menu
+                                            }}
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span className="font-semibold text-gray-900 dark:text-gray-50">{result.symbol}</span>
                                                 <span className="text-xs text-gray-500 dark:text-gray-400">{result.exchange}</span>
                                             </div>
                                             <span className="truncate text-xs text-gray-500 dark:text-gray-400 max-w-[120px]">{result.name}</span>
-                                        </button>
+                                        </Link>
                                     ))}
                                 </div>
                             )}
