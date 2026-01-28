@@ -475,7 +475,7 @@ export default function StockDetailPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <h1 className="text-tremor-content-strong dark:text-dark-tremor-content-strong" style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>{symbol}</h1>
                         </div>
-                        <div className="text-tremor-content dark:text-dark-tremor-content" style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '300px', lineHeight: '1.2' }}>
+                        <div className="text-tremor-content dark:text-dark-tremor-content" style={{ fontSize: '0.85rem', lineHeight: '1.4', marginTop: '2px' }}>
                             {stockInfo?.companyName}
                         </div>
                         <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
