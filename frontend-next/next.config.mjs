@@ -7,7 +7,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'https://api.quanganh.org/api/:path*',
+        destination: 'https://api.quanganh.org/v1/valuation/:path*',
       },
     ]
   },
