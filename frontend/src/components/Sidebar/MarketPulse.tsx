@@ -1,0 +1,230 @@
+'use client';
+
+import { useState } from 'react';
+import {
+    Card,
+} from '@tremor/react';
+import {
+    RiArrowDownLine,
+    RiArrowRightLine,
+    RiArrowUpLine,
+} from '@remixicon/react';
+import Link from 'next/link';
+import { TopMoverItem } from '@/lib/api';
+
+interface MarketPulseProps {
+    gainers: TopMoverItem[];
+    losers: TopMoverItem[];
+    foreignBuys: TopMoverItem[];
+    foreignSells: TopMoverItem[];
+    isLoading?: boolean;
+}
+
+const LOGO_BASE_URL = '/logos/';
+
+export default function MarketPulse({
+    gainers,
+    losers,
+    foreignBuys,
+    foreignSells,
+    isLoading
+}: MarketPulseProps) {
+    const [categoryIndex, setCategoryIndex] = useState(0); // 0: Movers, 1: Foreign
+
+    return (
+        <Card className="p-0 overflow-hidden bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm rounded-xl">
+            {/* Header Tabs */}
+            <div className="flex border-b border-gray-100 dark:border-gray-800">
+                <button
+                    onClick={() => setCategoryIndex(0)}
+                    className={`flex-1 py-3 text-sm font-medium transition-colors ${categoryIndex === 0
+                        ? 'text-tremor-brand border-b-2 border-tremor-brand'
+                        : 'text-tremor-content-emphasis hover:text-tremor-content-strong border-transparent hover:border-tremor-content-subtle'
+                        } border-b-2`}
+                >
+                    Top Movers
+                </button>
+                <button
+                    onClick={() => setCategoryIndex(1)}
+                    className={`flex-1 py-3 text-sm font-medium transition-colors ${categoryIndex === 1
+                        ? 'text-tremor-brand border-b-2 border-tremor-brand'
+                        : 'text-tremor-content-emphasis hover:text-tremor-content-strong border-transparent hover:border-tremor-content-subtle'
+                        } border-b-2`}
+                >
+                    Foreign Flow
+                </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="p-0">
+                {categoryIndex === 0 ? (
+                    <MarketList
+                        items1={gainers}
+                        items2={losers}
+                        label1="Gainers"
+                        label2="Losers"
+                        type="movers"
+                        isLoading={isLoading}
+                    />
+                ) : (
+                    <MarketList
+                        items1={foreignBuys}
+                        items2={foreignSells}
+                        label1="Net Buy"
+                        label2="Net Sell"
+                        type="foreign"
+                        isLoading={isLoading}
+                    />
+                )}
+            </div>
+        </Card>
+    );
+}
+
+function MarketList({
+    items1,
+    items2,
+    label1,
+    label2,
+    type,
+    isLoading,
+}: {
+    items1: TopMoverItem[],
+    items2: TopMoverItem[],
+    label1: string,
+    label2: string,
+    type: 'movers' | 'foreign',
+    isLoading?: boolean,
+}) {
+    const [subTab, setSubTab] = useState(0); // 0 or 1
+    const items = subTab === 0 ? items1 : items2;
+
+    return (
+        <div className="flex flex-col">
+            {/* Sub-tabs (Pills) */}
+            <div className="bg-gray-50 dark:bg-gray-800/50 px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+                <div className="flex p-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <button
+                        onClick={() => setSubTab(0)}
+                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${subTab === 0
+                            ? 'bg-white dark:bg-gray-800 text-tremor-content-strong dark:text-dark-tremor-content-strong shadow-sm'
+                            : 'text-tremor-content-subtle hover:text-tremor-content'
+                            }`}
+                    >
+                        {label1}
+                    </button>
+                    <button
+                        onClick={() => setSubTab(1)}
+                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${subTab === 1
+                            ? 'bg-white dark:bg-gray-800 text-tremor-content-strong dark:text-dark-tremor-content-strong shadow-sm'
+                            : 'text-tremor-content-subtle hover:text-tremor-content'
+                            }`}
+                    >
+                        {label2}
+                    </button>
+                </div>
+            </div>
+
+            {/* List */}
+            <div className="min-h-[300px]">
+                {isLoading ? (
+                    <div className="flex items-center justify-center h-40">
+                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-blue-600" />
+                    </div>
+                ) : items.length > 0 ? (
+                    <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {items.slice(0, 10).map((item) => {
+                            const isUp = item.ChangePricePercent > 0;
+                            const isDown = item.ChangePricePercent < 0;
+                            const valueFormatted = type === 'foreign'
+                                ? `${(Math.abs(item.Value || 0) / 1000000000).toFixed(1)}B`
+                                : null;
+
+                            return (
+                                <Link
+                                    key={item.Symbol}
+                                    href={`/stock/${item.Symbol}`}
+                                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group"
+                                >
+                                    <div className="flex items-center gap-3 overflow-hidden flex-1 mr-2">
+                                        <div className="shrink-0 relative w-9 h-9 rounded-full bg-white border border-gray-100 dark:border-gray-700 dark:bg-gray-800 flex items-center justify-center p-0.5 shadow-sm group-hover:border-blue-200 transition-colors">
+                                            <img
+                                                src={`${LOGO_BASE_URL}${item.Symbol}.jpg`}
+                                                alt={item.Symbol}
+                                                className="w-full h-full object-contain rounded-full"
+                                                onError={(e) => {
+                                                    const target = e.target as HTMLImageElement;
+                                                    target.style.display = 'none';
+                                                    target.nextElementSibling?.classList.remove('hidden');
+                                                }}
+                                            />
+                                            <span className="hidden w-full h-full bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-[10px] font-bold text-gray-500">
+                                                {item.Symbol[0]}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col min-w-0 flex-1">
+                                            <span className="text-sm font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong truncate w-full" title={item.CompanyName}>
+                                                {item.CompanyName}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 text-xs text-tremor-content-subtle">
+                                                <span className="font-medium text-tremor-content-emphasis dark:text-dark-tremor-content-emphasis">{item.Symbol}</span>
+                                                <span className="text-tremor-content-subtle">·</span>
+                                                <span>HOSE</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col items-end shrink-0 gap-1">
+                                        {type === 'movers' ? (
+                                            <>
+                                                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
+                                                    {item.CurrentPrice?.toLocaleString('en-US')}
+                                                </div>
+
+                                                {isUp ? (
+                                                    <span className="inline-flex items-center gap-x-0.5 rounded-tremor-small bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-600/10 dark:bg-emerald-400/20 dark:text-emerald-500 dark:ring-emerald-400/20 tabular-nums">
+                                                        <RiArrowUpLine className="-ml-0.5 size-3.5" aria-hidden={true} />
+                                                        {item.ChangePricePercent.toFixed(2)}%
+                                                    </span>
+                                                ) : isDown ? (
+                                                    <span className="inline-flex items-center gap-x-0.5 rounded-tremor-small bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800 ring-1 ring-inset ring-red-600/10 dark:bg-red-400/20 dark:text-red-500 dark:ring-red-400/20 tabular-nums">
+                                                        <RiArrowDownLine className="-ml-0.5 size-3.5" aria-hidden={true} />
+                                                        {Math.abs(item.ChangePricePercent).toFixed(2)}%
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-x-0.5 rounded-tremor-small bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 ring-1 ring-inset ring-gray-600/10 dark:bg-gray-500/30 dark:text-gray-300 dark:ring-gray-400/20 tabular-nums">
+                                                        <RiArrowRightLine className="-ml-0.5 size-3.5" aria-hidden={true} />
+                                                        0.00%
+                                                    </span>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className={`text-sm font-semibold ${subTab === 0 ? 'text-emerald-600' : 'text-red-500'} tabular-nums`}>
+                                                    {subTab === 0 ? '+' : '-'}{valueFormatted}
+                                                </div>
+                                                <div className="text-[10px] font-medium text-gray-400">
+                                                    VND
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </Link>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                        <span className="text-xs">No data available</span>
+                    </div>
+                )}
+            </div>
+
+            <div className="p-3 border-t border-tremor-border dark:border-dark-tremor-border">
+                <Link href="/market" className="block w-full py-2 text-center text-xs font-medium text-tremor-brand hover:text-tremor-brand-emphasis transition-colors">
+                    View all market data →
+                </Link>
+            </div>
+        </div>
+    );
+}
