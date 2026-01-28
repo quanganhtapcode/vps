@@ -14,7 +14,7 @@ export * from './stockApi';
 export const API_BASE =
     typeof window !== 'undefined'
         ? '/api'
-        : process.env.NEXT_PUBLIC_API_URL || 'https://api.quanganh.org';
+        : process.env.NEXT_PUBLIC_API_URL || 'https://api.quanganh.org/v1/valuation';
 
 // API Endpoints
 export const API = {
