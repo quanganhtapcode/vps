@@ -1,0 +1,40 @@
+# ========================================
+# BACKEND & AUTOMATION (Stay on VPS/Local)
+# ========================================
+backend/
+automation/
+deployment/
+notebooks/
+jobs/
+scripts/
+
+# Data Folders (Too large or sensitive)
+stocks/
+data/
+backups/
+
+# Specific Files
+sector_peers.json
+stock_list.json
+
+# SSH Keys & Secrets
+*.pem
+.env
+.env.*
+.env.vps
+
+# ========================================
+# STANDARD IGNORES
+# ========================================
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+node_modules/
+.vscode/
+.idea/
+*.log
+*.zip
+*.bak
+
