@@ -6,23 +6,24 @@ import {
 } from '@tremor/react';
 import { RiTicketLine, RiHistoryLine, RiMapPin2Line, RiFireFill, RiStarFill } from '@remixicon/react';
 import { fetchLottery, LotteryResult } from '@/lib/api';
+import React from 'react';
 
 const REGIONS = [
-    { key: 'mb', label: 'North' },
-    { key: 'mn', label: 'South' },
-    { key: 'mt', label: 'Central' },
+    { key: 'mb', label: 'Miền Bắc' },
+    { key: 'mt', label: 'Miền Trung' },
+    { key: 'mn', label: 'Miền Nam' },
 ] as const;
 
 const prizeLabels: Record<string, string> = {
-    'DB': 'Special Prize',
-    'G1': '1st',
-    'G2': '2nd',
-    'G3': '3rd',
-    'G4': '4th',
-    'G5': '5th',
-    'G6': '6th',
-    'G7': '7th',
-    'G8': '8th',
+    'DB': 'G.ĐB',
+    'G1': 'G.1',
+    'G2': 'G.2',
+    'G3': 'G.3',
+    'G4': 'G.4',
+    'G5': 'G.5',
+    'G6': 'G.6',
+    'G7': 'G.7',
+    'G8': 'G.8',
 };
 
 export default function Lottery() {
@@ -48,29 +49,16 @@ export default function Lottery() {
     const northernPrizes = ['DB', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7'];
 
     return (
-        <Card className="mt-4 p-0 overflow-hidden bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800/60 shadow-xl rounded-2xl">
-            {/* Header */}
-            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-white dark:bg-gray-950">
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-rose-50 dark:bg-rose-500/10 rounded-lg">
-                        <RiTicketLine className="w-4 h-4 text-rose-500" />
-                    </div>
-                    <span className="text-sm font-bold text-gray-900 dark:text-gray-100 uppercase tracking-tight">Lottery Results</span>
-                </div>
-                {data?.pubDate && (
-                    <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500">{data.pubDate}</span>
-                )}
-            </div>
-
-            {/* Region Selectors */}
-            <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-800 flex gap-1.5">
+        <div className="mt-4 space-y-4">
+            {/* Tabs Style */}
+            <div className="flex p-1 bg-gray-100/80 dark:bg-gray-800/50 rounded-xl gap-1">
                 {REGIONS.map((r) => (
                     <button
                         key={r.key}
                         onClick={() => setRegion(r.key as any)}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all duration-300 ${region === r.key
-                            ? 'bg-white dark:bg-gray-800 text-rose-500 dark:text-rose-400 shadow-md ring-1 ring-black/5 dark:ring-white/10'
-                            : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all duration-200 ${region === r.key
+                            ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                             }`}
                     >
                         {r.label}
@@ -78,134 +66,88 @@ export default function Lottery() {
                 ))}
             </div>
 
-            <div className="p-4">
-                {isLoading ? (
-                    <div className="flex flex-col items-center justify-center py-16 space-y-3">
-                        <div className="relative">
-                            <div className="h-8 w-8 rounded-full border-2 border-rose-500/20" />
-                            <div className="absolute top-0 h-8 w-8 rounded-full border-2 border-rose-500 border-t-transparent animate-spin" />
-                        </div>
-                    </div>
-                ) : data ? (
-                    <div className="space-y-4">
-                        {/* Title Section (Optional) */}
-                        <div className="flex items-center justify-center text-center px-2">
-                            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase leading-relaxed max-w-[240px]">
-                                {data.title?.replace('Kết quả xổ số', '').trim() || 'Daily Results'}
-                            </span>
-                        </div>
+            {/* Loading / Content */}
+            {isLoading ? (
+                <div className="flex justify-center py-20">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-rose-500" />
+                </div>
+            ) : data ? (
+                <div className="space-y-4">
+                    {/* For Northern Region (MB) */}
+                    {region === 'mb' && data.results && (
+                        <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                            <div className="grid grid-cols-[80px_1fr] divide-x divide-y divide-gray-200 dark:divide-gray-700">
+                                {northernPrizes.map((key) => {
+                                    const prizes = data.results![key as keyof typeof data.results];
+                                    if (!prizes || key === 'provinces') return null;
+                                    const isDB = key === 'DB';
+                                    const prizeArray = (Array.isArray(prizes) ? prizes : [prizes]) as string[];
 
-                        {/* North Region (MB) */}
-                        {region === 'mb' && data.results && (
-                            <div className="space-y-3">
-                                {/* Special Prize */}
-                                <div className="relative overflow-hidden p-4 rounded-2xl bg-gradient-to-br from-rose-500 to-rose-600 text-white shadow-lg shadow-rose-500/20">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] opacity-80">Special Prize</span>
-                                        <RiFireFill className="w-3 h-3 text-rose-200 animate-pulse" />
-                                    </div>
-                                    <div className="text-4xl font-black tracking-tighter text-center py-1 drop-shadow-md">
-                                        {Array.isArray(data.results.DB) ? data.results.DB.join(' - ') : data.results.DB}
-                                    </div>
-                                    <div className="absolute -right-4 -bottom-4 opacity-10 rotate-12">
-                                        <RiTicketLine className="w-20 h-20" />
-                                    </div>
-                                </div>
-
-                                {/* Prize Grid */}
-                                <div className="grid grid-cols-2 gap-2">
-                                    {northernPrizes.filter(k => k !== 'DB').map((key) => {
-                                        const prizes = data.results![key as keyof typeof data.results];
-                                        if (!prizes || !Array.isArray(prizes)) return null;
-                                        // Ensure we don't try to render the provinces array
-                                        if (key === 'provinces') return null;
-
-                                        const isHighTier = ['G1', 'G2', 'G3'].includes(key);
-
-                                        return (
-                                            <div
-                                                key={key}
-                                                className={`flex flex-col p-2.5 rounded-xl border transition-colors ${isHighTier
-                                                    ? 'bg-amber-50/30 dark:bg-amber-500/5 border-amber-100 dark:border-amber-900/30'
-                                                    : 'bg-gray-50/50 dark:bg-white/5 border-gray-100 dark:border-gray-800/50'
-                                                    }`}
-                                            >
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <span className={`text-[9px] font-bold uppercase tracking-wider ${isHighTier ? 'text-amber-500' : 'text-gray-400'
-                                                        }`}>{prizeLabels[key]}</span>
-                                                </div>
-                                                <div className="flex flex-wrap gap-1 leading-tight">
-                                                    {(prizes as string[]).map((p, idx) => (
-                                                        <span key={idx} className={`font-bold tracking-tight text-xs ${isHighTier ? 'text-gray-900 dark:text-amber-100' : 'text-gray-600 dark:text-gray-300'
-                                                            }`}>
-                                                            {p}{idx < prizes.length - 1 ? ',' : ''}
-                                                        </span>
-                                                    ))}
-                                                </div>
+                                    return (
+                                        <React.Fragment key={key}>
+                                            <div className="flex items-center justify-center bg-gray-50/50 dark:bg-gray-800/30 p-3 text-xs font-bold text-gray-600 dark:text-gray-400">
+                                                {prizeLabels[key]}
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* South & Central Region (MN/MT) */}
-                        {(region === 'mn' || region === 'mt') && data.results?.provinces && (
-                            <div className="space-y-6">
-                                {data.results.provinces.map((province: any, idx: number) => (
-                                    <div key={idx} className="space-y-3 pb-4 last:pb-0 border-b last:border-0 border-gray-100 dark:border-gray-800/60">
-                                        <div className="flex items-center gap-2 text-xs font-black text-gray-900 dark:text-gray-100 justify-center">
-                                            <div className="h-1 w-6 rounded-full bg-rose-500/20" />
-                                            {province.name}
-                                            <div className="h-1 w-6 rounded-full bg-rose-500/20" />
-                                        </div>
-
-                                        {/* Special Prize */}
-                                        <div className="relative overflow-hidden p-4 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-lg shadow-indigo-500/20">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="text-[9px] font-black uppercase tracking-[0.2em] opacity-80">Special Prize</span>
-                                                <RiStarFill className="w-3 h-3 text-indigo-200 animate-pulse" />
-                                            </div>
-                                            <div className="text-4xl font-black tracking-tighter text-center py-1 drop-shadow-md">
-                                                {province.prizes.DB.join(' - ')}
-                                            </div>
-                                        </div>
-
-                                        {/* Main Prizes Grid */}
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {Object.entries(province.prizes)
-                                                .filter(([key]) => key !== 'DB')
-                                                .map(([key, values]: any) => (
-                                                    <div
-                                                        key={key}
-                                                        className="flex flex-col p-2.5 rounded-xl bg-gray-50/50 dark:bg-white/5 border border-gray-100 dark:border-gray-800/50"
-                                                    >
-                                                        <span className="text-[9px] font-bold text-gray-400 uppercase mb-1">{prizeLabels[key] || key}</span>
-                                                        <div className="flex flex-wrap gap-1 leading-tight">
-                                                            {values.map((v: string, vIdx: number) => (
-                                                                <span key={vIdx} className="font-bold tracking-tight text-[11px] text-gray-600 dark:text-gray-300">
-                                                                    {v}{vIdx < values.length - 1 ? ',' : ''}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    </div>
+                                            <div className={`p-3 text-center flex flex-wrap justify-center gap-x-4 gap-y-2 font-bold ${isDB ? 'text-xl text-rose-500' : 'text-sm text-gray-700 dark:text-gray-200'
+                                                }`}>
+                                                {prizeArray.map((p, idx) => (
+                                                    <span key={idx} className={key === 'G3' ? 'w-full py-0.5' : ''}>
+                                                        {typeof p === 'string' ? p : String(p)}
+                                                        {idx < prizeArray.length - 1 && key !== 'G3' ? ' - ' : ''}
+                                                    </span>
                                                 ))}
+                                            </div>
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* For Central & Southern (MT/MN) */}
+                    {(region === 'mn' || region === 'mt') && data.results?.provinces && (
+                        <div className="space-y-6">
+                            {data.results.provinces.map((province: any, idx: number) => (
+                                <div key={idx} className="space-y-2">
+                                    <div className="text-center text-xs font-black uppercase text-gray-400 dark:text-gray-500 tracking-wider">
+                                        {province.name}
+                                    </div>
+                                    <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                                        <div className="grid grid-cols-[80px_1fr] divide-x divide-y divide-gray-200 dark:divide-gray-700">
+                                            {Object.entries(province.prizes).map(([key, prizes]: any) => (
+                                                <React.Fragment key={key}>
+                                                    <div className="flex items-center justify-center bg-gray-50/50 dark:bg-gray-800/30 p-2.5 text-[11px] font-bold text-gray-600 dark:text-gray-400">
+                                                        {prizeLabels[key] || key}
+                                                    </div>
+                                                    <div className={`p-2.5 text-center flex flex-wrap justify-center gap-x-3 gap-y-1 font-bold ${key === 'DB' ? 'text-lg text-rose-500' : 'text-sm text-gray-700 dark:text-gray-200'
+                                                        }`}>
+                                                        {prizes.map((p: string, pIdx: number) => (
+                                                            <span key={pIdx}>
+                                                                {p}{pIdx < prizes.length - 1 ? ' - ' : ''}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </React.Fragment>
+                                            ))}
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Date Footer */}
+                    <div className="text-center py-1">
+                        <span className="text-[11px] text-gray-400 dark:text-gray-500 italic">
+                            Kết quả ngày: {data.pubDate || new Date().toLocaleDateString('vi-VN')}
+                        </span>
                     </div>
-                ) : (
-                    <div className="py-16 text-center space-y-2">
-                        <RiTicketLine className="w-8 h-8 text-gray-200 dark:text-gray-800 mx-auto" />
-                        <p className="text-xs font-medium text-gray-400 dark:text-gray-500">
-                            No results found for {region.toUpperCase()}.
-                        </p>
-                    </div>
-                )}
-            </div>
-        </Card>
+                </div>
+            ) : (
+                <div className="py-20 text-center text-gray-400 text-xs italic">
+                    Không tìm thấy kết quả cho {REGIONS.find(r => r.key === region)?.label}.
+                </div>
+            )}
+        </div>
     );
 }
-

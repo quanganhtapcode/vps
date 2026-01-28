@@ -215,7 +215,12 @@ export function Navbar() {
                                                 <Link
                                                     key={result.symbol}
                                                     href={`/stock/${result.symbol}`}
+                                                    prefetch={false}
                                                     className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 group"
+                                                    onMouseDown={(e) => {
+                                                        // Use onMouseDown to trigger before the document's 'click-outside' listener closes the dropdown
+                                                        router.push(`/stock/${result.symbol}`);
+                                                    }}
                                                 >
                                                     <div className="flex items-center gap-3">
                                                         <div className="flex flex-col">
@@ -312,7 +317,11 @@ export function Navbar() {
                                         <Link
                                             key={result.symbol}
                                             href={`/stock/${result.symbol}`}
+                                            prefetch={false}
                                             className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-900"
+                                            onMouseDown={(e) => {
+                                                router.push(`/stock/${result.symbol}`);
+                                            }}
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span className="font-semibold text-gray-900 dark:text-gray-50">{result.symbol}</span>
