@@ -286,11 +286,7 @@ export default function FinancialsTab({
                     {/* Financial Metrics Section - Horizontal Grid */}
                     <div style={{ width: '100%' }}>
 
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                            gap: '16px'
-                        }}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {/* Valuation Metrics */}
                             <MetricCard title="Valuation">
                                 <MetricRow label="EPS" value={overviewData?.eps_ttm || overviewData?.eps} />
@@ -334,12 +330,8 @@ export default function FinancialsTab({
 
                     {/* Charts Section - Full Width Below */}
                     <div style={{ width: '100%' }}>
-                        {/* Charts Grid - 2 columns */}
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(2, 1fr)',
-                            gap: '24px'
-                        }}>
+                        {/* Charts Grid - 2 columns on Large, 1 on Mobile */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                             {/* ROE & ROA Chart */}
                             {chartData && chartData.years && chartData.years.length > 0 && (
