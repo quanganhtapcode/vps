@@ -203,14 +203,17 @@ export async function fetchForeignFlow(type: 'buy' | 'sell'): Promise<TopMoverIt
 /**
  * Fetch gold prices from BTMC
  */
-export async function fetchGoldPrices(): Promise<GoldPriceItem[]> {
+export async function fetchGoldPrices(): Promise<{ data: GoldPriceItem[]; updated_at?: string }> {
     interface GoldResponse {
         success: boolean;
         data: GoldPriceItem[];
         updated_at?: string;
     }
     const response = await fetchAPI<GoldResponse>(API.GOLD);
-    return response.data || [];
+    return {
+        data: response.data || [],
+        updated_at: response.updated_at
+    };
 }
 
 /**

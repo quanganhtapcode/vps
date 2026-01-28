@@ -39,6 +39,7 @@ interface OverviewClientProps {
     initialForeignBuys: TopMoverItem[];
     initialForeignSells: TopMoverItem[];
     initialGoldPrices: GoldPriceItem[];
+    initialGoldUpdated?: string;
     initialPEData: PEChartData[];
 }
 
@@ -50,6 +51,7 @@ export default function OverviewClient({
     initialForeignBuys,
     initialForeignSells,
     initialGoldPrices,
+    initialGoldUpdated,
     initialPEData
 }: OverviewClientProps) {
 
@@ -78,7 +80,7 @@ export default function OverviewClient({
     // State for gold prices
     const [goldPrices, setGoldPrices] = useState<GoldPriceItem[]>(initialGoldPrices);
     const [goldLoading, setGoldLoading] = useState(false);
-    const [goldUpdatedAt, setGoldUpdatedAt] = useState<string>(new Date().toISOString());
+    const [goldUpdatedAt, setGoldUpdatedAt] = useState<string>(initialGoldUpdated || new Date().toISOString());
 
     // Last update time - only render on client to avoid hydration mismatch
     const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -136,17 +138,34 @@ export default function OverviewClient({
         }
     }, []);
 
-    // Simple load functions for tabs content if needed
-    // ... (Can add refresh logic for other sections if required)
+    // Load gold prices (Client-side Refresh)
+    const loadGold = useCallback(async () => {
+        try {
+            const result = await fetchGoldPrices();
+            setGoldPrices(result.data);
+            if (result.updated_at) {
+                setGoldUpdatedAt(result.updated_at);
+            }
+        } catch (error) {
+            console.error('Error loading gold prices:', error);
+        }
+    }, []);
 
-    // Auto refresh indices every 15 seconds (silent background refresh)
+    // Auto refresh indices every 15 seconds
     useEffect(() => {
         const interval = setInterval(() => {
             loadIndices();
         }, 15000);
-
         return () => clearInterval(interval);
     }, [loadIndices]);
+
+    // Auto refresh gold every 60 seconds
+    useEffect(() => {
+        const interval = setInterval(() => {
+            loadGold();
+        }, 60000);
+        return () => clearInterval(interval);
+    }, [loadGold]);
 
     return (
         <div className={styles.container}>

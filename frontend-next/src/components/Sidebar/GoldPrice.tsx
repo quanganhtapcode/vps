@@ -61,7 +61,25 @@ export default function GoldPrice({ prices, isLoading, updatedAt }: GoldPricePro
                 {isMounted && updatedAt && (
                     <div className="text-right">
                         <span className="text-[10px] font-medium text-gray-400 tabular-nums leading-none">
-                            {updatedAt}
+                            {(() => {
+                                try {
+                                    // If it's the BTMC format (HH:mm DD/MM/YYYY)
+                                    if (updatedAt.includes('/') && updatedAt.includes(':')) return updatedAt;
+                                    // If it's an ISO string
+                                    const date = new Date(updatedAt);
+                                    if (isNaN(date.getTime())) return updatedAt;
+                                    return date.toLocaleString('en-US', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        day: '2-digit',
+                                        month: 'short',
+                                        year: 'numeric',
+                                        timeZone: 'Asia/Ho_Chi_Minh'
+                                    });
+                                } catch (e) {
+                                    return updatedAt;
+                                }
+                            })()}
                         </span>
                     </div>
                 )}

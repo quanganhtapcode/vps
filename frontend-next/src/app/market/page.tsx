@@ -99,7 +99,9 @@ export default async function OverviewPage() {
   const initialLosers = losersResult.status === 'fulfilled' ? losersResult.value : [];
   const initialForeignBuys = foreignBuysResult.status === 'fulfilled' ? foreignBuysResult.value : [];
   const initialForeignSells = foreignSellsResult.status === 'fulfilled' ? foreignSellsResult.value : [];
-  const initialGoldPrices = goldResult.status === 'fulfilled' ? goldResult.value : [];
+  const initialGoldPricesData = goldResult.status === 'fulfilled' ? goldResult.value : { data: [], updated_at: undefined };
+  const initialGoldPrices = initialGoldPricesData.data;
+  const initialGoldUpdated = initialGoldPricesData.updated_at;
   const initialPEData = peResult.status === 'fulfilled' ? peResult.value : [];
 
   return (
@@ -112,6 +114,7 @@ export default async function OverviewPage() {
         initialForeignBuys={initialForeignBuys}
         initialForeignSells={initialForeignSells}
         initialGoldPrices={initialGoldPrices}
+        initialGoldUpdated={initialGoldUpdated}
         initialPEData={initialPEData}
       />
     </Suspense>
