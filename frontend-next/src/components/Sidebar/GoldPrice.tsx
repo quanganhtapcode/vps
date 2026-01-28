@@ -52,14 +52,17 @@ export default function GoldPrice({ prices, isLoading, updatedAt }: GoldPricePro
                     <div className="p-1.5 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
                         <RiCopperCoinLine className="w-4 h-4 text-amber-500" />
                     </div>
-                    <span className="text-sm font-bold text-gray-900 dark:text-gray-100 tracking-tight">
-                        Precious Metals
-                    </span>
+                    <div className="flex flex-col">
+                        <span className="text-sm font-bold text-gray-900 dark:text-gray-100 tracking-tight">
+                            Precious Metals
+                        </span>
+                    </div>
                 </div>
-                {isMounted && displayTime && (
-                    <div className="flex items-center gap-1 text-[10px] font-medium text-gray-400 uppercase tracking-wider">
-                        <RiTimeLine className="w-3 h-3" />
-                        {displayTime}
+                {isMounted && updatedAt && (
+                    <div className="text-right">
+                        <span className="text-[10px] font-medium text-gray-400 tabular-nums leading-none">
+                            {updatedAt}
+                        </span>
                     </div>
                 )}
             </div>

@@ -75,7 +75,7 @@ export default function Lottery() {
                 <div className="space-y-4">
                     {/* For Northern Region (MB) */}
                     {region === 'mb' && data.results && (
-                        <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                        <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
                             <div className="grid grid-cols-[80px_1fr] divide-x divide-y divide-gray-200 dark:divide-gray-700">
                                 {northernPrizes.map((key) => {
                                     const prizes = data.results![key as keyof typeof data.results];
@@ -85,10 +85,10 @@ export default function Lottery() {
 
                                     return (
                                         <React.Fragment key={key}>
-                                            <div className="flex items-center justify-center bg-gray-50/50 dark:bg-gray-800/30 p-3 text-xs font-bold text-gray-600 dark:text-gray-400">
+                                            <div className="flex items-center justify-center bg-gray-50/50 dark:bg-gray-800/30 p-2.5 text-[11px] font-bold text-gray-500 dark:text-gray-400">
                                                 {prizeLabels[key]}
                                             </div>
-                                            <div className={`p-3 text-center flex flex-wrap justify-center gap-x-4 gap-y-2 font-bold ${isDB ? 'text-xl text-rose-500' : 'text-sm text-gray-700 dark:text-gray-200'
+                                            <div className={`p-2.5 text-center flex flex-wrap justify-center gap-x-4 gap-y-2 font-bold ${isDB ? 'text-lg text-rose-500' : 'text-sm text-gray-700 dark:text-gray-200'
                                                 }`}>
                                                 {prizeArray.map((p, idx) => (
                                                     <span key={idx} className={key === 'G3' ? 'w-full py-0.5' : ''}>
@@ -104,40 +104,53 @@ export default function Lottery() {
                         </div>
                     )}
 
-                    {/* For Central & Southern (MT/MN) */}
+                    {/* For Central & Southern (MT/MN) - TABLE LAYOUT */}
                     {(region === 'mn' || region === 'mt') && data.results?.provinces && (
-                        <div className="space-y-6">
-                            {data.results.provinces.map((province: any, idx: number) => (
-                                <div key={idx} className="space-y-2">
-                                    <div className="text-center text-xs font-black uppercase text-gray-400 dark:text-gray-500 tracking-wider">
-                                        {province.name}
-                                    </div>
-                                    <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-                                        <div className="grid grid-cols-[80px_1fr] divide-x divide-y divide-gray-200 dark:divide-gray-700">
-                                            {Object.entries(province.prizes).map(([key, prizes]: any) => (
-                                                <React.Fragment key={key}>
-                                                    <div className="flex items-center justify-center bg-gray-50/50 dark:bg-gray-800/30 p-2.5 text-[11px] font-bold text-gray-600 dark:text-gray-400">
-                                                        {prizeLabels[key] || key}
-                                                    </div>
-                                                    <div className={`p-2.5 text-center flex flex-wrap justify-center gap-x-3 gap-y-1 font-bold ${key === 'DB' ? 'text-lg text-rose-500' : 'text-sm text-gray-700 dark:text-gray-200'
-                                                        }`}>
-                                                        {prizes.map((p: string, pIdx: number) => (
-                                                            <span key={pIdx}>
-                                                                {p}{pIdx < prizes.length - 1 ? ' - ' : ''}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                </React.Fragment>
+                        <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-center border-collapse divide-y divide-gray-200 dark:divide-gray-700">
+                                    <thead>
+                                        <tr className="bg-gray-50/50 dark:bg-gray-800/30">
+                                            <th className="px-3 py-2.5 text-[11px] font-bold text-gray-500 dark:text-gray-400 w-16">Giải</th>
+                                            {data.results.provinces.map((prov: any, pIdx: number) => (
+                                                <th key={pIdx} className="px-3 py-2.5 text-[11px] font-bold text-gray-700 dark:text-gray-200 min-w-[100px]">
+                                                    {prov.name}
+                                                </th>
                                             ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                        {['G8', 'G7', 'G6', 'G5', 'G4', 'G3', 'G2', 'G1', 'DB'].map((key) => {
+                                            const label = prizeLabels[key] || key;
+                                            const isDB = key === 'DB';
+                                            return (
+                                                <tr key={key} className="divide-x divide-gray-200 dark:divide-gray-700">
+                                                    <td className="px-2 py-3 text-[11px] font-bold text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-800/10">
+                                                        {label}
+                                                    </td>
+                                                    {data.results!.provinces!.map((prov: any, pIdx: number) => {
+                                                        const prizes = prov.prizes[key] as string[];
+                                                        return (
+                                                            <td key={pIdx} className={`px-2 py-3 font-bold ${isDB ? 'text-lg text-rose-500' : 'text-sm text-gray-700 dark:text-gray-200'}`}>
+                                                                <div className="flex flex-col gap-1">
+                                                                    {prizes?.map((p: string, idx: number) => (
+                                                                        <div key={idx}>{p}</div>
+                                                                    )) || '-'}
+                                                                </div>
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     )}
 
                     {/* Date Footer */}
-                    <div className="text-center py-1">
+                    <div className="text-center py-2">
                         <span className="text-[11px] text-gray-400 dark:text-gray-500 italic">
                             Kết quả ngày: {data.pubDate || new Date().toLocaleDateString('vi-VN')}
                         </span>

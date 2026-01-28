@@ -133,7 +133,7 @@ function MarketList({
                     </div>
                 ) : items.length > 0 ? (
                     <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                        {items.slice(0, 10).map((item) => {
+                        {items.slice(0, 5).map((item) => {
                             const isUp = item.ChangePricePercent > 0;
                             const isDown = item.ChangePricePercent < 0;
                             const valueFormatted = type === 'foreign'
