@@ -8,10 +8,7 @@ function classNames(...classes: Array<string | false | undefined | null>) {
 }
 
 function formatDateRange(days: number) {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - days);
-    return `${start.toLocaleDateString('en-US')} – ${end.toLocaleDateString('en-US')}`;
+    return ''; // Return empty initially, tooltips are secondary
 }
 
 interface StockInfo {

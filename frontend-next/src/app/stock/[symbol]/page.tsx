@@ -538,7 +538,7 @@ export default function StockDetailPage() {
 
 
             {/* Main Content */}
-            < div className={activeTab === 'overview' ? styles.mainContent : styles.mainContentFull}>
+            <div className={activeTab === 'overview' ? styles.mainContent : styles.mainContentFull}>
                 {activeTab === 'overview' && (
                     <OverviewTab
                         symbol={symbol}

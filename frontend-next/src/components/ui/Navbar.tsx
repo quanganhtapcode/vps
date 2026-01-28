@@ -5,7 +5,7 @@ import useScroll from "@/lib/use-scroll"
 import { cx, focusInput } from "@/lib/utils"
 import { RiCloseLine, RiMenuLine, RiSearchLine } from "@remixicon/react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useDebounce } from "use-debounce"
 import React, { useState, useEffect, useRef } from "react"
 import { DatabaseLogo } from "@/components/DatabaseLogo"
@@ -35,6 +35,25 @@ export function Navbar() {
     const inputRef = useRef<HTMLInputElement>(null);
 
     const router = useRouter();
+    const pathname = usePathname();
+
+    // Close search on navigation
+    useEffect(() => {
+        setSearchOpen(false);
+        setSearchQuery('');
+        setOpen(false);
+    }, [pathname]);
+
+    // Click outside search
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+                setSearchOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     React.useEffect(() => {
         const mediaQuery: MediaQueryList = window.matchMedia("(min-width: 768px)")
@@ -197,10 +216,6 @@ export function Navbar() {
                                                     key={result.symbol}
                                                     href={`/stock/${result.symbol}`}
                                                     className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 group"
-                                                    onClick={() => {
-                                                        setSearchOpen(false);
-                                                        setSearchQuery('');
-                                                    }}
                                                 >
                                                     <div className="flex items-center gap-3">
                                                         <div className="flex flex-col">
@@ -298,11 +313,6 @@ export function Navbar() {
                                             key={result.symbol}
                                             href={`/stock/${result.symbol}`}
                                             className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-900"
-                                            onClick={() => {
-                                                setSearchOpen(false);
-                                                setSearchQuery('');
-                                                setOpen(false); // Also close mobile menu
-                                            }}
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span className="font-semibold text-gray-900 dark:text-gray-50">{result.symbol}</span>
