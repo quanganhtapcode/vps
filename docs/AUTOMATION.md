@@ -8,29 +8,37 @@ Tài liệu này giải thích chi tiết cách hệ thống tự động cập 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         VPS                                 │
+│                         VPS (Backend)                       │
 │  ┌─────────────────┐    ┌─────────────────┐                │
 │  │ gunicorn-ec2    │    │ val-updater     │                │
 │  │ (API Server)    │    │ (Data Updater)  │                │
-│  │   Port 8000     │    │ Timer: 1,15/m   │                │
+│  │   Port 8000     │    │ Timer: Morning  │                │
 │  └─────────────────┘    └─────────────────┘                │
 │           │                      │                          │
 │           └──────────┬───────────┘                          │
 │                      ▼                                      │
 │  ┌─────────────────────────────────────────┐               │
-│  │              stocks/*.json               │               │
+│  │              stocks.db (SQLite)          │               │
 │  │          sector_peers.json               │               │
-│  │       frontend/ticker_data.json          │               │
 │  └─────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────┘
            │
-           │ deploy.ps1 (sync)
+           │ API Requests
            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      Local Machine                          │
+│                      Vercel (Frontend)                      │
 │  ┌─────────────────────────────────────────┐               │
-│  │           GitHub Repository              │               │
-│  │      (Frontend + Backend code)           │               │
+│  │           valuation.quanganh.org        │               │
+│  │      (Next.js App /logos backup)         │               │
+│  └─────────────────────────────────────────┘               │
+└─────────────────────────────────────────────────────────────┘
+           │
+           │ Asset Loading
+           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                         AWS S3                              │
+│  ┌─────────────────────────────────────────┐               │
+│  │           Stock Logos (.jpeg)            │               │
 │  └─────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -78,29 +86,7 @@ systemctl restart val-updater.timer
 * **Ngày chạy**: Ngày **01** và ngày **15** hàng tháng.
 * **Cơ chế**: Systemd Timer (`val-updater.timer`) kích hoạt script chủ.
 
-### 🔗 Dây Chuyền Xử Lý (Chain of Command)
-Khi đến giờ hẹn, script `automation/update_json_data.py` được kích hoạt:
-
-#### **Bước 1: Cập Nhật Danh Sách Hiển Thị (`update_tickers.py`)**
-* **Hành động**: Quét toàn bộ thị trường (HOSE, HNX, UPCOM).
-* **Đầu ra**: File `frontend/ticker_data.json`.
-* **Mục đích**: Cung cấp danh sách mã đầy đủ nhất (1500+ mã) cho Autocomplete Search.
-
-#### **Bước 2: Lọc Danh Sách Cổ Phiếu (`generate_stock_list.py`)**
-* **Hành động**: Từ dữ liệu thị trường, lọc bỏ các mã rác, chứng quyền, ETF.
-* **Đầu ra**: File `stock_list.json` (Khoảng 700+ mã).
-* **Mục đích**: Tạo danh sách "sạch" để tải báo cáo tài chính.
-
-#### **Bước 3: Tải Dữ Liệu Tài Chính (Core Logic)**
-* **Hành động**: Dựa trên `stock_list.json`, tải dữ liệu chi tiết cho từng mã.
-* **Đầu ra**: Cập nhật hơn 700 file trong thư mục `stocks/*.json`.
-* **Rate Limiting**: Tự động phát hiện và chờ khi bị limit.
-
-#### **Bước 4: Tính Toán Chỉ Số Ngành (`update_peers.py`)**
-* **Hành động**: Đọc toàn bộ dữ liệu, tính P/E và P/B trung vị cho từng ngành.
-* **Đầu ra**: File `sector_peers.json`.
-
-=> **Kết quả**: Sau khoảng 20-30 phút, toàn bộ dữ liệu trên VPS đã được cập nhật.
+*   Hoàn thành cập nhật database và chỉ số ngành phục vụ cho API Valuation.
 
 ---
 
@@ -149,21 +135,14 @@ Khi đến giờ hẹn, script `automation/update_json_data.py` được kích h
 ## 5. Frontend File Structure
 
 ```
-frontend/
-├── index.html              # Market Overview page
-├── valuation.html          # Valuation detail page
-├── css/
-│   ├── overview.css        # Styles cho index.html
-│   ├── ticker-autocomplete.css
-│   ├── variables.css
-│   └── ...
-├── js/
-│   └── overview.js         # JavaScript cho index.html
-├── ticker_data.json        # Autocomplete data (1500+ mã)
-└── style.css               # Global styles
+frontend-next/
+├── src/
+│   ├── app/                # App Router (Home, Market, Stock Detail)
+│   ├── components/         # UI Elements (Charts, Lists)
+│   └── lib/                # API helpers, Utils
+├── public/
+│   └── logos/              # Backup logos folder
 ```
-
-**Lưu ý:** CSS và JS của trang Overview đã được tách ra file riêng để dễ maintain.
 
 ---
 
@@ -175,9 +154,8 @@ frontend/
 | `update_tickers.py` | VPS | (Được gọi) | Tạo data cho Autocomplete Search. |
 | `generate_stock_list.py` | VPS | (Được gọi) | Tạo danh sách mã cần tải data. |
 | `update_peers.py` | VPS | (Được gọi) | Tính toán chỉ số ngành. |
-| `update_excel_data.py` | **Local** | ❌ (Chạy tay) | Tải Excel từ VietCap → Upload R2. |
-| `pull_data.ps1` | **Local** | ❌ (Chạy tay) | Kéo data từ VPS về Local. |
-| `deploy.ps1` | **Local** | ❌ (Chạy tay) | Đẩy code từ Local lên GitHub/VPS. |
+| `update_excel_data.py` | **Local** | ❌ (Chạy tay) | Tải Excel từ VietCap (10 workers) → Upload R2. |
+| `deploy.ps1` | **Local** | ❌ (Chạy tay) | Đẩy code lên GitHub (Vercel) + Đồng bộ Backend VPS. |
 
 ---
 

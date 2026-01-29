@@ -76,9 +76,8 @@ cd C:\Users\PC\Downloads\Valuation
 python automation/update_excel_data.py
 ```
 
-**Script sẽ:**
-1. Download Excel từ VietCap API
-2. Upload trực tiếp lên R2 (không lưu local)
+1. Download Excel từ VietCap API (sử dụng 10 workers để chạy song song)
+2. Sau khi download xong toàn bộ, script sẽ tải hàng loạt lên Cloudflare R2
 
 ### Cập nhật Token VietCap
 

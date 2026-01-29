@@ -4,7 +4,7 @@
 
 | Thành phần | Môi trường | URL |
 |------------|------------|-----|
-| **Frontend (Giao diện)** | **Vercel** | [quanganhtapcode.com](https://quanganhtapcode.com) |
+| **Frontend (Giao diện)** | **Vercel** | [valuation.quanganh.org](https://valuation.quanganh.org) |
 | **Backend (API)** | **VPS (Ubuntu 22.04)** | [api.quanganh.org](https://api.quanganh.org) |
 | **Dữ liệu tĩnh (Logos)** | **AWS S3** | (Served trực tiếp từ S3 bucket) |
 | **VPS SSH** | `root@203.55.176.10` | 🔑 Sử dụng file `key.pem` |

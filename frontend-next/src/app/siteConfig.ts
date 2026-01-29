@@ -1,6 +1,6 @@
 export const siteConfig = {
     name: "Quang Anh",
-    url: "https://quanganhtapcode.com",
+    url: "https://valuation.quanganh.org",
     description: "Advanced stock analysis platform for Vietnam market.",
     baseLinks: {
         home: "/",
