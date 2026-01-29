@@ -1,117 +1,77 @@
 # 🚀 Hướng dẫn Deploy
 
-## Tổng quan
+## Tổng quan hệ thống (Distributed Architecture)
 
-| Môi trường | URL |
-|------------|-----|
-| **Production** | https://valuation.quanganh.org |
-| **API** | https://api.quanganh.org |
-| **VPS** | `root@203.55.176.10` (Public) hoặc `10.66.66.1` (VPN) |
+| Thành phần | Môi trường | URL |
+|------------|------------|-----|
+| **Frontend (Giao diện)** | **Vercel** | [quanganhtapcode.com](https://quanganhtapcode.com) |
+| **Backend (API)** | **VPS (Ubuntu 22.04)** | [api.quanganh.org](https://api.quanganh.org) |
+| **Dữ liệu tĩnh (Logos)** | **AWS S3** | (Served trực tiếp từ S3 bucket) |
+| **VPS SSH** | `root@203.55.176.10` | 🔑 Sử dụng file `key.pem` |
 
 ---
 
-## 1. Deploy Code (Hàng ngày)
+## 1. Quy trình Deploy (Automated)
 
-Sử dụng script tự động:
+Hệ thống được thiết kế để deploy đồng thời cả Frontend và Backend bằng một lệnh duy nhất:
 
 ```powershell
-# Từ thư mục project
-cd C:\Users\PC\Downloads\Valuation
-
-# Deploy với commit message
+# Từ thư mục project local
 .\automation\deploy.ps1 -CommitMessage "Mô tả thay đổi"
 ```
 
-**Script sẽ tự động:**
-1. ✅ Commit & push code lên GitHub
-2. ✅ Sync `backend/`, `frontend/`, `automation/` lên VPS
-3. ✅ Sync `sector_peers.json`, `package.json`
-4. ✅ Restart gunicorn-ec2 service
+**Quy trình tự động hoạt động như sau:**
+1. **Frontend**: Code được push lên GitHub (nhánh `main`). Vercel phát hiện thay đổi và tự động build/deploy phiên bản web mới.
+2. **Backend**: Code thư mục `backend/` và các file cấu hình được `scp` (đồng bộ) trực tiếp lên VPS.
+3. **Restart**: Script tự động SSH vào VPS và thực hiện `systemctl restart gunicorn-ec2` để áp dụng các thay đổi API.
 
 ---
 
-## 2. SSH vào VPS (Khi cần debug)
+## 2. SSH vào VPS (Debug & Dữ liệu)
 
 ```powershell
-ssh -i "$env:USERPROFILE\Downloads\key.pem" root@10.66.66.1
+ssh -i "path\to\your\key.pem" root@203.55.176.10
 ```
 
-**Các lệnh hữu ích:**
+**Log Kiểm tra:**
 ```bash
-# Xem logs
+# Xem log API Backend thời gian thực
 journalctl -u gunicorn-ec2 -f
 
-# Restart service
-systemctl restart gunicorn-ec2
-
-# Check status
-systemctl status gunicorn-ec2
+# Kiểm tra log định kỳ (Updater)
+tail -f /var/www/vps/automation/update.log
 ```
 
 ---
 
-## 3. Cấu trúc trên VPS
+## 3. Cấu trúc thư mục Production (VPS)
 
 ```
-/var/www/valuation/
-├── backend/
-│   ├── server.py       # API server
-│   ├── models.py       # Valuation models
-│   └── r2_client.py    # R2 storage client
-├── frontend/
-│   ├── index.html      # Market Overview page
-│   ├── valuation.html  # Valuation page
-│   ├── css/            # Stylesheets
-│   │   ├── overview.css
-│   │   └── ticker-autocomplete.css
-│   ├── js/             # JavaScript
-│   │   └── overview.js
-│   └── ticker_data.json
-├── automation/
-├── stocks/             # Stock JSON data (700+ files)
-├── .venv/              # Virtual environment
-├── .env                # R2 credentials
-└── sector_peers.json
+/var/www/vps/
+├── backend/            # Python Flask scripts
+├── stocks.db           # SQLite database tập trung
+├── automation/         # Scripts cập nhật dữ liệu hàng ngày
+├── .venv/              # Môi trường ảo Python
+└── .env                # Biến môi trường (DB keys, etc.)
 ```
 
 ---
 
-## 4. Cập nhật Dependencies trên VPS
+## 4. Quản lý Stock Logos
 
-```bash
-cd /var/www/valuation
-source .venv/bin/activate
-pip install -r requirements.txt
-systemctl restart gunicorn-ec2
-```
+Website hiện tại không phục vụ logo từ VPS để tối ưu hiệu suất.
+- **Serving**: Script `siteConfig.ts` trỏ link ảnh về AWS S3.
+- **Fallback**: Nếu S3 lỗi, website sẽ tự động tìm trong `public/logos/` của Vercel deployment.
+- **Cập nhật**: Sử dụng script `automation/download_logos.py` để đồng bộ logo mới nhất từ AWS về local folder trước khi deploy.
 
 ---
 
-## 5. Troubleshooting
+## 5. Services trên VPS
 
-### Lỗi 502 Bad Gateway
-```bash
-# Xem log lỗi
-journalctl -u gunicorn-ec2 --since "10 min ago"
-
-# Restart service
-systemctl restart gunicorn-ec2
-```
-
-### Lỗi Permission denied (SSH)
-- Kiểm tra file `key.pem` tại `~/Downloads/key.pem`
-- Đảm bảo quyền: `chmod 400 key.pem` (Linux/Mac)
-
-### Service không start
-```bash
-# Kiểm tra syntax Python
-cd /var/www/valuation
-source .venv/bin/activate
-python -c "from backend.server import app; print('OK')"
-```
-
-### JavaScript không load
-- Clear cache browser: `Ctrl+Shift+R`
+| Service | Mô tả | Trạng thái |
+|---------|-------|--------|
+| `gunicorn-ec2.service` | API Backend (Flask) | Always running (Port 8000) |
+| `val-updater.timer` | Tự động cập nhật dữ liệu | Chạy mỗi sáng (08:00) |
 - Kiểm tra version trong URL: `overview.js?v=1`
 
 ---

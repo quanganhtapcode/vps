@@ -1,8 +1,5 @@
-# 🇻🇳 Vietnam Stock Valuation Tool
-
-Ứng dụng định giá cổ phiếu Việt Nam - tự động tính toán giá trị nội tại dựa trên các phương pháp FCFE, FCFF, P/E, P/B.
-
-🌐 **Website:** [valuation.quanganh.org](https://valuation.quanganh.org)
+🌐 **Website:** [quanganhtapcode.com](https://quanganhtapcode.com) (Frontend deployed on **Vercel**)
+💻 **API Backend:** [api.quanganh.org](https://api.quanganh.org) (Backend deployed on **VPS**)
 
 ---
 
@@ -26,29 +23,25 @@
 
 ```
 Valuation/
-├── frontend-next/          # Giao diện web (Next.js 14)
+├── frontend-next/          # Giao diện web (Next.js 14) - Deploy on Vercel
 │   ├── src/
 │   │   ├── app/            # App Router pages
 │   │   ├── components/     # UI Components (Tremor, HeadlessUI)
 │   │   └── lib/            # Utilities & Config
-│   ├── public/             # Static assets
+│   ├── public/             # Static assets (including backup /logos)
 │   └── ...
-├── backend/                # API Flask + Valuation Models
+├── backend/                # API Flask + Valuation Models - Deploy on VPS
 │   ├── server.py           # Main API server
 │   ├── stock_provider.py   # Data fetching & Processing logic
 │   └── ...
 ├── automation/             # Scripts tự động hóa
-│   ├── deploy.ps1          # Deploy code lên GitHub + VPS
-│   ├── update_excel_data.py    # Cập nhật Excel
-│   ├── update_json_data.py     # Cập nhật stock JSON data
-│   ├── update_peers.py         # Cập nhật sector peers
-│   └── pull_data.ps1           # Tải data từ VPS về local
+│   ├── deploy.ps1          # Deploy code (Push to GitHub/Vercel + Sync VPS)
+│   ├── download_logos.py   # Tải logo từ AWS S3 về local backup
+│   ├── update_excel_data.py    # Cập nhật dữ liệu Excel
+│   └── ...
 ├── stocks.db               # SQLite Database (Price, Financials, Profile)
-├── docs/                   # Tài liệu hướng dẫn
-├── .env                    # Environment variables
-├── requirements.txt        # Python dependencies
-├── sector_peers.json       # Dữ liệu P/E, P/B ngành
-└── stock_list.json         # Danh sách mã cổ phiếu
+├── stock_list.json         # Danh sách mã cổ phiếu gốc
+└── sector_peers.json       # Dữ liệu P/E, P/B ngành
 ```
 
 ---
@@ -114,18 +107,16 @@ Website chạy tại: `http://localhost:3000`
 
 ## 🔧 Dành cho Admin
 
-### Deploy code mới
+### Deploy hệ thống
 ```powershell
-.\automation\deploy.ps1 -CommitMessage "Mô tả thay đổi"
+# Script sẽ tự động đẩy code lên Github (Vercel tự động build) và đồng bộ Backend lên VPS
+.\automation\deploy.ps1 -CommitMessage "Cập nhật tính năng mới"
 ```
 
-### Cập nhật dữ liệu
+### Quản lý Logos
 ```powershell
-# Cập nhật JSON data (chạy trên VPS)
-python automation/update_json_data.py
-
-# Cập nhật sector peers
-python automation/update_peers.py
+# Tải/Cập nhật logo từ AWS S3 về thư mục local backup
+python automation/download_logos.py
 ```
 
 ---
