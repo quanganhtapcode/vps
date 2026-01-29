@@ -4,7 +4,7 @@ export async function getTickerData() {
     if (cachedTickers) return cachedTickers;
 
     try {
-        const response = await fetch('/api/tickers');
+        const response = await fetch('/ticker_data.json');
         if (response.ok) {
             cachedTickers = await response.json();
             return cachedTickers;

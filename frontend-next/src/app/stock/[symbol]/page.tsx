@@ -487,7 +487,7 @@ export default function StockDetailPage() {
                     }
                 })
                 .catch(err => console.error("Polling error", err));
-        }, 5000);
+        }, 30000);
 
         return () => clearInterval(interval);
     }, [symbol]);

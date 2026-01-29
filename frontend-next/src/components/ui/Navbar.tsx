@@ -94,21 +94,23 @@ export function Navbar() {
 
     // Optimized search logic with debouncing
     useEffect(() => {
-        if (!debouncedQuery || debouncedQuery.length < 1) {
+        if (typeof debouncedQuery !== 'string' || debouncedQuery.length < 1) {
             setSearchResults([]);
             return;
         }
 
-        const upperQuery = debouncedQuery.toUpperCase();
-        const lowerQuery = debouncedQuery.toLowerCase();
+        const upperQuery = (debouncedQuery || '').toUpperCase();
+        const lowerQuery = (debouncedQuery || '').toLowerCase();
 
-        // Limit results computation
-        const filtered = allTickers.filter(ticker =>
-            ticker.symbol.toUpperCase().includes(upperQuery) ||
-            ticker.name.toLowerCase().includes(lowerQuery)
-        ).sort((a, b) => {
-            const symbolA = a.symbol.toUpperCase();
-            const symbolB = b.symbol.toUpperCase();
+        // Limit results computation with ROBUST null checks
+        const filtered = allTickers.filter(ticker => {
+            if (!ticker) return false;
+            const sym = (ticker.symbol || '').toUpperCase();
+            const nam = (ticker.name || '').toLowerCase();
+            return sym.includes(upperQuery) || nam.includes(lowerQuery);
+        }).sort((a, b) => {
+            const symbolA = (a?.symbol || '').toUpperCase();
+            const symbolB = (b?.symbol || '').toUpperCase();
             if (symbolA === upperQuery && symbolB !== upperQuery) return -1;
             if (symbolB === upperQuery && symbolA !== upperQuery) return 1;
             if (symbolA.startsWith(upperQuery) && !symbolB.startsWith(upperQuery)) return -1;
