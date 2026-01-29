@@ -1,6 +1,6 @@
 export const siteConfig = {
     name: "Quang Anh",
-    url: "https://valuation.quanganh.org",
+    url: "https://vps-mx16.vercel.app",
     description: "Advanced stock analysis platform for Vietnam market.",
     baseLinks: {
         home: "/",
