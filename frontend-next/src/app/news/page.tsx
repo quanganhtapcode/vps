@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { NewsItem, formatDate } from '@/lib/api';
 import styles from './page.module.css';
+import { siteConfig } from '@/app/siteConfig';
 
 const LOGO_BASE_URL = '/logos/';
 
@@ -102,11 +103,17 @@ export default function NewsPage() {
                                                 }}
                                             >
                                                 <img
-                                                    src={`${LOGO_BASE_URL}${symbol}.jpg`}
+                                                    src={siteConfig.stockLogoUrl(symbol)}
                                                     alt={symbol}
                                                     className={styles.stockLogo}
+                                                    style={{ objectFit: 'contain', backgroundColor: '#fff', padding: '1px' }}
                                                     onError={(e) => {
-                                                        (e.target as HTMLImageElement).style.display = 'none';
+                                                        const target = e.target as HTMLImageElement;
+                                                        if (!target.src.includes('/logos/')) {
+                                                            target.src = `/logos/${symbol}.jpg`;
+                                                        } else {
+                                                            target.style.display = 'none';
+                                                        }
                                                     }}
                                                 />
                                                 {symbol}

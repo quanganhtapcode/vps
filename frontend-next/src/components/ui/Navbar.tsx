@@ -242,12 +242,31 @@ export function Navbar() {
                                                         router.push(`/stock/${result.symbol}`);
                                                     }}
                                                 >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="flex flex-col">
-                                                            <span className="font-bold text-gray-900 dark:text-gray-50 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <div className="shrink-0 relative w-8 h-8 rounded-lg bg-white border border-gray-100 dark:border-gray-800 flex items-center justify-center p-1 group-hover:border-blue-200 transition-colors shadow-sm overflow-hidden">
+                                                            <img
+                                                                src={siteConfig.stockLogoUrl(result.symbol)}
+                                                                alt={result.symbol}
+                                                                className="w-full h-full object-contain"
+                                                                onError={(e) => {
+                                                                    const target = e.target as HTMLImageElement;
+                                                                    if (!target.src.includes('/logos/')) {
+                                                                        target.src = `/logos/${result.symbol}.jpg`;
+                                                                    } else {
+                                                                        target.style.display = 'none';
+                                                                        target.nextElementSibling?.classList.remove('hidden');
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <span className="hidden text-[10px] font-bold text-gray-400">
+                                                                {result.symbol[0]}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className="font-bold text-gray-900 dark:text-gray-50 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
                                                                 {result.symbol}
                                                             </span>
-                                                            <span className="text-[11px] text-gray-500 dark:text-gray-400 truncate max-w-[180px]">
+                                                            <span className="text-[11px] text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
                                                                 {result.name}
                                                             </span>
                                                         </div>

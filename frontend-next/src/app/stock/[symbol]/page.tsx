@@ -11,6 +11,7 @@ import ValuationTab from '@/components/StockDetail/ValuationTab';
 import AnalysisTab from '@/components/StockDetail/AnalysisTab';
 import { Select, SelectItem } from '@tremor/react';
 import { getTickerData } from '@/lib/tickerCache';
+import { siteConfig } from '@/app/siteConfig';
 
 function classNames(...classes: Array<string | false | undefined | null>) {
     return classes.filter(Boolean).join(' ');
@@ -489,14 +490,22 @@ export default function StockDetailPage() {
             {/* Header Compact */}
             <div className={styles.stockHeaderCompact}>
                 <div className={styles.identityCompact}>
-                    <div className={styles.logoWrapper} style={{ width: '42px', height: '42px' }}>
+                    <div className={styles.logoWrapper} style={{ width: '56px', height: '56px', backgroundColor: '#fff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                         <img
-                            src={`/logos/${symbol}.jpg`}
+                            src={siteConfig.stockLogoUrl(symbol)}
                             alt={symbol}
                             className={styles.logoCompact}
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}
+                            onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                if (!target.src.includes('/logos/')) {
+                                    target.src = `/logos/${symbol}.jpg`;
+                                } else {
+                                    target.style.display = 'none';
+                                }
+                            }}
                         />
-                        <div className={styles.fallbackLogo} style={{ width: '42px', height: '42px', fontSize: '1rem' }}>{symbol.slice(0, 2)}</div>
+                        <div className={styles.fallbackLogo} style={{ width: '56px', height: '56px', fontSize: '1.25rem' }}>{symbol.slice(0, 2)}</div>
                     </div>
 
                     <div className={styles.stockMetaCompact}>

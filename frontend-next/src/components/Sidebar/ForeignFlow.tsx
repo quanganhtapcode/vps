@@ -14,6 +14,7 @@ import {
 import { RiShoppingBag3Line, RiBuilding2Line } from '@remixicon/react';
 import Link from 'next/link';
 import { TopMoverItem } from '@/lib/api';
+import { siteConfig } from '@/app/siteConfig';
 
 interface ForeignFlowProps {
     buys: TopMoverItem[];
@@ -79,13 +80,17 @@ export default function ForeignFlow({
                                         {/* Ticker Logo */}
                                         <div className="relative shrink-0 h-8 w-8 flex items-center justify-center bg-white dark:bg-gray-900 rounded-lg overflow-hidden border border-tremor-border/10 dark:border-dark-tremor-border/10 group-hover:border-indigo-500/30 transition-colors">
                                             <img
-                                                src={`${LOGO_BASE_URL}${item.Symbol}.jpg`}
+                                                src={siteConfig.stockLogoUrl(item.Symbol)}
                                                 alt={item.Symbol}
-                                                className="h-5 w-5 object-contain"
+                                                className="h-full w-full object-contain p-1.5"
                                                 onError={(e) => {
                                                     const target = e.target as HTMLImageElement;
-                                                    target.style.display = 'none';
-                                                    target.nextElementSibling?.classList.remove('hidden');
+                                                    if (!target.src.includes('/logos/')) {
+                                                        target.src = `/logos/${item.Symbol}.jpg`;
+                                                    } else {
+                                                        target.style.display = 'none';
+                                                        target.nextElementSibling?.classList.remove('hidden');
+                                                    }
                                                 }}
                                             />
                                             <div className="fallback-icon hidden text-tremor-content-strong dark:text-dark-tremor-content-strong font-bold text-[10px]">

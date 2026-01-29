@@ -11,6 +11,7 @@ import {
 } from '@remixicon/react';
 import Link from 'next/link';
 import { TopMoverItem } from '@/lib/api';
+import { siteConfig } from '@/app/siteConfig';
 
 interface MarketPulseProps {
     gainers: TopMoverItem[];
@@ -147,18 +148,22 @@ function MarketList({
                                     className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group"
                                 >
                                     <div className="flex items-center gap-3 overflow-hidden flex-1 mr-2">
-                                        <div className="shrink-0 relative w-9 h-9 rounded-full bg-white border border-gray-100 dark:border-gray-700 dark:bg-gray-800 flex items-center justify-center p-0.5 shadow-sm group-hover:border-blue-200 transition-colors">
+                                        <div className="shrink-0 relative w-9 h-9 rounded-lg bg-white border border-gray-100 dark:border-gray-700 dark:bg-gray-800 flex items-center justify-center p-1.5 shadow-sm group-hover:border-blue-200 transition-colors overflow-hidden">
                                             <img
-                                                src={`${LOGO_BASE_URL}${item.Symbol}.jpg`}
+                                                src={siteConfig.stockLogoUrl(item.Symbol)}
                                                 alt={item.Symbol}
-                                                className="w-full h-full object-contain rounded-full"
+                                                className="w-full h-full object-contain"
                                                 onError={(e) => {
                                                     const target = e.target as HTMLImageElement;
-                                                    target.style.display = 'none';
-                                                    target.nextElementSibling?.classList.remove('hidden');
+                                                    if (!target.src.includes('/logos/')) {
+                                                        target.src = `/logos/${item.Symbol}.jpg`;
+                                                    } else {
+                                                        target.style.display = 'none';
+                                                        target.nextElementSibling?.classList.remove('hidden');
+                                                    }
                                                 }}
                                             />
-                                            <span className="hidden w-full h-full bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-[10px] font-bold text-gray-500">
+                                            <span className="hidden w-full h-full bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center text-[10px] font-bold text-gray-500">
                                                 {item.Symbol[0]}
                                             </span>
                                         </div>
