@@ -435,6 +435,63 @@ export default function StockDetailPage() {
         setIsWatchlisted(!isWatchlisted);
     };
 
+    // Polling Price every 5 seconds
+    useEffect(() => {
+        if (!symbol) return;
+
+        const interval = setInterval(() => {
+            fetch(`/api/current-price/${symbol}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(priceRes => {
+                    if (priceRes && priceRes.success) {
+                        const data = priceRes.data || priceRes;
+                        const normalize = (val: number) => (val > 0 && val < 500) ? val * 1000 : val;
+                        const newPrice = normalize(data.current_price || data.price || 0);
+
+                        if (newPrice > 0) {
+                            setPriceData(prev => {
+                                if (!prev) return null;
+                                // Recalculate change based on reference price
+                                // Use new ref price if available, otherwise keep existing
+                                const refPrice = data.ref_price ? normalize(data.ref_price) : (data.ref ? normalize(data.ref) : prev.ref);
+
+                                // Calculate change
+                                let change = 0;
+                                let changePercent = 0;
+
+                                if (refPrice > 0) {
+                                    change = newPrice - refPrice;
+                                    changePercent = (change / refPrice) * 100;
+                                } else {
+                                    // Fallback if no ref price (rare): use change from API
+                                    change = normalize(data.change || data.price_change || 0);
+                                    changePercent = data.changePercent || data.price_change_percent || 0;
+                                }
+
+                                return {
+                                    ...prev,
+                                    price: newPrice,
+                                    ref: refPrice > 0 ? refPrice : prev.ref,
+                                    change: change,
+                                    changePercent: changePercent,
+                                    // Update other fields if available
+                                    ...(data.open > 0 && { open: normalize(data.open) }),
+                                    ...(data.high > 0 && { high: normalize(data.high) }),
+                                    ...(data.low > 0 && { low: normalize(data.low) }),
+                                    ...(data.volume > 0 && { volume: data.volume }),
+                                    ...(data.ceiling > 0 && { ceiling: normalize(data.ceiling) }),
+                                    ...(data.floor > 0 && { floor: normalize(data.floor) }),
+                                };
+                            });
+                        }
+                    }
+                })
+                .catch(err => console.error("Polling error", err));
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [symbol]);
+
     if (isLoading) {
         return (
             <div className={styles.container}>
