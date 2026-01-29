@@ -155,7 +155,7 @@ export default function OverviewClient({
     useEffect(() => {
         const interval = setInterval(() => {
             loadIndices();
-        }, 15000);
+        }, 10000);
         return () => clearInterval(interval);
     }, [loadIndices]);
 
