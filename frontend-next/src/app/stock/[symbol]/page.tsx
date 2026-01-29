@@ -99,19 +99,27 @@ export default function StockDetailPage() {
     const [error, setError] = useState<string | null>(null);
     const [isDescExpanded, setIsDescExpanded] = useState(false);
     const [activeTab, setActiveTab] = useState<'overview' | 'financials' | 'valuation' | 'priceHistory' | 'analysis'>('overview');
-    const [activeSubTab, setActiveSubTab] = useState<'ratio' | 'income' | 'balance' | 'cashflow'>('ratio');
+    const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(['overview']));
     const [financialPeriod, setFinancialPeriod] = useState<'quarter' | 'year'>('quarter');
     const [financialReport, setFinancialReport] = useState<FinancialReportItem[]>([]);
     const [ratioData, setRatioData] = useState<any[]>([]);
 
     // New Pre-fetched States
-    const [prefetchedValuation, setPrefetchedValuation] = useState<any>(null);
-    const [prefetchedChartData, setPrefetchedChartData] = useState<any>(null); // For FinancialsTab
-    const [prefetchedPeers, setPrefetchedPeers] = useState<any>(null); // For AnalysisTab
+    // const [prefetchedValuation, setPrefetchedValuation] = useState<any>(null); // Removed
+    // const [prefetchedChartData, setPrefetchedChartData] = useState<any>(null); // For FinancialsTab // Removed
+    // const [prefetchedPeers, setPrefetchedPeers] = useState<any>(null); // For AnalysisTab // Removed
     const [rawOverviewData, setRawOverviewData] = useState<any>(null); // For FinancialsTab
 
     // New state for chart loading
     const [isChartLoading, setIsChartLoading] = useState(false);
+
+    useEffect(() => {
+        setVisitedTabs(prev => {
+            const next = new Set(prev);
+            next.add(activeTab);
+            return next;
+        });
+    }, [activeTab]);
 
     const handleDownloadExcel = async () => {
         try {
@@ -266,20 +274,11 @@ export default function StockDetailPage() {
                     })
                     .catch(() => { }); // Silently fail, we already have history data
 
-                // PHASE 3: Parallel Fetching of other data (News, Valuation, Charts)
+                // PHASE 3: Parallel Fetching of other data (News Only)
+                // Analysis & Financials data are now Lazy Loaded in their respective components
                 Promise.allSettled([
-                    fetch(`/api/news/${symbol}`).then(r => r.json()), // News
-                    // Pre-fetch Valuation
-                    fetch(`/api/valuation/${symbol}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ currentPrice: currentPriceValue })
-                    }).then(r => r.json()),
-                    // Pre-fetch Financial Charts Default (Quarter)
-                    fetch(`/api/historical-chart-data/${symbol}?period=quarter`).then(r => r.json()),
-                    // Pre-fetch Peers
-                    fetchStockPeers(symbol as string)
-                ]).then(([newsRes, valRes, chartRes, peerRes]) => {
+                    fetch(`/api/news/${symbol}`).then(r => r.json())
+                ]).then(([newsRes]) => {
 
                     // 1. News
                     if (newsRes.status === 'fulfilled' && newsRes.value) {
@@ -293,21 +292,6 @@ export default function StockDetailPage() {
                             }));
                             setNews(mappedNews.slice(0, 5));
                         }
-                    }
-
-                    // 2. Valuation
-                    if (valRes.status === 'fulfilled' && valRes.value && valRes.value.success) {
-                        setPrefetchedValuation(valRes.value);
-                    }
-
-                    // 3. Financial Charts
-                    if (chartRes.status === 'fulfilled' && chartRes.value && chartRes.value.success) {
-                        setPrefetchedChartData(chartRes.value.data);
-                    }
-
-                    // 4. Peers
-                    if (peerRes.status === 'fulfilled' && Array.isArray(peerRes.value)) {
-                        setPrefetchedPeers({ data: peerRes.value });
                     }
                 });
 
@@ -399,19 +383,6 @@ export default function StockDetailPage() {
         const filtered = fullHistoryData.filter(d => new Date(d.time) >= cutoff);
         setHistoricalData(filtered);
     }, [timeRange, fullHistoryData]);
-
-    // No longer need separate effect specifically for fetching reports if we trust components to handle it
-    // BUT FinancialsTab component logic accepts `initialOverviewData`.
-    // The separate table logic inside `page.tsx` for `activeSubTab` (lines 309-358 in old file) seems to be NOT USED by `FinancialsTab` anymore?
-    // Let's check `FinancialsTab` content again. It displays charts and metrics cards. It does NOT display a raw table of reports with props `financialReport` or `ratioData`.
-    // The old `page.tsx` had logic to fetch tables, but `FinancialsTab` (which I just updated) doesn't seem to take `financialReport` prop.
-    // It takes `initialChartData` and `initialOverviewData`.
-    // It seems the "FinancialsTab" component REPLACED the old Table logic. 
-    // Wait, the old `page.tsx` had `activeSubTab` state. `FinancialsTab.tsx` doesn't seem to use it.
-    // Checking `FinancialsTab.tsx`: It renders MetricCards and Charts. It does NOT have tabs for "Ratio/Income/Balance".
-    // It has Period toggle (Quarter/Year).
-    // So the state `activeSubTab` in `page.tsx` is actually UNUSED if `FinancialsTab` controls its own view.
-    // I will remove the unused `activeSubTab` logic and state to clean up.
 
     const isUp = priceData ? priceData.change >= 0 : true;
 
@@ -592,11 +563,10 @@ export default function StockDetailPage() {
                 </div>
             </div>
 
-
-
-            {/* Main Content */}
-            <div className={activeTab === 'overview' ? styles.mainContent : styles.mainContentFull}>
-                {activeTab === 'overview' && (
+            {/* Main Content with Persistent Tabs (Lazy Loaded) */}
+            <div className={styles.mainContentFull}>
+                {/* Overview - Always keep mounted if visited, typically visited first */}
+                <div className={activeTab === 'overview' ? 'block' : 'hidden'}>
                     <OverviewTab
                         symbol={symbol}
                         stockInfo={stockInfo}
@@ -610,88 +580,88 @@ export default function StockDetailPage() {
                         historicalData={historicalData}
                         isLoading={isChartLoading}
                     />
+                </div>
+
+                {/* Financials Tab - Lazy & Persistent */}
+                {visitedTabs.has('financials') && (
+                    <div className={activeTab === 'financials' ? 'block' : 'hidden'}>
+                        <div className="mb-4 flex items-center justify-between gap-4">
+                            <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
+                                Financial Reports
+                            </h3>
+                            <div className="flex items-center gap-2">
+                                <Select
+                                    value={financialPeriod}
+                                    onValueChange={(val) => setFinancialPeriod(val as 'quarter' | 'year')}
+                                    className="w-32"
+                                >
+                                    <SelectItem value="quarter">Quarter</SelectItem>
+                                    <SelectItem value="year">Year</SelectItem>
+                                </Select>
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadExcel}
+                                    className="inline-flex items-center justify-center gap-2 rounded-tremor-small border border-tremor-border bg-white px-3 py-2 text-tremor-default font-medium text-tremor-content-strong shadow-sm hover:bg-tremor-background-muted dark:border-dark-tremor-border dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong"
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                        <polyline points="7 10 12 15 17 10" />
+                                        <line x1="12" y1="15" x2="12" y2="3" />
+                                    </svg>
+                                    <span className="hidden sm:inline">Export Excel</span>
+                                    <span className="sm:hidden">Excel</span>
+                                </button>
+                            </div>
+                        </div>
+                        <FinancialsTab
+                            symbol={symbol}
+                            period={financialPeriod}
+                            setPeriod={setFinancialPeriod}
+                            initialChartData={null}
+                            initialOverviewData={rawOverviewData}
+                        />
+                    </div>
                 )}
 
-                {
-                    activeTab === 'financials' && (
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between gap-4">
-                                <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
-                                    Financials
-                                </h3>
-                                <div className="flex items-center gap-2">
-                                    <Select
-                                        className="w-[80px] sm:w-fit [&>button]:rounded-tremor-small"
-                                        enableClear={false}
-                                        value={financialPeriod}
-                                        onValueChange={(value) => setFinancialPeriod(value as 'quarter' | 'year')}
-                                    >
-                                        <SelectItem value="quarter">Quarter</SelectItem>
-                                        <SelectItem value="year">Year</SelectItem>
-                                    </Select>
-                                    <button
-                                        type="button"
-                                        onClick={handleDownloadExcel}
-                                        className="inline-flex items-center justify-center gap-2 rounded-tremor-small border border-tremor-border bg-white px-3 py-2 text-tremor-default font-medium text-tremor-content-strong shadow-sm hover:bg-tremor-background-muted dark:border-dark-tremor-border dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong"
-                                    >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                            <polyline points="7 10 12 15 17 10" />
-                                            <line x1="12" y1="15" x2="12" y2="3" />
-                                        </svg>
-                                        <span className="hidden sm:inline">Export Excel</span>
-                                        <span className="sm:hidden">Excel</span>
-                                    </button>
-                                </div>
-                            </div>
-                            <FinancialsTab
-                                symbol={symbol}
-                                period={financialPeriod}
-                                setPeriod={setFinancialPeriod}
-                                initialChartData={prefetchedChartData}
-                                initialOverviewData={rawOverviewData}
-                            />
-                        </div>
-                    )
-                }
-
-                {
-                    activeTab === 'priceHistory' && (
+                {/* Price History Tab - Lazy & Persistent */}
+                {visitedTabs.has('priceHistory') && (
+                    <div className={activeTab === 'priceHistory' ? 'block' : 'hidden'}>
                         <PriceHistoryTab
                             symbol={symbol}
                             initialData={fullHistoryData.length > 0 ? fullHistoryData : undefined}
                         />
-                    )
-                }
+                    </div>
+                )}
 
-                {
-                    activeTab === 'valuation' && (
+                {/* Valuation Tab - Lazy & Persistent */}
+                {visitedTabs.has('valuation') && (
+                    <div className={activeTab === 'valuation' ? 'block' : 'hidden'}>
                         <ValuationTab
                             symbol={symbol}
                             currentPrice={priceData?.price || 0}
-                            initialData={prefetchedValuation}
+                            initialData={null}
                             isBank={stockInfo?.sector === 'Ngân hàng' || ['VCB', 'BID', 'CTG', 'VPB', 'MBB', 'TCB', 'ACB', 'HDB', 'VIB', 'STB', 'TPB', 'MSB', 'LPB', 'SHB', 'OCB', 'VBB', 'BAB', 'BVB', 'EIB', 'KLB', 'SGB', 'PGB', 'NVB', 'VAB'].includes(symbol)}
                         />
-                    )
-                }
-                {
-                    activeTab === 'analysis' && (
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between gap-4">
-                                <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
-                                    Analysis
-                                </h3>
-                            </div>
-                            <AnalysisTab
-                                symbol={symbol}
-                                sector={stockInfo?.sector || 'Unknown'}
-                                initialPeers={prefetchedPeers}
-                                initialHistory={prefetchedChartData}
-                            />
+                    </div>
+                )}
+
+                {/* Analysis Tab - Lazy & Persistent */}
+                {visitedTabs.has('analysis') && (
+                    <div className={activeTab === 'analysis' ? 'space-y-4' : 'hidden'}>
+                        <div className="flex items-center justify-between gap-4">
+                            <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
+                                Analysis
+                            </h3>
                         </div>
-                    )
-                }
-            </div >
-        </div >
+                        <AnalysisTab
+                            symbol={symbol}
+                            sector={stockInfo?.sector || 'Unknown'}
+                            initialPeers={null}
+                            initialHistory={null}
+                        />
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }

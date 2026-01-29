@@ -132,13 +132,31 @@ export function Navbar() {
     };
 
     const toggleSearch = () => {
-        setSearchOpen(!searchOpen);
-        if (!searchOpen) {
+        setSearchOpen(prev => !prev);
+        // Focus logic is now handled by the useEffect dependent on searchOpen
+    }
+
+    // Handle Ctrl+K / Cmd+K
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                setSearchOpen(true);
+            }
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, []);
+
+    // Focus input when search opens (for both Desktop and Mobile)
+    useEffect(() => {
+        if (searchOpen) {
+            // Small timeout to ensure element is mounted and rendered
             setTimeout(() => {
                 inputRef.current?.focus();
-            }, 100);
+            }, 50);
         }
-    }
+    }, [searchOpen]);
 
     return (
         <header

@@ -538,103 +538,94 @@ export default function StockDetailPage() {
 
 
             {/* Main Content */}
-            < div className={activeTab === 'overview' ? styles.mainContent : styles.mainContentFull}>
-                {activeTab === 'overview' && (
-                    <OverviewTab
+            <div className={activeTab === 'overview' ? styles.mainContent : styles.hidden}>
+                <OverviewTab
+                    symbol={symbol}
+                    stockInfo={stockInfo}
+                    priceData={priceData}
+                    financials={financials}
+                    news={news}
+                    timeRange={timeRange}
+                    setTimeRange={setTimeRange}
+                    isDescExpanded={isDescExpanded}
+                    setIsDescExpanded={setIsDescExpanded}
+                    historicalData={historicalData}
+                    isLoading={isChartLoading}
+                />
+            </div>
+
+            <div className={activeTab === 'financials' ? styles.mainContentFull : styles.hidden}>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-4">
+                        <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
+                            Financials
+                        </h3>
+                        <div className="flex items-center gap-2">
+                            <Select
+                                className="w-[80px] sm:w-fit [&>button]:rounded-tremor-small"
+                                enableClear={false}
+                                value={financialPeriod}
+                                onValueChange={(value) => setFinancialPeriod(value as 'quarter' | 'year')}
+                            >
+                                <SelectItem value="quarter">Quarter</SelectItem>
+                                <SelectItem value="year">Year</SelectItem>
+                            </Select>
+                            <button
+                                type="button"
+                                onClick={handleDownloadExcel}
+                                className="inline-flex items-center justify-center gap-2 rounded-tremor-small border border-tremor-border bg-white px-3 py-2 text-tremor-default font-medium text-tremor-content-strong shadow-sm hover:bg-tremor-background-muted dark:border-dark-tremor-border dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="7 10 12 15 17 10" />
+                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                </svg>
+                                <span className="hidden sm:inline">Export Excel</span>
+                                <span className="sm:hidden">Excel</span>
+                            </button>
+                        </div>
+                    </div>
+                    <FinancialsTab
                         symbol={symbol}
-                        stockInfo={stockInfo}
-                        priceData={priceData}
-                        financials={financials}
-                        news={news}
-                        timeRange={timeRange}
-                        setTimeRange={setTimeRange}
-                        isDescExpanded={isDescExpanded}
-                        setIsDescExpanded={setIsDescExpanded}
-                        historicalData={historicalData}
-                        isLoading={isChartLoading}
+                        period={financialPeriod}
+                        setPeriod={setFinancialPeriod}
+                        initialChartData={prefetchedChartData}
+                        initialOverviewData={rawOverviewData}
                     />
-                )}
+                </div>
+            </div>
 
-                {
-                    activeTab === 'financials' && (
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between gap-4">
-                                <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
-                                    Financials
-                                </h3>
-                                <div className="flex items-center gap-2">
-                                    <Select
-                                        className="w-[80px] sm:w-fit [&>button]:rounded-tremor-small"
-                                        enableClear={false}
-                                        value={financialPeriod}
-                                        onValueChange={(value) => setFinancialPeriod(value as 'quarter' | 'year')}
-                                    >
-                                        <SelectItem value="quarter">Quarter</SelectItem>
-                                        <SelectItem value="year">Year</SelectItem>
-                                    </Select>
-                                    <button
-                                        type="button"
-                                        onClick={handleDownloadExcel}
-                                        className="inline-flex items-center justify-center gap-2 rounded-tremor-small border border-tremor-border bg-white px-3 py-2 text-tremor-default font-medium text-tremor-content-strong shadow-sm hover:bg-tremor-background-muted dark:border-dark-tremor-border dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong"
-                                    >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                            <polyline points="7 10 12 15 17 10" />
-                                            <line x1="12" y1="15" x2="12" y2="3" />
-                                        </svg>
-                                        <span className="hidden sm:inline">Export Excel</span>
-                                        <span className="sm:hidden">Excel</span>
-                                    </button>
-                                </div>
-                            </div>
-                            <FinancialsTab
-                                symbol={symbol}
-                                period={financialPeriod}
-                                setPeriod={setFinancialPeriod}
-                                initialChartData={prefetchedChartData}
-                                initialOverviewData={rawOverviewData}
-                            />
-                        </div>
-                    )
-                }
+            <div className={activeTab === 'priceHistory' ? styles.mainContentFull : styles.hidden}>
+                <PriceHistoryTab
+                    symbol={symbol}
+                    initialData={fullHistoryData.length > 0 ? fullHistoryData : undefined}
+                />
+            </div>
 
-                {
-                    activeTab === 'priceHistory' && (
-                        <PriceHistoryTab
-                            symbol={symbol}
-                            initialData={fullHistoryData.length > 0 ? fullHistoryData : undefined}
-                        />
-                    )
-                }
+            <div className={activeTab === 'valuation' ? styles.mainContentFull : styles.hidden}>
+                <ValuationTab
+                    symbol={symbol}
+                    currentPrice={priceData?.price || 0}
+                    initialData={prefetchedValuation}
+                    isBank={stockInfo?.sector === 'Ngân hàng' || ['VCB', 'BID', 'CTG', 'VPB', 'MBB', 'TCB', 'ACB', 'HDB', 'VIB', 'STB', 'TPB', 'MSB', 'LPB', 'SHB', 'OCB', 'VBB', 'BAB', 'BVB', 'EIB', 'KLB', 'SGB', 'PGB', 'NVB', 'VAB'].includes(symbol)}
+                />
+            </div>
 
-                {
-                    activeTab === 'valuation' && (
-                        <ValuationTab
-                            symbol={symbol}
-                            currentPrice={priceData?.price || 0}
-                            initialData={prefetchedValuation}
-                            isBank={stockInfo?.sector === 'Ngân hàng' || ['VCB', 'BID', 'CTG', 'VPB', 'MBB', 'TCB', 'ACB', 'HDB', 'VIB', 'STB', 'TPB', 'MSB', 'LPB', 'SHB', 'OCB', 'VBB', 'BAB', 'BVB', 'EIB', 'KLB', 'SGB', 'PGB', 'NVB', 'VAB'].includes(symbol)}
-                        />
-                    )
-                }
-                {
-                    activeTab === 'analysis' && (
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between gap-4">
-                                <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
-                                    Analysis
-                                </h3>
-                            </div>
-                            <AnalysisTab
-                                symbol={symbol}
-                                sector={stockInfo?.sector || 'Unknown'}
-                                initialPeers={prefetchedPeers}
-                                initialHistory={prefetchedChartData}
-                            />
-                        </div>
-                    )
-                }
-            </div >
+            <div className={activeTab === 'analysis' ? styles.mainContentFull : styles.hidden}>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-4">
+                        <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
+                            Analysis
+                        </h3>
+                    </div>
+                    <AnalysisTab
+                        symbol={symbol}
+                        sector={stockInfo?.sector || 'Unknown'}
+                        initialPeers={prefetchedPeers}
+                        initialHistory={prefetchedChartData}
+                    />
+                </div>
+            </div>
         </div >
     );
 }

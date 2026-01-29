@@ -33,6 +33,7 @@ export function Navbar() {
     const [searchResults, setSearchResults] = useState<Ticker[]>([]);
     const searchRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const mobileInputRef = useRef<HTMLInputElement>(null);
 
     const router = useRouter();
 
@@ -54,9 +55,15 @@ export function Navbar() {
     // Load tickers data on mount
     useEffect(() => {
         async function loadTickers() {
-            const data = await getTickerData();
-            if (data) {
-                setAllTickers(data.tickers || []);
+            try {
+                const data = await getTickerData();
+                if (data && data.tickers) {
+                    // Pre-filter invalid data to avoid crashes
+                    const validTickers = data.tickers.filter((t: any) => t && t.symbol);
+                    setAllTickers(validTickers);
+                }
+            } catch (err) {
+                console.error("Failed to load tickers:", err);
             }
         }
         loadTickers();
@@ -83,13 +90,15 @@ export function Navbar() {
         const upperQuery = debouncedQuery.toUpperCase();
         const lowerQuery = debouncedQuery.toLowerCase();
 
-        // Limit results computation
-        const filtered = allTickers.filter(ticker =>
-            ticker.symbol.toUpperCase().includes(upperQuery) ||
-            ticker.name.toLowerCase().includes(lowerQuery)
-        ).sort((a, b) => {
-            const symbolA = a.symbol.toUpperCase();
-            const symbolB = b.symbol.toUpperCase();
+        // Limit results computation with ROBUST null checks
+        const filtered = allTickers.filter(ticker => {
+            if (!ticker) return false;
+            const sym = ticker.symbol ? ticker.symbol.toUpperCase() : '';
+            const nam = ticker.name ? ticker.name.toLowerCase() : '';
+            return sym.includes(upperQuery) || nam.includes(lowerQuery);
+        }).sort((a, b) => {
+            const symbolA = a.symbol ? a.symbol.toUpperCase() : '';
+            const symbolB = b.symbol ? b.symbol.toUpperCase() : '';
             if (symbolA === upperQuery && symbolB !== upperQuery) return -1;
             if (symbolB === upperQuery && symbolA !== upperQuery) return 1;
             if (symbolA.startsWith(upperQuery) && !symbolB.startsWith(upperQuery)) return -1;
@@ -111,11 +120,17 @@ export function Navbar() {
     };
 
     const toggleSearch = () => {
-        setSearchOpen(!searchOpen);
-        if (!searchOpen) {
+        const newState = !searchOpen;
+        setSearchOpen(newState);
+        if (newState) {
+            // Focus mobile input specifically if on mobile
             setTimeout(() => {
-                inputRef.current?.focus();
-            }, 100);
+                if (window.innerWidth < 768) {
+                    mobileInputRef.current?.focus();
+                } else {
+                    inputRef.current?.focus();
+                }
+            }, 150);
         }
     }
 
@@ -162,8 +177,8 @@ export function Navbar() {
                     </nav>
 
                     {/* Desktop Actions - Permanent Search Bar */}
-                    <div className="hidden items-center md:flex">
-                        <div className="relative" ref={searchRef}>
+                    <div className="hidden items-center md:flex" ref={searchRef}>
+                        <div className="relative">
                             <div className="relative group">
                                 <RiSearchLine className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                                 <input
@@ -235,7 +250,7 @@ export function Navbar() {
                         </Button>
 
                         <Button
-                            onClick={() => setOpen(!open)}
+                            onClick={() => { setOpen(!open); setSearchOpen(false); }}
                             variant="light"
                             className="aspect-square p-2"
                         >
@@ -268,15 +283,16 @@ export function Navbar() {
                     </ul>
                 </nav>
 
-                {/* Mobile Search Overlay - Simple version for now */}
+                {/* Mobile Search Overlay */}
                 {searchOpen && (
                     <div className="absolute left-0 top-16 z-50 w-full md:hidden">
                         <div className="mx-auto max-w-sm rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-800 dark:bg-gray-950">
                             <div className="relative">
                                 <RiSearchLine className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
                                 <input
-                                    ref={inputRef}
+                                    ref={mobileInputRef}
                                     type="text"
+                                    autoFocus
                                     className={cx(
                                         "w-full rounded-md border border-gray-200 bg-gray-50 py-2 pl-9 pr-4 text-sm outline-none transition-all placeholder:text-gray-400 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-50",
                                         focusInput
@@ -285,6 +301,12 @@ export function Navbar() {
                                     value={searchQuery}
                                     onChange={handleSearch}
                                 />
+                                <button
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                    onClick={() => setSearchOpen(false)}
+                                >
+                                    <RiCloseLine className="size-4" />
+                                </button>
                             </div>
 
                             {searchResults.length > 0 && (
@@ -302,6 +324,12 @@ export function Navbar() {
                                             <span className="truncate text-xs text-gray-500 dark:text-gray-400 max-w-[120px]">{result.name}</span>
                                         </button>
                                     ))}
+                                </div>
+                            )}
+
+                            {searchQuery && searchResults.length === 0 && (
+                                <div className="py-4 text-center text-xs text-gray-500">
+                                    No results found
                                 </div>
                             )}
                         </div>
