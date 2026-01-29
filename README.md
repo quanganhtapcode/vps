@@ -18,8 +18,7 @@
 | **Top Movers** | Cổ phiếu tăng/giảm mạnh nhất, giao dịch khối ngoại |
 | **Biểu đồ TradingView** | Xem biến động giá, volume, chỉ báo kỹ thuật |
 | **Export Excel** | Tải báo cáo định giá chi tiết |
-| **Khuyến nghị** | Mua/Bán/Giữ dựa trên margin of safety 15% |
-| **Responsive UI** | Giao diện tối ưu cho mobile và desktop |
+| **Responsive UI** | Giao diện Next.js tối ưu cho mobile và desktop |
 
 ---
 
@@ -27,30 +26,26 @@
 
 ```
 Valuation/
-├── frontend/               # Giao diện web
-│   ├── index.html          # Trang Market Overview
-│   ├── valuation.html      # Trang định giá chi tiết
-│   ├── css/
-│   │   ├── overview.css    # CSS cho trang overview
-│   │   ├── ticker-autocomplete.css
-│   │   └── ...
-│   ├── js/
-│   │   └── overview.js     # JavaScript cho trang overview
-│   └── ticker_data.json    # Dữ liệu autocomplete (1500+ mã)
+├── frontend-next/          # Giao diện web (Next.js 14)
+│   ├── src/
+│   │   ├── app/            # App Router pages
+│   │   ├── components/     # UI Components (Tremor, HeadlessUI)
+│   │   └── lib/            # Utilities & Config
+│   ├── public/             # Static assets
+│   └── ...
 ├── backend/                # API Flask + Valuation Models
 │   ├── server.py           # Main API server
-│   ├── models.py           # FCFE, FCFF, P/E, P/B calculations
-│   └── r2_client.py        # Cloudflare R2 storage client
+│   ├── stock_provider.py   # Data fetching & Processing logic
+│   └── ...
 ├── automation/             # Scripts tự động hóa
 │   ├── deploy.ps1          # Deploy code lên GitHub + VPS
-│   ├── update_excel_data.py    # Cập nhật Excel → R2
+│   ├── update_excel_data.py    # Cập nhật Excel
 │   ├── update_json_data.py     # Cập nhật stock JSON data
-│   ├── update_tickers.py       # Cập nhật ticker_data.json
 │   ├── update_peers.py         # Cập nhật sector peers
 │   └── pull_data.ps1           # Tải data từ VPS về local
-├── stocks/                 # Stock JSON data (700+ files)
+├── stocks.db               # SQLite Database (Price, Financials, Profile)
 ├── docs/                   # Tài liệu hướng dẫn
-├── .env                    # R2 credentials (gitignored)
+├── .env                    # Environment variables
 ├── requirements.txt        # Python dependencies
 ├── sector_peers.json       # Dữ liệu P/E, P/B ngành
 └── stock_list.json         # Danh sách mã cổ phiếu
@@ -62,26 +57,36 @@ Valuation/
 
 ### 1. Clone & Setup
 ```bash
-git clone https://github.com/quanganhtapcode/ec2.git
-cd ec2
+git clone https://github.com/quanganhtapcode/vps.git
+cd vps
+```
 
+### 2. Backend (Python/Flask)
+```bash
 # Tạo virtual environment
-python -m venv venv
-.\venv\Scripts\Activate.ps1  # Windows
-source venv/bin/activate     # Linux/Mac
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1  # Windows
+# source .venv/bin/activate   # Linux/Mac
 
 # Cài đặt dependencies
 pip install -r requirements.txt
-```
 
-### 2. Chạy Backend
-```bash
+# Chạy Backend
 python backend/server.py
 ```
-Server chạy tại: `http://localhost:5000`
+Server backend chạy tại: `http://localhost:5000`
 
-### 3. Chạy Frontend
-Mở `frontend/index.html` bằng browser hoặc dùng Live Server (VS Code).
+### 3. Frontend (Next.js)
+```bash
+cd frontend-next
+
+# Cài đặt dependencies
+npm install
+
+# Chạy dev server
+npm run dev
+```
+Website chạy tại: `http://localhost:3000`
 
 ---
 
@@ -90,23 +95,11 @@ Mở `frontend/index.html` bằng browser hoặc dùng Live Server (VS Code).
 | Endpoint | Mô tả |
 |----------|-------|
 | `GET /api/market/realtime-market` | Dữ liệu chỉ số thị trường |
-| `GET /api/market/realtime-chart` | Dữ liệu chart intraday |
-| `GET /api/market/pe-chart` | P/E historical chart |
-| `GET /api/market/news` | Tin tức từ CafeF |
-| `GET /api/market/top-movers` | Cổ phiếu tăng/giảm mạnh |
-| `GET /api/market/foreign-flow` | Giao dịch khối ngoại |
+| `GET /api/current-price/<symbol>` | Giá realtime & thay đổi |
+| `GET /api/stock/<symbol>` | Thông tin cơ bản & Chỉ số tài chính |
+| `GET /api/historical-chart-data/<symbol>` | Dữ liệu biểu đồ lịch sử |
 | `GET /api/valuation/<symbol>` | Dữ liệu định giá cổ phiếu |
-
----
-
-## ☁️ Cloud Storage (Cloudflare R2)
-
-Excel files được lưu trên **Cloudflare R2** thay vì VPS để:
-- ✅ Giảm tải VPS
-- ✅ Tốc độ download nhanh hơn (CDN)
-- ✅ Tiết kiệm dung lượng VPS
-
-Chi tiết: [docs/STORAGE.md](docs/STORAGE.md)
+| `GET /api/news/<symbol>` | Tin tức mới nhất |
 
 ---
 
@@ -115,7 +108,6 @@ Chi tiết: [docs/STORAGE.md](docs/STORAGE.md)
 | Tài liệu | Nội dung |
 |----------|----------|
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Hướng dẫn deploy code lên VPS |
-| [docs/STORAGE.md](docs/STORAGE.md) | Cấu hình Cloudflare R2 storage |
 | [docs/AUTOMATION.md](docs/AUTOMATION.md) | Scripts tự động hóa |
 
 ---
@@ -129,37 +121,12 @@ Chi tiết: [docs/STORAGE.md](docs/STORAGE.md)
 
 ### Cập nhật dữ liệu
 ```powershell
-# Cập nhật Excel (upload lên R2)
-python automation/update_excel_data.py
-
 # Cập nhật JSON data (chạy trên VPS)
 python automation/update_json_data.py
 
 # Cập nhật sector peers
 python automation/update_peers.py
-
-# Cập nhật ticker autocomplete data
-python automation/update_tickers.py
 ```
-
-### Tải data từ VPS về local
-```powershell
-.\automation\pull_data.ps1
-```
-
----
-
-## 📊 Cache Strategy
-
-| Data Type | Cache TTL | Mô tả |
-|-----------|-----------|-------|
-| `realtime` | 30 giây | Dữ liệu giá realtime |
-| `indices` | 30 giây | Chỉ số thị trường |
-| `pe_chart` | 1 giờ | P/E historical |
-| `news` | 5 phút | Tin tức |
-| `reports` | 10 phút | Báo cáo phân tích |
-| `chart_data` | 4 giờ | Historical chart data |
-| `valuation_data` | 4 giờ | Dữ liệu định giá |
 
 ---
 
