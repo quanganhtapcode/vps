@@ -427,7 +427,7 @@ export default function FinancialsTab({
 
                             {/* Revenue & Profit Chart */}
                             <ChartCard title="Revenue & Profit">
-                                <RevenueProfitChart symbol={symbol} hideCard={true} />
+                                <RevenueProfitChart symbol={symbol} period={period} hideCard={true} />
                             </ChartCard>
                         </div> {/* End Charts Grid */}
                     </div>

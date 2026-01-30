@@ -19,6 +19,7 @@ import {
 
 interface RevenueProfitChartProps {
     symbol: string;
+    period?: 'quarter' | 'year';
     hideCard?: boolean;
     customTooltip?: any;
 }
@@ -31,7 +32,12 @@ interface PeriodData {
     quarter: number;
 }
 
-export default function RevenueProfitChart({ symbol, hideCard = false, customTooltip: ExternalCustomTooltip }: RevenueProfitChartProps) {
+export default function RevenueProfitChart({
+    symbol,
+    period = 'quarter',
+    hideCard = false,
+    customTooltip: ExternalCustomTooltip
+}: RevenueProfitChartProps) {
     const [data, setData] = useState<PeriodData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -41,7 +47,7 @@ export default function RevenueProfitChart({ symbol, hideCard = false, customToo
             setIsLoading(true);
             setError(null);
             try {
-                const res = await fetch(`/api/stock/${symbol}/revenue-profit`);
+                const res = await fetch(`/api/stock/${symbol}/revenue-profit?period=${period}`);
                 if (!res.ok) {
                     throw new Error('Failed to fetch revenue data');
                 }
@@ -54,13 +60,13 @@ export default function RevenueProfitChart({ symbol, hideCard = false, customToo
             }
         }
         fetchData();
-    }, [symbol]);
+    }, [symbol, period]);
 
-    // Format period for display (e.g., "2024 Q1" -> "Q1'24")
+    // Format period for display (e.g., "2024 Q1" -> "Q1'24" or just "2024")
     const chartData = useMemo(() => {
         return data.map(d => ({
             ...d,
-            displayPeriod: `${d.year} Q${d.quarter}`,
+            displayPeriod: d.quarter > 0 ? `${d.year} Q${d.quarter}` : `${d.year}`,
         }));
     }, [data]);
 
