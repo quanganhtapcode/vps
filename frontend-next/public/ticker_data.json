@@ -1,6 +1,6 @@
 {
-  "last_updated": "2026-01-28T17:30:26.741427",
-  "count": 1557,
+  "last_updated": "2026-01-29T20:11:47.528816",
+  "count": 1556,
   "tickers": [
     {
       "symbol": "MGC",
@@ -451,12 +451,6 @@
       "name": "CTCP Thuận Đức",
       "sector": "SX Nhựa - Hóa chất",
       "exchange": "HOSE"
-    },
-    {
-      "symbol": "VOC",
-      "name": "Tổng Công ty Công Nghiệp Dầu Thực Vật Việt Nam - CTCP",
-      "sector": "Unknown",
-      "exchange": "UPCOM"
     },
     {
       "symbol": "POB",

@@ -32,7 +32,10 @@ export function Navbar() {
     const [allTickers, setAllTickers] = useState<Ticker[]>([]);
     const [searchResults, setSearchResults] = useState<Ticker[]>([]);
     const searchRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
+    const mobileSearchRef = useRef<HTMLDivElement>(null);
+    // Separate refs to avoid conflicts
+    const desktopInputRef = useRef<HTMLInputElement>(null);
+    const mobileInputRef = useRef<HTMLInputElement>(null);
 
     const router = useRouter();
     const pathname = usePathname();
@@ -44,18 +47,7 @@ export function Navbar() {
         setOpen(false);
     }, [pathname]);
 
-    // Click outside search
     useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-                setSearchOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
-    React.useEffect(() => {
         const mediaQuery: MediaQueryList = window.matchMedia("(min-width: 768px)")
         const handleMediaQueryChange = () => {
             setOpen(false)
@@ -84,13 +76,41 @@ export function Navbar() {
     // Handle click outside search
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
-            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-                setSearchOpen(false);
+            const target = event.target as Node;
+            // Check if click is outside desktop search container
+            const isOutsideDesktop = searchRef.current && !searchRef.current.contains(target);
+            // Check if click is outside mobile search container
+            const isOutsideMobile = mobileSearchRef.current && !mobileSearchRef.current.contains(target);
+
+            // If we are on mobile (desktop is hidden), we care effectively about mobile click.
+            // If we are on desktop, we care about desktop click.
+
+            // To be safe: if it is outside BOTH, then close.
+            // Wait, if mobile search is NOT open/rendered, mobileSearchRef.current is null.
+            // In that case isOutsideMobile is null (falsy) -> check logic.
+
+            // Logic:
+            // if (searchOpen) {
+            //    if (mobileSearchRef.current && contains) return; // Inside mobile
+            //    if (searchRef.current && contains) return; // Inside desktop
+            //    setSearchOpen(false);
+            // }
+
+            // Refined:
+            if (searchOpen) {
+                let inside = false;
+                if (searchRef.current && searchRef.current.contains(target)) inside = true;
+                if (mobileSearchRef.current && mobileSearchRef.current.contains(target)) inside = true;
+
+                if (!inside) {
+                    setSearchOpen(false);
+                }
             }
         }
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    }, [searchOpen]);
+
 
     // Optimized search logic with debouncing
     useEffect(() => {
@@ -133,7 +153,6 @@ export function Navbar() {
 
     const toggleSearch = () => {
         setSearchOpen(prev => !prev);
-        // Focus logic is now handled by the useEffect dependent on searchOpen
     }
 
     // Handle Ctrl+K / Cmd+K
@@ -148,13 +167,20 @@ export function Navbar() {
         return () => document.removeEventListener('keydown', onKeyDown);
     }, []);
 
-    // Focus input when search opens (for both Desktop and Mobile)
+    // Focus handling
     useEffect(() => {
         if (searchOpen) {
-            // Small timeout to ensure element is mounted and rendered
-            setTimeout(() => {
-                inputRef.current?.focus();
-            }, 50);
+            // Check if mobile input is available first (priority if we are on mobile)
+            if (mobileInputRef.current) {
+                // Slight delay to ensure visibility / animation start
+                setTimeout(() => {
+                    mobileInputRef.current?.focus();
+                }, 100);
+            } else if (desktopInputRef.current) {
+                setTimeout(() => {
+                    desktopInputRef.current?.focus();
+                }, 50);
+            }
         }
     }, [searchOpen]);
 
@@ -206,7 +232,7 @@ export function Navbar() {
                             <div className="relative group">
                                 <RiSearchLine className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                                 <input
-                                    ref={inputRef}
+                                    ref={desktopInputRef}
                                     type="text"
                                     className={cx(
                                         "w-32 lg:w-48 rounded-full border border-gray-200 bg-gray-50/50 py-1.5 pl-9 pr-4 text-sm outline-none transition-all placeholder:text-gray-400 focus:w-64 lg:focus:w-72 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-50 dark:focus:border-blue-500",
@@ -333,13 +359,14 @@ export function Navbar() {
 
                 {/* Mobile Search Overlay - Simple version for now */}
                 {searchOpen && (
-                    <div className="absolute left-0 top-16 z-50 w-full md:hidden">
+                    <div className="absolute left-0 top-16 z-50 w-full md:hidden" ref={mobileSearchRef}>
                         <div className="mx-auto max-w-sm rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-800 dark:bg-gray-950">
                             <div className="relative">
                                 <RiSearchLine className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
                                 <input
-                                    ref={inputRef}
+                                    ref={mobileInputRef}
                                     type="text"
+                                    autoFocus
                                     className={cx(
                                         "w-full rounded-md border border-gray-200 bg-gray-50 py-2 pl-9 pr-4 text-sm outline-none transition-all placeholder:text-gray-400 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-50",
                                         focusInput
@@ -378,3 +405,4 @@ export function Navbar() {
         </header>
     )
 }
+
