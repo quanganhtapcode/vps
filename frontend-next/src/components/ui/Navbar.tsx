@@ -241,6 +241,13 @@ export function Navbar() {
                                     placeholder="Search..."
                                     value={searchQuery}
                                     onChange={handleSearch}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && searchResults.length > 0) {
+                                            router.push(`/stock/${searchResults[0].symbol}`);
+                                            setSearchOpen(false);
+                                            setSearchQuery('');
+                                        }
+                                    }}
                                     onFocus={() => setSearchOpen(true)}
                                 />
                                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center group-focus-within:opacity-100 opacity-0 transition-opacity pointer-events-none">
