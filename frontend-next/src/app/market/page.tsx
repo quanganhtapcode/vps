@@ -12,8 +12,8 @@ import {
   MarketIndexData,
 } from '@/lib/api';
 
-// Enable ISR with 30-second revalidation
-export const revalidate = 30;
+// Disable caching to ensure fresh data on every request
+export const dynamic = 'force-dynamic';
 
 interface IndexData {
   id: string;

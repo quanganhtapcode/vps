@@ -9,7 +9,7 @@ export default function Hero() {
             className="relative mt-20 flex flex-col items-center justify-center text-center sm:mt-28 px-4 overflow-hidden"
         >
             {/* Background Glow */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-96 bg-blue-500/10 blur-[120px] rounded-full -z-10 pointer-events-none" />
+            {/* Background Glow removed as requested */}
 
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-200/50 bg-blue-50/50 px-4 py-1.5 text-sm font-semibold text-blue-600 backdrop-blur-md dark:border-blue-800/30 dark:bg-blue-900/20 dark:text-blue-400">
                 <span className="relative flex h-2 w-2">

@@ -1,156 +1,87 @@
-# 🚀 Hướng dẫn Deploy
+# Deployment Guide
 
-## Tổng quan hệ thống (Distributed Architecture)
-
-| Thành phần | Môi trường | URL |
-|------------|------------|-----|
-| **Frontend (Giao diện)** | **Vercel** | [valuation.quanganh.org](https://valuation.quanganh.org) |
-| **Backend (API)** | **VPS (Ubuntu 22.04)** | [api.quanganh.org](https://api.quanganh.org) |
-| **Dữ liệu tĩnh (Logos)** | **AWS S3** | (Served trực tiếp từ S3 bucket) |
-| **VPS SSH** | `root@203.55.176.10` | 🔑 Sử dụng file `key.pem` |
+Hệ thống hoạt động theo mô hình Hybrid:
+*   **Frontend:** Next.js deployed on **Vercel** (Automatic CI/CD).
+*   **Backend:** Python/Flask deployed on **VPS** (Manual/Scripted Sync).
 
 ---
 
-## 1. Quy trình Deploy (Automated)
+## 1. Frontend Deployment (Vercel)
 
-Hệ thống được thiết kế để deploy đồng thời cả Frontend và Backend bằng một lệnh duy nhất:
+Frontend (`frontend-next/`) được kết nối trực tiếp với GitHub Repository.
+Mỗi khi có commit mới vào nhánh `main`, Vercel sẽ tự động:
+1.  Kéo code về.
+2.  Chạy `npm install` & `npm run build`.
+3.  Deploy lên CDN toàn cầu.
 
+**Cấu hình Vercel:**
+*   **Framework Preset:** Next.js
+*   **Root Directory:** `frontend-next`
+*   **Environment Variables:**
+    *   `NEXT_PUBLIC_API_URL`: `https://api.quanganh.org` (Trỏ về VPS Backend)
+
+---
+
+## 2. Backend Deployment (VPS)
+
+Backend chạy trên VPS (Ubuntu/CentOS) với Gunicorn + Nginx.
+
+### Cấu trúc trên VPS:
+```
+/var/www/valuation/
+├── server.py              # Main App
+├── fetch_financials_vps.py # Data fetcher
+├── stocks.db              # Database
+└── venv/                  # Python Virtual Env
+```
+
+### Quy trình cập nhật Backend:
+
+**Cách 1: Dùng automation script (Khuyên dùng)**
+Từ máy local (Windows), chạy:
 ```powershell
-# Từ thư mục project local
-.\automation\deploy.ps1 -CommitMessage "Mô tả thay đổi"
+.\automation\deploy.ps1
 ```
+Script này sẽ dùng `scp` để đẩy các file python mới nhất lên VPS.
 
-**Quy trình tự động hoạt động như sau:**
-1. **Frontend**: Code được push lên GitHub (nhánh `main`). Vercel phát hiện thay đổi và tự động build/deploy phiên bản web mới.
-2. **Backend**: Code thư mục `backend/` và các file cấu hình được `scp` (đồng bộ) trực tiếp lên VPS.
-3. **Restart**: Script tự động SSH vào VPS và thực hiện `systemctl restart gunicorn-ec2` để áp dụng các thay đổi API.
+**Cách 2: Thủ công**
+1.  SSH vào VPS:
+    ```bash
+    ssh root@<VPS_IP>
+    ```
+2.  Pull code (nếu có dùng git trên VPS) hoặc Upload file thủ công.
+3.  Restart Service:
+    ```bash
+    systemctl restart valuation-backend
+    ```
 
----
+### Nginx Configuration (Reverse Proxy)
+Nginx listens on port 80/443 và forward request tới Gunicorn (Port 5000):
 
-## 2. SSH vào VPS (Debug & Dữ liệu)
-
-```powershell
-ssh -i "path\to\your\key.pem" root@203.55.176.10
-```
-
-**Log Kiểm tra:**
-```bash
-# Xem log API Backend thời gian thực
-journalctl -u gunicorn-ec2 -f
-
-# Kiểm tra log định kỳ (Updater)
-tail -f /var/www/vps/automation/update.log
-```
-
----
-
-## 3. Cấu trúc thư mục Production (VPS)
-
-```
-/var/www/vps/
-├── backend/            # Python Flask scripts
-├── stocks.db           # SQLite database tập trung
-├── automation/         # Scripts cập nhật dữ liệu hàng ngày
-├── .venv/              # Môi trường ảo Python
-└── .env                # Biến môi trường (DB keys, etc.)
+```nginx
+server {
+    server_name api.quanganh.org;
+    
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
 ```
 
 ---
 
-## 4. Quản lý Stock Logos
+## 3. Environment Variables
 
-Website hiện tại không phục vụ logo từ VPS để tối ưu hiệu suất.
-- **Serving**: Script `siteConfig.ts` trỏ link ảnh về AWS S3.
-- **Fallback**: Nếu S3 lỗi, website sẽ tự động tìm trong `public/logos/` của Vercel deployment.
-- **Cập nhật**: Sử dụng script `automation/download_logos.py` để đồng bộ logo mới nhất từ AWS về local folder trước khi deploy.
-
----
-
-## 5. Services trên VPS
-
-| Service | Mô tả | Trạng thái |
-|---------|-------|--------|
-| `gunicorn-ec2.service` | API Backend (Flask) | Always running (Port 8000) |
-| `val-updater.timer` | Tự động cập nhật dữ liệu | Chạy mỗi sáng (08:00) |
-- Kiểm tra version trong URL: `overview.js?v=1`
-
----
-
-## 6. Backup & Rollback
-
-```bash
-# Trên VPS - backup trước khi thay đổi lớn
-cp -r /var/www/valuation /var/www/valuation_backup_$(date +%Y%m%d)
-
-# Rollback nếu có lỗi
-rm -rf /var/www/valuation
-mv /var/www/valuation_backup_YYYYMMDD /var/www/valuation
-systemctl restart gunicorn-ec2
+**Local (.env):**
+```
+VNSTOCK_API_KEY=your_key_here (Optional)
 ```
 
----
-
-## 7. Services trên VPS
-
-| Service | Mô tả | Status |
-|---------|-------|--------|
-| `gunicorn-ec2.service` | API Backend | Always running |
-| `val-updater.service` | Auto update JSON | Timer: Ngày 1, 15 |
-
-```bash
-systemctl status gunicorn-ec2
-systemctl list-timers | grep val
+**VPS (/etc/environment hoặc .env):**
 ```
-
----
-
-## 8. API Gateway & Microservices Architecture
-
-### 8.1. API Gateway (`api.quanganh.org`)
-Using NGINX as API Gateway to route requests to multiple projects via one domain.
-
-| Path Prefix | Routing | Backend Port | Project |
-|-------------|---------|--------------|---------|
-| `/v1/valuation/*` | `/*` | 8000 | Valuation API (Flask) |
-| `/v1/store/*` | `/*` | 3001 | POS System (Node) |
-| `/v1/invoice/*` | `/*` | 3000 | Invoice App (Node) |
-| `/api/*` | `/api/*` | 8000 | Legacy Support |
-
-### 8.2. Monitor Dashboard (`vps.quanganh.org`)
-- **App**: Nezha Monitoring
-- **Internal Port**: 8008
-- **Public Access**: `https://vps.quanganh.org` (Proxied via NGINX)
-- **Note**: Direct access to port 8008 from internet is **BLOCKED** by Firewall.
-
-### 8.3. Firewall (UFW) Configuration
-Strict firewall rules are applied. Only the following ports are open to public:
-
-| Port | Protocol | Purpose |
-|------|----------|---------|
-| 22 | TCP | SSH (Remote Access) |
-| 80 | TCP | HTTP (Redirect to HTTPS) |
-| 443 | TCP | HTTPS (Web Traffic) |
-| 51820 | UDP | WireGuard VPN |
-
-**Commands to manage firewall:**
-```bash
-ufw status verbose
-ufw allow 22/tcp
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw enable
-```
-
-### 8.4. Deployment Commands
-
-**Deploy API Gateway Config:**
-```powershell
-scp -i "$env:USERPROFILE\Downloads\key.pem" "deployment\nginx-api-gateway.conf" root@203.55.176.10:/etc/nginx/sites-available/api.quanganh.org
-ssh -i "$env:USERPROFILE\Downloads\key.pem" root@203.55.176.10 "nginx -t && systemctl reload nginx"
-```
-
-**Deploy Monitor Config:**
-```powershell
-scp -i "$env:USERPROFILE\Downloads\key.pem" "deployment\nginx-vps-monitor.conf" root@203.55.176.10:/etc/nginx/sites-available/vps.quanganh.org
-ssh -i "$env:USERPROFILE\Downloads\key.pem" root@203.55.176.10 "nginx -t && systemctl reload nginx"
+VNSTOCK_API_KEY=...
+FLASK_APP=server.py
+FLASK_ENV=production
 ```

@@ -1,203 +1,73 @@
-# 📋 Tài Liệu Vận Hành Hệ Thống Tự Động (Automation Guide)
+# Automation Scripts
 
-Tài liệu này giải thích chi tiết cách hệ thống tự động cập nhật dữ liệu chứng khoán, cách đồng bộ dữ liệu giữa VPS và Máy Local, và quy trình deploy lên Web.
+Tài liệu này mô tả các script tự động hóa vận hành hệ thống Valuation Platform.
 
----
+## 1. Fetch & Build Data (Cốt lõi)
+**Script:** `/var/www/valuation/fetch_financials_vps.py` (trên VPS)
+**Local Path:** `fetch_financials_vps.py`
 
-## 1. Tổng Quan Kiến Trúc
+Đây là script quan trọng nhất, thực hiện toàn bộ quy trình ETL (Extract - Transform - Load):
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         VPS (Backend)                       │
-│  ┌─────────────────┐    ┌─────────────────┐                │
-│  │ gunicorn-ec2    │    │ val-updater     │                │
-│  │ (API Server)    │    │ (Data Updater)  │                │
-│  │   Port 8000     │    │ Timer: Morning  │                │
-│  └─────────────────┘    └─────────────────┘                │
-│           │                      │                          │
-│           └──────────┬───────────┘                          │
-│                      ▼                                      │
-│  ┌─────────────────────────────────────────┐               │
-│  │              stocks.db (SQLite)          │               │
-│  │          sector_peers.json               │               │
-│  └─────────────────────────────────────────┘               │
-└─────────────────────────────────────────────────────────────┘
-           │
-           │ API Requests
-           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Vercel (Frontend)                      │
-│  ┌─────────────────────────────────────────┐               │
-│  │           valuation.quanganh.org        │               │
-│  │      (Next.js App /logos backup)         │               │
-│  └─────────────────────────────────────────┘               │
-└─────────────────────────────────────────────────────────────┘
-           │
-           │ Asset Loading
-           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                         AWS S3                              │
-│  ┌─────────────────────────────────────────┐               │
-│  │           Stock Logos (.jpeg)            │               │
-│  └─────────────────────────────────────────┘               │
-└─────────────────────────────────────────────────────────────┘
-```
+### Quy trình hoạt động:
+1.  **Extract:** Tải báo cáo tài chính (Income, Balance, Ratio, Cashflow) từ Vnstock API.
+    *   *Smart Skip:* Chỉ tải dữ liệu quý mới nếu trong DB chưa có (tiết kiệm API request, tránh Rate Limit).
+2.  **Transform (Analysis Builder):**
+    *   **Financials:** Tính toán TTM Revenue/Net Income (Tổng 4 quý gần nhất).
+    *   **Balance Sheet:** Lấy Snapshot tài sản/nợ tại quý gần nhất.
+    *   **Ratios:** Map chính xác các chỉ số P/E, P/B, ROE... từ bảng Ratio gốc.
+3.  **Load:** Lưu vào bảng `financial_statements` (Raw JSON) và `stock_overview` (Flat Data).
 
----
-
-## 2. Services Trên VPS
-
-### 📦 Danh sách Services
-| Service | Mục đích | Timer |
-| :--- | :--- | :--- |
-| `gunicorn-ec2.service` | Web server cho API backend | Always running |
-| `val-updater.service` | Cập nhật dữ liệu JSON cho stocks | Ngày 1, 15 lúc 2:00 AM |
-
-### 🔧 val-updater Service
-
-**Vị trí file service:**
-```
-/etc/systemd/system/val-updater.service
-/etc/systemd/system/val-updater.timer
-```
-
-**Các lệnh quản lý:**
+### Cách chạy:
 ```bash
-# Xem trạng thái
-systemctl status val-updater.service
-systemctl status val-updater.timer
+# Mode Update: Chỉ quét các mã chưa cập nhật trong 24h (Khuyên dùng chạy hàng ngày)
+python3 fetch_financials_vps.py --mode update
 
-# Chạy thủ công (nếu cần)
-systemctl start val-updater.service
-
-# Xem log
-journalctl -u val-updater.service -n 100 -f
-
-# Restart timer
-systemctl restart val-updater.timer
+# Mode Full: Quét lại toàn bộ 1500+ mã (Dùng khi muốn refresh toàn bộ data)
+python3 fetch_financials_vps.py --mode full
 ```
 
----
-
-## 3. Quy Trình Tự Động Trên VPS
-
-### 🕒 Lịch chạy:
-* **Thời gian**: 02:00 sáng.
-* **Ngày chạy**: Ngày **01** và ngày **15** hàng tháng.
-* **Cơ chế**: Systemd Timer (`val-updater.timer`) kích hoạt script chủ.
-
-*   Hoàn thành cập nhật database và chỉ số ngành phục vụ cho API Valuation.
-
----
-
-## 4. Cấu Trúc JSON Output
-
-### stocks/{SYMBOL}.json
-```json
-{
-  "symbol": "VIC",
-  "name": "Tập đoàn Vingroup - Công ty CP",
-  "exchange": "HSX",
-  "sector": "Bất động sản",
-  
-  // Per-share metrics
-  "eps_ttm": 1147.27,
-  "bvps": 18908.57,
-  "dividend_per_share": 0,
-  
-  // Valuation ratios
-  "pe_ratio": 129.44,
-  "pb_ratio": 7.85,
-  "ps_ratio": 4.94,
-  "ev_ebitda": 111.15,
-  
-  // Profitability
-  "roe": 6.20,
-  "roa": 0.96,
-  "net_profit_margin": 1.64,
-  "net_profit_growth": 15.5,
-  
-  // Liquidity & Leverage
-  "current_ratio": 1.06,
-  "quick_ratio": 0.73,
-  "debt_to_equity": 5.72,
-  
-  // Other
-  "current_price": 158800,
-  "market_cap": 1144345607064000,
-  "shares_outstanding": 7706031024,
-  "last_updated": "2025-12-29T01:53:13"
-}
-```
-
----
-
-## 5. Frontend File Structure
-
-```
-frontend-next/
-├── src/
-│   ├── app/                # App Router (Home, Market, Stock Detail)
-│   ├── components/         # UI Elements (Charts, Lists)
-│   └── lib/                # API helpers, Utils
-├── public/
-│   └── logos/              # Backup logos folder
-```
-
----
-
-## 6. Bảng Tóm Tắt File Script
-
-| Tên File | Chạy Ở | Tự Động? | Chức Năng |
-| :--- | :--- | :--- | :--- |
-| `update_json_data.py` | VPS | ✅ (Ngày 1, 15) | **Tổng Chỉ Huy**. Điều phối cả quy trình. |
-| `update_tickers.py` | VPS | (Được gọi) | Tạo data cho Autocomplete Search. |
-| `generate_stock_list.py` | VPS | (Được gọi) | Tạo danh sách mã cần tải data. |
-| `update_peers.py` | VPS | (Được gọi) | Tính toán chỉ số ngành. |
-| `update_excel_data.py` | **Local** | ❌ (Chạy tay) | Tải Excel từ VietCap (10 workers) → Upload R2. |
-| `deploy.ps1` | **Local** | ❌ (Chạy tay) | Đẩy code lên GitHub (Vercel) + Đồng bộ Backend VPS. |
-
----
-
-## 7. Troubleshooting
-
-### Xem log val-updater
+### Automation (Crontab):
+Script được cấu hình chạy định kỳ trên VPS:
 ```bash
-ssh -i ~/Downloads/key.pem root@10.66.66.1 "journalctl -u val-updater.service -n 50"
-```
-
-### Kiểm tra rate limit
-Nếu thấy log có `Rate limit! Wait Xs...`, đây là bình thường. Script tự động chờ và retry.
-
-### Chạy lại thủ công
-```bash
-ssh -i ~/Downloads/key.pem root@10.66.66.1 "systemctl restart val-updater.service"
-```
-
-### Kiểm tra dữ liệu mới
-```bash
-ssh -i ~/Downloads/key.pem root@10.66.66.1 "cat /var/www/api.quanganh.org/stocks/VIC.json | head -20"
+# Chạy update mỗi 30 phút (giờ hành chính)
+*/30 9-15 * * 1-5 python3 /var/www/valuation/fetch_financials_vps.py --mode update >> /var/log/valuation.log 2>&1
 ```
 
 ---
 
-## 8. API Cache Strategy
+## 2. Deploy Script
+**Script:** `automation/deploy.ps1` (Local Windows)
 
-| Data Type | Cache TTL | Endpoint |
-|-----------|-----------|----------|
-| `realtime` | 30 giây | `/api/market/realtime-market` |
-| `indices` | 30 giây | `/api/market/indices` |
-| `pe_chart` | 1 giờ | `/api/market/pe-chart` |
-| `news` | 5 phút | `/api/market/news` |
-| `reports` | 10 phút | `/api/market/reports` |
-| `chart_data` | 4 giờ | `/api/historical-chart-data/<symbol>` |
-| `valuation_data` | 4 giờ | `/api/valuation/<symbol>` |
+Script giúp deploy code Backend từ Local lên VPS và Push code lên Github (để Vercel tự build Frontend).
+
+### Cách dùng:
+```powershell
+.\automation\deploy.ps1 -CommitMessage "Update logic TTM Income"
+```
+
+### Các bước thực hiện:
+1.  Git Add & Commit & Push.
+2.  Nếu có thay đổi Backend, dùng `scp` để đẩy file `fetch_financials_vps.py` và `server.py` lên thư mục `/var/www/valuation/` trên VPS.
+3.  Restart Service trên VPS (nếu cần).
 
 ---
 
-## 9. Lưu Ý Quan Trọng
+## 3. Logo Downloader
+**Script:** `automation/download_logos.py` (Deprecated)
+*Script này hiện tại ít được sử dụng vì Logos đã ổn định trong thư mục `public/logos`.*
 
-* **File `frontend/ticker_data.json`**: Quan trọng nhất cho trải nghiệm tìm kiếm.
-* **Đừng sửa tay data**: Hạn chế sửa tay các file JSON trong thư mục `stocks/`, lần chạy tiếp theo sẽ bị ghi đè.
-* **CSS/JS tách riêng**: `overview.css` và `overview.js` đã được tách ra file riêng cho dễ maintain.
-* **Auto-refresh**: Frontend tự động refresh dữ liệu indices mỗi 30 giây.
+---
+
+## 4. Maintenance Scripts (VPS)
+Các lệnh SQL thường dùng để bảo trì Database:
+
+```sql
+-- Kiểm tra dung lượng DB
+SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size();
+
+-- Dọn dẹp dung lượng thừa
+VACUUM;
+
+-- Kiểm tra Coverage dữ liệu
+SELECT count(*) FROM stock_overview WHERE revenue > 0;
+```

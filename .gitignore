@@ -8,6 +8,14 @@ notebooks/
 jobs/
 scripts/
 
+# Documentation with sensitive info
+docs/DEPLOYMENT_GUIDE.md
+docs/VPS_STRUCTURE.md
+docs/SUMMARY_VN.md
+docs/RATE_LIMIT_FIX.md
+docs/NEXTJS_VPS_SETUP.md
+docs/FIX_SHARES_DATABASE.md
+
 # Data Folders (Too large or sensitive)
 stocks/
 data/
@@ -38,5 +46,6 @@ node_modules/
 *.zip
 *.bak
 
-
+# Database files
 stocks.db
+*.db

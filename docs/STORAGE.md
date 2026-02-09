@@ -1,143 +1,54 @@
-# ☁️ Cloudflare R2 Storage
+# Data Storage Architecture
 
-## Tổng quan
+Hệ thống sử dụng **SQLite** làm cơ sở dữ liệu chính vì tính đơn giản, tốc độ đọc cực nhanh (file-based) và dễ dàng backup/đồng bộ.
 
-Excel files (báo cáo tài chính ~700 mã) được lưu trên **Cloudflare R2** thay vì VPS local.
-
-| Thông tin | Giá trị |
-|-----------|---------|
-| **Account ID** | 2fe56347256799c77191fc809ebdac8a |
-| **Bucket** | data |
-| **Folder** | excel/ |
-| **Endpoint** | https://2fe56347...r2.cloudflarestorage.com |
+**File Path (VPS):** `/var/www/valuation/stocks.db`
 
 ---
 
-## Lợi ích
+## 📅 Database Schema (v3.0 - Optimized Feb 2026)
 
-- ✅ **Giảm tải VPS**: File Excel không chiếm dung lượng VPS
-- ✅ **Tốc độ nhanh**: R2 có CDN toàn cầu
-- ✅ **Tiết kiệm bandwidth**: User download trực tiếp từ R2
-- ✅ **Bảo mật**: Pre-signed URLs hết hạn sau 60 giây
+Lược đồ CSDL đã được tinh gọn, loại bỏ các bảng ít dùng (`stock_prices` history, `ratios` raw cũ) để tập trung vào hiệu năng truy vấn Dashboard.
 
----
+### 1. `stock_overview` (Core Table)
+Bảng phẳng (Flat Table) chứa dữ liệu tổng hợp cho từng mã cổ phiếu. Đây là nguồn dữ liệu chính cho API.
 
-## Flow Download
+*   **Primary Key:** `symbol` (TEXT)
+*   **Columns:**
+    *   `pe`, `pb`, `ps`, `ev_ebitda` (Valuation Ratios)
+    *   `eps_ttm`, `bvps` (Per Share Data)
+    *   `roe`, `roa`, `roic`, `gross_margin`, `net_profit_margin` (Lợi nhuận)
+    *   `revenue`, `net_income` (TTM - Trailing 12 Months)
+    *   `total_assets`, `total_equity`, `total_debt`, `cash` (Latest Quarter Backup)
+    *   `market_cap`, `shares_outstanding`
+    *   `industry`, `exchange` (Phân loại)
+    *   `updated_at` (Last Sync Time)
 
-```
-User ─click download─> VPS (generate presigned URL)
-                         │
-                         └─redirect 302─> R2 CDN ──file──> User
-```
+> **Lợi ích:** Truy vấn cực nhanh, không cần JOIN phức tạp. Dễ dàng Sort/Filter cho chức năng Screener.
 
-**Ưu điểm:** VPS chỉ tạo URL, không tốn bandwidth download.
+### 2. `financial_statements` (Data Lake)
+Lưu trữ toàn bộ báo cáo tài chính lịch sử dưới dạng JSON nguyên bản.
 
----
+*   **Primary Key:** Composite (`symbol`, `report_type`, `period_type`, `year`, `quarter`)
+*   **Columns:**
+    *   `data`: JSON String chứa toàn bộ nội dung báo cáo (Income, Balance, Ratio, Cashflow).
+    *   `report_type`: 'income' | 'balance' | 'cashflow' | 'ratio'
 
-## Cấu hình
+### 3. `companies` (Metadata)
+Lưu thông tin hồ sơ doanh nghiệp.
 
-### 1. File `.env` (Local & VPS)
-
-```env
-R2_ACCOUNT_ID=2fe56347256799c77191fc809ebdac8a
-R2_ACCESS_KEY_ID=588e8168b31e88d845383124fd89d0c5
-R2_SECRET_ACCESS_KEY=e0778bfe8ff619ed406f04712be4ac9027e1843610774146a09ba1fe190189a4
-R2_BUCKET_NAME=data
-R2_ENDPOINT_URL=https://2fe56347256799c77191fc809ebdac8a.r2.cloudflarestorage.com
-R2_EXCEL_FOLDER=excel
-```
-
-⚠️ **File `.env` đã được gitignore** - không bao giờ commit lên Git!
-
-### 2. CORS trên R2 Bucket
-
-Đã cấu hình trong Cloudflare Dashboard → R2 → bucket "data" → Settings → CORS:
-
-```json
-[
-  {
-    "AllowedOrigins": ["https://valuation.quanganh.org"],
-    "AllowedMethods": ["GET", "HEAD"],
-    "AllowedHeaders": ["*"],
-    "MaxAgeSeconds": 3600
-  }
-]
-```
+*   `name`: Tên đầy đủ
+*   `company_profile`: Mô tả kinh doanh
+*   `exchange`: HOSE/HNX/UPCOM
 
 ---
 
-## Cập nhật Excel Data
-
-### Từ Local (có VietCap token)
-
-```powershell
-cd C:\Users\PC\Downloads\Valuation
-.\venv\Scripts\Activate.ps1
-python automation/update_excel_data.py
-```
-
-1. Download Excel từ VietCap API (sử dụng 10 workers để chạy song song)
-2. Sau khi download xong toàn bộ, script sẽ tải hàng loạt lên Cloudflare R2
-
-### Cập nhật Token VietCap
-
-Khi token hết hạn, cập nhật `BEARER_TOKEN` trong file:
-```
-automation/update_excel_data.py
-```
+## 🔄 Data Synchronization
+Dữ liệu được đồng bộ theo chiều:
+`API Vnstock` -> `VPS Script (Fetch & Build)` -> `stocks.db` -> `Flask API` -> `Frontend`
 
 ---
 
-## Quản lý R2
-
-### Xem danh sách files
-
-```python
-from backend.r2_client import get_r2_client
-r2 = get_r2_client()
-result = r2.list_excel_files(max_files=100)
-print(f"Total files: {result['count']}")
-```
-
-### Upload file thủ công
-
-```python
-from backend.r2_client import get_r2_client
-r2 = get_r2_client()
-
-with open('VCB.xlsx', 'rb') as f:
-    result = r2.upload_excel('VCB', f.read())
-    print(result)
-```
-
-### Xóa file
-
-```python
-r2.delete_excel('VCB')
-```
-
----
-
-## Bảo mật
-
-| Yếu tố | Mô tả |
-|--------|-------|
-| **Pre-signed URL** | Hết hạn sau 60 giây |
-| **CORS** | Chỉ cho phép valuation.quanganh.org |
-| **Credentials** | Lưu trong .env (gitignored) |
-| **Access Key ID** | Public identifier, không nhạy cảm |
-| **Secret Key** | Không bao giờ lộ ra ngoài |
-
-### Nếu lộ Secret Key
-
-1. Vào Cloudflare Dashboard → R2 → Manage API Tokens
-2. **Revoke** token cũ
-3. **Create** token mới
-4. Cập nhật `.env` trên local và VPS
-5. Restart service: `systemctl restart gunicorn-ec2`
-
----
-
-## Fallback
-
-Nếu R2 gặp sự cố, server tự động fallback sang folder `data/` local (nếu có file).
+## ⚠️ Notes
+*   Bảng `stock_prices` (lịch sử giá) đã bị **LOẠI BỎ**. Frontend hiện lấy dữ liệu biểu đồ trực tiếp từ API của TradingView hoặc Fireant nếu cần (client-side fetching) hoặc dùng API `historical-chart-data` (được cache ngắn hạn nếu triển khai lại).
+*   Đừng bao giờ commit file `stocks.db` lên Git (kích thước lớn >500MB). Hãy dùng SCP để tải về local.
