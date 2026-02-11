@@ -110,6 +110,34 @@ export default function StockDetailPage() {
     // const [prefetchedChartData, setPrefetchedChartData] = useState<any>(null); // For FinancialsTab // Removed
     // const [prefetchedPeers, setPrefetchedPeers] = useState<any>(null); // For AnalysisTab // Removed
     const [rawOverviewData, setRawOverviewData] = useState<any>(null); // For FinancialsTab
+    const [prefetchedChartData, setPrefetchedChartData] = useState<any>(null); // Shared between FinancialsTab & AnalysisTab
+    const [isHistoryLoading, setIsHistoryLoading] = useState(true);
+
+    // PRE-FETCHING: Automatically load all tabs in the background after main content loads
+    useEffect(() => {
+        if (!symbol) return;
+        const timer = setTimeout(() => {
+            setVisitedTabs(new Set(['overview', 'financials', 'valuation', 'priceHistory', 'analysis']));
+        }, 3000); // Wait 3s for main chart and header to settle
+        return () => clearTimeout(timer);
+    }, [symbol]);
+
+    // SHARED DATA: Fetch historical-chart-data ONCE, share with FinancialsTab & AnalysisTab
+    useEffect(() => {
+        if (!symbol) return;
+        setIsHistoryLoading(true);
+        const controller = new AbortController();
+        fetch(`/api/historical-chart-data/${symbol}?period=quarter`, { signal: controller.signal })
+            .then(r => r.ok ? r.json() : null)
+            .then(res => {
+                if (res?.success && res.data) {
+                    setPrefetchedChartData(res.data);
+                }
+            })
+            .catch(() => { })
+            .finally(() => setIsHistoryLoading(false));
+        return () => controller.abort();
+    }, [symbol]);
 
     // New state for chart loading
     const [isChartLoading, setIsChartLoading] = useState(false);
@@ -626,8 +654,9 @@ export default function StockDetailPage() {
                             symbol={symbol}
                             period={financialPeriod}
                             setPeriod={setFinancialPeriod}
-                            initialChartData={null}
+                            initialChartData={prefetchedChartData}
                             initialOverviewData={rawOverviewData}
+                            isLoading={isHistoryLoading}
                         />
                     </div>
                 )}
@@ -666,7 +695,8 @@ export default function StockDetailPage() {
                             symbol={symbol}
                             sector={stockInfo?.sector || 'Unknown'}
                             initialPeers={null}
-                            initialHistory={null}
+                            initialHistory={prefetchedChartData}
+                            isLoading={isHistoryLoading}
                         />
                     </div>
                 )}

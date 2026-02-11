@@ -7,7 +7,8 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'https://api.quanganh.org/v1/valuation/:path*',
+        // Production: 'https://api.quanganh.org/v1/valuation/:path*',
+        destination: 'http://localhost:5000/api/:path*',
       },
     ]
   },

@@ -37,9 +37,10 @@ interface AnalysisTabProps {
     sector: string;
     initialPeers?: any;
     initialHistory?: any;
+    isLoading?: boolean;
 }
 
-const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory }: AnalysisTabProps) => {
+const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory, isLoading = false }: AnalysisTabProps) => {
     const [peers, setPeers] = useState<Peer[]>(initialPeers?.data || initialPeers?.peers || []);
     const [peHistory, setPeHistory] = useState<any[]>([]);
     const [loading, setLoading] = useState(!initialPeers && !initialHistory);
@@ -69,6 +70,9 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory }: AnalysisT
 
     useEffect(() => {
         const fetchData = async () => {
+            // Wait for parent loading
+            if (isLoading) return;
+
             // If already loaded or props exist, skip
             if (peers.length > 0 && peHistory.length > 0) {
                 setLoading(false);
@@ -81,7 +85,7 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory }: AnalysisT
                     peers.length === 0
                         ? fetch(`/api/stock/peers/${symbol}?industry=${encodeURIComponent(sector)}`).then(r => r.json())
                         : Promise.resolve({ success: true, peers, medianPe }),
-                    peHistory.length === 0
+                    (peHistory.length === 0 && !initialHistory)
                         ? fetch(`/api/historical-chart-data/${symbol}?period=quarter`).then(r => r.json())
                         : Promise.resolve({ success: true, data: initialHistory })
                 ]);
@@ -108,7 +112,7 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory }: AnalysisT
         };
 
         fetchData();
-    }, [symbol, sector]);
+    }, [symbol, sector, isLoading, initialHistory]);
 
     if (loading) {
         return (

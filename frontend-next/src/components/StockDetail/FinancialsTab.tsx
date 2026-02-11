@@ -24,6 +24,7 @@ interface FinancialsTabProps {
     setPeriod: (p: 'quarter' | 'year') => void;
     initialChartData?: HistoricalChartData | null;
     initialOverviewData?: any | null;
+    isLoading?: boolean;
 }
 
 // Financial Metric Row - Compact
@@ -68,16 +69,16 @@ export default function FinancialsTab({
     period,
     setPeriod,
     initialChartData,
-    initialOverviewData
+    initialOverviewData,
+    isLoading: isParentLoading = false
 }: FinancialsTabProps) {
     const [chartData, setChartData] = useState<HistoricalChartData | null>(initialChartData || null);
     const [overviewData, setOverviewData] = useState<any>(initialOverviewData || null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState<boolean>(!initialChartData && !isParentLoading);
 
     const bankSymbols = ['VCB', 'BID', 'CTG', 'TCB', 'MBB', 'ACB', 'VPB', 'HDB', 'SHB', 'STB', 'TPB', 'LPB', 'MSB', 'OCB', 'EIB', 'ABB', 'NAB', 'PGB', 'VAB', 'VIB', 'SSB', 'BAB', 'KLB'];
     const isBank = bankSymbols.includes(symbol);
 
-    // Update state if props change (late fetching)
     useEffect(() => {
         if (initialChartData) setChartData(initialChartData);
     }, [initialChartData]);
@@ -87,99 +88,47 @@ export default function FinancialsTab({
     }, [initialOverviewData]);
 
     useEffect(() => {
-        // If we switched to year (and don't have year data passed in initial which is usually quarter), 
-        // OR if chartData is missing, we fetch.
-        // Assuming initialChartData maps to period 'quarter' (default).
-        // If period is 'year', we probably need to fetch.
-
-        // Simple logic:
-        if (initialChartData && period === 'quarter' && !loading) {
-            // We have data, skip fetch.
-            // But if we already fetched and switched back, standard logic applies.
-            // Rely on chartData existence? No, chartData might be old period.
-            // Let's just fetch if we don't have confidence.
-            // If we really want to optimize, we'd need to track which period current chartData belongs to.
-            // For now, let's allow fetching on period change, but skip on FIRST MOUNT if data matches.
-        }
-
-        // Just run fetch. Pre-fetching helps initial display. Subsequent changes can fetch.
-        // But preventing initial double-fetch?
-        // If initialChartData is present on mount, we set state.
-        // Then this effect runs. We can check if chartData is already set and matches expectations.
-        // Hard to know "expectations" (period) of initialData without passing it.
-        // Let's assume initialData is for the CURRENT period passed in props.
-        // If initialChartData is populated, we can skip the FIRST fetch.
-        // We can use a ref `hasMounted`.
-
-        // Actually, simpler: The parent passes `initialChartData` which is `prefetchedChartData`.
-        // `prefetchedChartData` is set async. It might be null initially.
-    }, []);
-
-    // Refined Fetch Logic
-    useEffect(() => {
-        // Skip fetch if we have data and it matches the period (implicit trust in parent for initial render)
-        // We'll rely on the fact that if chartData is populated and we haven't fetched manually yet...
-        // Actually, just fetching is fine, browser caching will handle repeats? 
-        // But we want to avoid the "Loading..." flicker.
-        // Since `chartData` is initialized from props, it won't be null.
-        // `loading` is false.
-        // So rendering happens immediately.
-        // If we trigger fetch here, `loading` becomes true, causing flicker.
-
-        const shouldSkip = (initialChartData && period === 'quarter'); // Assume initial is quarter
-        if (shouldSkip) {
-            // Check if we already have the data in state (we do from init).
-            // So we can just return?
-            // But what if user changes to Year and back to Quarter? We need to re-fetch Quarter or use cached.
-            // Let's just return if it's the very first run and we have data.
-        }
-
-        // Better: Check if `chartData` is already present. If so, logic to persist it?
-        // Let's just implement standard fetch but use `loading` properly.
-        // If `chartData` has content, show content. If `loading` is true, show spinner OVER content or just small indicator?
-        // Our UI shows spinner IF loading is true (replacing content).
-        // We should change UI to show spinner only if data is MISSING.
-
-        // But first, let's restore the missing functions!
-
         const controller = new AbortController();
         const signal = controller.signal;
 
-        // If we have data, don't set global loading that hides everything.
-        // Maybe separate `isRefreshing`?
-        // For now, let's just restore the file content.
-
-        if (!initialChartData || period !== 'quarter') {
-            // eslint-disable-next-line
-            setLoading(true);
-            Promise.all([
-                fetch(`/api/historical-chart-data/${symbol}?period=${period}`, { signal }).then(r => r.json()),
-                fetch(`/api/stock/${symbol}`, { signal }).then(r => r.json())
-            ])
-                .then(([chartRes, stockRes]) => {
-                    if (signal.aborted) return;
-
-                    if (chartRes.success) setChartData(chartRes.data);
-                    if (stockRes.success || stockRes.data) {
-                        setOverviewData(stockRes.data || stockRes);
-                    }
-                })
-                .catch(err => {
-                    if (err.name !== 'AbortError') {
-                        console.error(err);
-                    }
-                })
-                .finally(() => {
-                    if (!signal.aborted) {
-                        setLoading(false);
-                    }
-                });
+        if (period === 'quarter') {
+            if (initialChartData) {
+                setLoading(false);
+                setChartData(initialChartData);
+                return;
+            }
+            if (isParentLoading) {
+                setLoading(true);
+                return;
+            }
         }
 
-        return () => {
-            controller.abort();
-        };
-    }, [symbol, period]);
+        setLoading(true);
+        Promise.all([
+            fetch(`/api/historical-chart-data/${symbol}?period=${period}`, { signal }).then(r => r.json()),
+            (!overviewData ? fetch(`/api/stock/${symbol}`, { signal }).then(r => r.json()) : Promise.resolve({ success: true, data: overviewData }))
+        ])
+            .then(([chartRes, stockRes]) => {
+                if (signal.aborted) return;
+
+                if (chartRes.success) setChartData(chartRes.data);
+                if (stockRes.success || stockRes.data) {
+                    setOverviewData(stockRes.data || stockRes);
+                }
+            })
+            .catch(err => {
+                if (err.name !== 'AbortError') {
+                    console.error(err);
+                }
+            })
+            .finally(() => {
+                if (!signal.aborted) {
+                    setLoading(false);
+                }
+            });
+
+        return () => controller.abort();
+    }, [symbol, period, isParentLoading, initialChartData]);
 
     // Helpers restored
     const getVal = (data: (number | null)[] | undefined): number | null => {
