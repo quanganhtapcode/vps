@@ -4,11 +4,11 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   async rewrites() {
+    const apiBase = process.env.BACKEND_API_URL || 'https://api.quanganh.org/v1/valuation';
     return [
       {
         source: '/api/:path*',
-        // Production: 'https://api.quanganh.org/v1/valuation/:path*',
-        destination: 'http://localhost:5000/api/:path*',
+        destination: `${apiBase}/:path*`,
       },
     ]
   },

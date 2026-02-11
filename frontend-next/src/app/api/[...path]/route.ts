@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const BACKEND_API = 'http://45.128.210.188:5000/api';
+const BACKEND_API = process.env.BACKEND_API_URL || 'https://api.quanganh.org/v1/valuation';
 
 export async function GET(
     request: Request,
@@ -43,6 +43,43 @@ export async function GET(
         console.error('API Proxy Error:', error);
         return NextResponse.json(
             { error: 'Failed to fetch data from backend' },
+            { status: 500 }
+        );
+    }
+}
+export async function POST(
+    request: Request,
+    { params }: { params: Promise<{ path: string[] }> }
+) {
+    try {
+        const { path } = await params;
+        const apiPath = path.join('/');
+        const body = await request.json();
+
+        const fullUrl = `${BACKEND_API}/${apiPath}`;
+
+        const response = await fetch(fullUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'Next.js API Proxy',
+            },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            return NextResponse.json(
+                { error: `Backend Error: ${response.status}` },
+                { status: response.status }
+            );
+        }
+
+        const data = await response.json();
+        return NextResponse.json(data);
+    } catch (error) {
+        console.error('API Proxy POST Error:', error);
+        return NextResponse.json(
+            { error: 'Failed to post data to backend' },
             { status: 500 }
         );
     }
