@@ -4,6 +4,7 @@ export const siteConfig = {
     description: "Advanced stock analysis platform for Vietnam market.",
     baseLinks: {
         home: "/",
+        overview: "/overview",
         market: "/market",
         about: "/about",
         changelog: "/changelog",

@@ -207,9 +207,9 @@ export function Navbar() {
                         <div className="flex items-center gap-6 lg:gap-8 font-medium">
                             <Link
                                 className="px-2 py-1 text-gray-900 dark:text-gray-50 hover:text-blue-600 transition-colors"
-                                href={siteConfig.baseLinks.market}
+                                href={siteConfig.baseLinks.overview}
                             >
-                                Market
+                                Overview
                             </Link>
                             <Link
                                 className="px-2 py-1 text-gray-900 dark:text-gray-50 hover:text-blue-600 transition-colors"
@@ -353,7 +353,7 @@ export function Navbar() {
                 >
                     <ul className="space-y-4 font-medium">
                         <li onClick={() => setOpen(false)}>
-                            <Link href={siteConfig.baseLinks.market}>Market</Link>
+                            <Link href={siteConfig.baseLinks.overview}>Overview</Link>
                         </li>
                         <li onClick={() => setOpen(false)}>
                             <Link href="/stock/VCB">Company</Link>
