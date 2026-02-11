@@ -80,8 +80,8 @@ export default function FinancialsTab({
     const isBank = bankSymbols.includes(symbol);
 
     useEffect(() => {
-        if (initialChartData) setChartData(initialChartData);
-    }, [initialChartData]);
+        if (initialChartData && period === 'quarter') setChartData(initialChartData);
+    }, [initialChartData, period]);
 
     useEffect(() => {
         if (initialOverviewData) setOverviewData(initialOverviewData);
