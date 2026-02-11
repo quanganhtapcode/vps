@@ -8,13 +8,9 @@ export * from './types';
 export * from './stockApi';
 
 
-// API Base URL
-// Client-side: use relative path to Next.js API proxy
-// Server-side: use env var or default to production API
-export const API_BASE =
-    typeof window !== 'undefined'
-        ? '/api'
-        : process.env.NEXT_PUBLIC_API_URL || 'https://api.quanganh.org/v1/valuation';
+// API Base URL - Always use the backend API directly
+// Can be overridden via NEXT_PUBLIC_API_URL environment variable
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.quanganh.org/v1/valuation';
 
 // API Endpoints
 export const API = {
