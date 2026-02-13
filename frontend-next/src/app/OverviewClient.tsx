@@ -62,20 +62,20 @@ export default function OverviewClient({
 
     // State for news
     const [news, setNews] = useState<NewsItem[]>(initialNews);
-    const [newsLoading, setNewsLoading] = useState(false);
+    const [newsLoading, setNewsLoading] = useState(initialNews.length === 0);
     const [newsError, setNewsError] = useState<string | null>(null);
 
     // State for top movers
     const [gainers, setGainers] = useState<TopMoverItem[]>(initialGainers);
     const [losers, setLosers] = useState<TopMoverItem[]>(initialLosers);
     const [moversTab, setMoversTab] = useState<'UP' | 'DOWN'>('UP');
-    const [moversLoading, setMoversLoading] = useState(false);
+    const [moversLoading, setMoversLoading] = useState(initialGainers.length === 0 || initialLosers.length === 0);
 
     // State for foreign flow
     const [foreignBuys, setForeignBuys] = useState<TopMoverItem[]>(initialForeignBuys);
     const [foreignSells, setForeignSells] = useState<TopMoverItem[]>(initialForeignSells);
     const [foreignTab, setForeignTab] = useState<'buy' | 'sell'>('buy');
-    const [foreignLoading, setForeignLoading] = useState(false);
+    const [foreignLoading, setForeignLoading] = useState(initialForeignBuys.length === 0 || initialForeignSells.length === 0);
 
     // State for gold prices
     const [goldPrices, setGoldPrices] = useState<GoldPriceItem[]>(initialGoldPrices);
@@ -151,11 +151,75 @@ export default function OverviewClient({
         }
     }, []);
 
+    const loadNews = useCallback(async () => {
+        try {
+            setNewsLoading(true);
+            setNewsError(null);
+            const items = await fetchNews(1, 30);
+            setNews(items);
+        } catch (error) {
+            console.error('Error loading news:', error);
+            setNewsError('Unable to load market news');
+        } finally {
+            setNewsLoading(false);
+        }
+    }, []);
+
+    const loadMovers = useCallback(async () => {
+        try {
+            setMoversLoading(true);
+            const [up, down] = await Promise.all([
+                fetchTopMovers('UP'),
+                fetchTopMovers('DOWN'),
+            ]);
+            setGainers(up);
+            setLosers(down);
+        } catch (error) {
+            console.error('Error loading top movers:', error);
+        } finally {
+            setMoversLoading(false);
+        }
+    }, []);
+
+    const loadForeign = useCallback(async () => {
+        try {
+            setForeignLoading(true);
+            const [buy, sell] = await Promise.all([
+                fetchForeignFlow('buy'),
+                fetchForeignFlow('sell'),
+            ]);
+            setForeignBuys(buy);
+            setForeignSells(sell);
+        } catch (error) {
+            console.error('Error loading foreign flow:', error);
+        } finally {
+            setForeignLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         if (!initialGoldPrices || initialGoldPrices.length === 0) {
             loadGold();
         }
     }, [initialGoldPrices, loadGold]);
+
+    useEffect(() => {
+        if (!initialNews || initialNews.length === 0) {
+            loadNews();
+        }
+    }, [initialNews, loadNews]);
+
+    useEffect(() => {
+        if (!initialGainers || !initialLosers || initialGainers.length === 0 || initialLosers.length === 0) {
+            loadMovers();
+        }
+    }, [initialGainers, initialLosers, loadMovers]);
+
+    useEffect(() => {
+        if (!initialForeignBuys || !initialForeignSells || initialForeignBuys.length === 0 || initialForeignSells.length === 0) {
+            loadForeign();
+        }
+    }, [initialForeignBuys, initialForeignSells, loadForeign]);
 
     // Auto refresh indices every 15 seconds
     useEffect(() => {

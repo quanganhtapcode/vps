@@ -7,7 +7,7 @@ import { RiCloseLine, RiMenuLine, RiSearchLine } from "@remixicon/react"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import { useDebounce } from "use-debounce"
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import { DatabaseLogo } from "@/components/DatabaseLogo"
 import { Button } from "@/components/Button"
 import { getTickerData } from "@/lib/tickerCache"
@@ -31,6 +31,8 @@ export function Navbar() {
     const [debouncedQuery] = useDebounce(searchQuery, 300);
     const [allTickers, setAllTickers] = useState<Ticker[]>([]);
     const [searchResults, setSearchResults] = useState<Ticker[]>([]);
+    const [tickersLoaded, setTickersLoaded] = useState(false);
+    const tickerLoadingRef = useRef(false);
     const searchRef = useRef<HTMLDivElement>(null);
     const mobileSearchRef = useRef<HTMLDivElement>(null);
     // Separate refs to avoid conflicts
@@ -62,16 +64,26 @@ export function Navbar() {
         }
     }, [])
 
-    // Load tickers data on mount
-    useEffect(() => {
-        async function loadTickers() {
+    const ensureTickersLoaded = useCallback(async () => {
+        if (tickersLoaded || tickerLoadingRef.current) return;
+
+        tickerLoadingRef.current = true;
+        try {
             const data = await getTickerData();
             if (data) {
-                setAllTickers(data.tickers || []);
+                setAllTickers((data as TickerData).tickers || []);
             }
+            setTickersLoaded(true);
+        } finally {
+            tickerLoadingRef.current = false;
         }
-        loadTickers();
-    }, []);
+    }, [tickersLoaded]);
+
+    useEffect(() => {
+        if (searchOpen) {
+            ensureTickersLoaded();
+        }
+    }, [searchOpen, ensureTickersLoaded]);
 
     // Handle click outside search
     useEffect(() => {
@@ -142,6 +154,9 @@ export function Navbar() {
     }, [debouncedQuery, allTickers]);
 
     const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!tickersLoaded) {
+            void ensureTickersLoaded();
+        }
         setSearchQuery(e.target.value);
     };
 
@@ -152,7 +167,13 @@ export function Navbar() {
     };
 
     const toggleSearch = () => {
-        setSearchOpen(prev => !prev);
+        setSearchOpen(prev => {
+            const next = !prev;
+            if (next && !tickersLoaded) {
+                void ensureTickersLoaded();
+            }
+            return next;
+        });
     }
 
     // Handle Ctrl+K / Cmd+K
@@ -248,7 +269,12 @@ export function Navbar() {
                                             setSearchQuery('');
                                         }
                                     }}
-                                    onFocus={() => setSearchOpen(true)}
+                                    onFocus={() => {
+                                        setSearchOpen(true);
+                                        if (!tickersLoaded) {
+                                            void ensureTickersLoaded();
+                                        }
+                                    }}
                                 />
                                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center group-focus-within:opacity-100 opacity-0 transition-opacity pointer-events-none">
                                     <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border border-gray-200 bg-gray-100 px-1.5 font-mono text-[10px] font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-400">
@@ -381,6 +407,11 @@ export function Navbar() {
                                     placeholder="Search stock symbol..."
                                     value={searchQuery}
                                     onChange={handleSearch}
+                                    onFocus={() => {
+                                        if (!tickersLoaded) {
+                                            void ensureTickersLoaded();
+                                        }
+                                    }}
                                 />
                             </div>
 
