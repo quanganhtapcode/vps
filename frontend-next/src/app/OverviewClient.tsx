@@ -151,6 +151,12 @@ export default function OverviewClient({
         }
     }, []);
 
+    useEffect(() => {
+        if (!initialGoldPrices || initialGoldPrices.length === 0) {
+            loadGold();
+        }
+    }, [initialGoldPrices, loadGold]);
+
     // Auto refresh indices every 15 seconds
     useEffect(() => {
         const interval = setInterval(() => {

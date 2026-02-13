@@ -2,18 +2,15 @@ import { Suspense } from 'react';
 import OverviewClient from './OverviewClient';
 import {
   fetchAllIndices,
-  fetchIndexChart,
   fetchNews,
   fetchTopMovers,
   fetchForeignFlow,
-  fetchGoldPrices,
   fetchPEChart,
   INDEX_MAP,
   MarketIndexData,
 } from '@/lib/api';
 
-// Disable caching to ensure fresh data on every request
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 interface IndexData {
   id: string;
@@ -34,21 +31,18 @@ export default async function OverviewPage() {
     losersResult,
     foreignBuysResult,
     foreignSellsResult,
-    goldResult,
     peResult
   ] = await Promise.allSettled([
     // Indices (requires logic processing afterwards)
     fetchAllIndices(),
     // News
-    fetchNews(),
+    fetchNews(1, 30),
     // Top Movers
     fetchTopMovers('UP'),
     fetchTopMovers('DOWN'),
     // Foreign Flow
     fetchForeignFlow('buy'),
     fetchForeignFlow('sell'),
-    // Gold
-    fetchGoldPrices(),
     // P/E Chart
     fetchPEChart()
   ]);
@@ -59,7 +53,6 @@ export default async function OverviewPage() {
   if (indicesResult.status === 'fulfilled') {
     const marketData = indicesResult.value;
 
-    // Fetch charts for indices in parallel
     const chartPromises = Object.entries(INDEX_MAP).map(async ([indexId, info]) => {
       const data = marketData[indexId] as MarketIndexData | undefined;
       if (!data) return null;
@@ -69,13 +62,7 @@ export default async function OverviewPage() {
       const change = currentIndex - prevIndex;
       const percent = prevIndex > 0 ? (change / prevIndex) * 100 : 0;
 
-      let chartData: number[] = [];
-      try {
-        const chartPoints = await fetchIndexChart(indexId);
-        chartData = chartPoints.map(p => p.Data);
-      } catch (e) {
-        console.error(`Error fetching chart for ${info.name}:`, e);
-      }
+      const chartData = [prevIndex, currentIndex].filter((v) => typeof v === 'number');
 
       return {
         id: info.id,
@@ -99,9 +86,8 @@ export default async function OverviewPage() {
   const initialLosers = losersResult.status === 'fulfilled' ? losersResult.value : [];
   const initialForeignBuys = foreignBuysResult.status === 'fulfilled' ? foreignBuysResult.value : [];
   const initialForeignSells = foreignSellsResult.status === 'fulfilled' ? foreignSellsResult.value : [];
-  const initialGoldPricesData = goldResult.status === 'fulfilled' ? goldResult.value : { data: [], updated_at: undefined };
-  const initialGoldPrices = initialGoldPricesData.data;
-  const initialGoldUpdated = initialGoldPricesData.updated_at;
+  const initialGoldPrices = [];
+  const initialGoldUpdated = undefined;
   const initialPEData = peResult.status === 'fulfilled' ? peResult.value : [];
 
   return (

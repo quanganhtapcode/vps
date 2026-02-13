@@ -8,9 +8,9 @@ export * from './types';
 export * from './stockApi';
 
 
-// API Base URL - Always use the backend API directly
+// API Base URL - prefer same-origin proxy (/api) for consistent caching/CORS
 // Can be overridden via NEXT_PUBLIC_API_URL environment variable
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.quanganh.org/v1/valuation';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // API Endpoints
 export const API = {
