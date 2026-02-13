@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 
-const BACKEND_API = process.env.BACKEND_API_URL || 'https://api.quanganh.org/v1/valuation';
+const BACKEND_API =
+    process.env.NODE_ENV === 'development'
+        ? (process.env.BACKEND_API_URL_LOCAL || 'http://127.0.0.1:5000/api')
+        : (process.env.BACKEND_API_URL || 'https://api.quanganh.org/v1/valuation');
 
 export async function GET(
     request: Request,
@@ -21,8 +24,9 @@ export async function GET(
                 'Content-Type': 'application/json',
                 'User-Agent': 'Next.js API Proxy',
             },
-            // Cache for 30 seconds
-            next: { revalidate: 30 },
+            ...(process.env.NODE_ENV === 'development'
+                ? { cache: 'no-store' as const }
+                : { next: { revalidate: 30 } }),
         });
 
         if (!response.ok) {
@@ -37,6 +41,7 @@ export async function GET(
         return NextResponse.json(data, {
             headers: {
                 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+                'X-Proxy-Backend': BACKEND_API,
             },
         });
     } catch (error) {

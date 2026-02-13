@@ -476,7 +476,9 @@ export default function OverviewTab({
                                 <span className={styles.metricLabel}>PROFIT GROWTH:</span>
                                 <span className={styles.metricValue}>
                                     {financials.profitGrowth !== undefined
-                                        ? `${financials.profitGrowth.toFixed(1)}%`
+                                        ? `${(Math.abs(financials.profitGrowth) < 1
+                                            ? financials.profitGrowth * 100
+                                            : financials.profitGrowth).toFixed(1)}%`
                                         : '-'}
                                 </span>
                             </div>

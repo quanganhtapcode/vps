@@ -136,6 +136,23 @@ export default function FinancialsTab({
         return data[data.length - 1];
     };
 
+    const nimSeriesFromChart = (chartData?.years?.map((year, i) => ({
+        year: year.toString(),
+        NIM: chartData?.nim_data?.[i] ?? null,
+    })) || []).filter((point) => {
+        if (point.NIM === null || point.NIM === undefined) return false;
+        return Number(point.NIM) !== 0;
+    });
+
+    const hasNimSeries = nimSeriesFromChart.length > 0;
+    const latestNimFromSeries = hasNimSeries ? nimSeriesFromChart[nimSeriesFromChart.length - 1].NIM : null;
+
+    const nimChartSeries = hasNimSeries
+        ? nimSeriesFromChart
+        : (overviewData?.nim !== null && overviewData?.nim !== undefined
+            ? [{ year: 'Latest', NIM: Number(overviewData.nim) }]
+            : []);
+
 
     // Custom Tooltip
     const CustomTooltip = ({ payload, active, label }: TremorCustomTooltipProps) => {
@@ -267,11 +284,10 @@ export default function FinancialsTab({
                             {/* Bank-specific Metrics */}
                             {isBank && (
                                 <MetricCard title="Banking Metrics">
-                                    <MetricRow label="NIM" value={chartData?.nim_data ? getVal(chartData.nim_data) : null} unit=" %" />
-                                    <MetricRow label="CASA" value={overviewData?.casa} unit=" %" />
-                                    <MetricRow label="NPL Ratio" value={overviewData?.npl_ratio} unit=" %" />
+                                    <MetricRow label="NIM" value={hasNimSeries ? latestNimFromSeries : (overviewData?.nim ?? null)} unit=" %" />
+                                    <MetricRow label="COF" value={overviewData?.cof} unit=" %" />
+                                    <MetricRow label="CIR" value={overviewData?.cir} unit=" %" />
                                     <MetricRow label="LDR" value={overviewData?.ldr} unit=" %" />
-                                    <MetricRow label="CAR" value={overviewData?.car} unit=" %" />
                                 </MetricCard>
                             )}
                         </div>
@@ -353,15 +369,12 @@ export default function FinancialsTab({
                             )}
 
                             {/* NIM Chart (Bank only) */}
-                            {isBank && chartData && chartData.nim_data && (
+                            {isBank && nimChartSeries.length > 0 && (
                                 <ChartCard title="NIM (%)">
                                     <LineChart
                                         className="h-full w-full"
                                         style={{ height: '100%', width: '100%' }}
-                                        data={chartData.years?.map((year, i) => ({
-                                            year: year.toString(),
-                                            'NIM': chartData.nim_data?.[i] ?? 0,
-                                        })) || []}
+                                        data={nimChartSeries}
                                         index="year"
                                         categories={["NIM"]}
                                         colors={["cyan"]}

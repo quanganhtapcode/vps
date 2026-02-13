@@ -229,6 +229,8 @@ export default function StockDetailPage() {
                     if (rawPrice > 0 && rawPrice < 500) rawPrice *= 1000;
 
                     currentPriceValue = rawPrice;
+                    const profitGrowthValue = data.profit_growth ?? data.profitGrowth;
+                    const debtToEquityValue = data.debt_to_equity ?? data.debtToEquity ?? data.de;
                     setFinancials({
                         eps: data.eps_ttm || data.eps,
                         pe: data.pe_ratio || data.pe || data.PE,
@@ -240,8 +242,8 @@ export default function StockDetailPage() {
                         dividend: data.dividend_per_share || data.dividend,
                         sharesOutstanding: data.shares_outstanding || data.sharesOutstanding,
                         netProfitMargin: data.net_profit_margin || data.netProfitMargin,
-                        profitGrowth: data.profit_growth || data.profitGrowth,
-                        debtToEquity: data.debt_to_equity || data.debtToEquity || data.de,
+                        profitGrowth: profitGrowthValue === 0 ? undefined : profitGrowthValue,
+                        debtToEquity: debtToEquityValue === 0 ? undefined : debtToEquityValue,
                     });
                     setRawOverviewData(data);
 

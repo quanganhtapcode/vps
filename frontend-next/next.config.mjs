@@ -3,15 +3,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  async rewrites() {
-    const apiBase = process.env.BACKEND_API_URL || 'https://api.quanganh.org/v1/valuation';
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${apiBase}/:path*`,
-      },
-    ]
-  },
   async headers() {
     return [
       {
