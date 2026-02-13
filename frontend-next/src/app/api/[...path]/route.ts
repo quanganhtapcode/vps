@@ -30,8 +30,18 @@ export async function GET(
         });
 
         if (!response.ok) {
+            let backendError: any = null;
+            try {
+                backendError = await response.json();
+            } catch {
+                backendError = null;
+            }
+
             return NextResponse.json(
-                { error: `Backend Error: ${response.status}` },
+                {
+                    error: `Backend Error: ${response.status}`,
+                    backend: backendError,
+                },
                 { status: response.status }
             );
         }
@@ -73,8 +83,18 @@ export async function POST(
         });
 
         if (!response.ok) {
+            let backendError: any = null;
+            try {
+                backendError = await response.json();
+            } catch {
+                backendError = null;
+            }
+
             return NextResponse.json(
-                { error: `Backend Error: ${response.status}` },
+                {
+                    error: `Backend Error: ${response.status}`,
+                    backend: backendError,
+                },
                 { status: response.status }
             );
         }

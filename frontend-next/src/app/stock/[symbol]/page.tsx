@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useTransition, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { formatNumber, formatDate, formatPercentChange, fetchStockPeers } from '@/lib/api';
 import styles from './page.module.css';
@@ -101,6 +101,7 @@ export default function StockDetailPage() {
     const [isDescExpanded, setIsDescExpanded] = useState(false);
     const [activeTab, setActiveTab] = useState<'overview' | 'financials' | 'valuation' | 'priceHistory' | 'analysis'>('overview');
     const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(['overview']));
+    const [, startTransition] = useTransition();
     const [financialPeriod, setFinancialPeriod] = useState<'quarter' | 'year'>('quarter');
     const [financialReport, setFinancialReport] = useState<FinancialReportItem[]>([]);
     const [ratioData, setRatioData] = useState<any[]>([]);
@@ -113,14 +114,12 @@ export default function StockDetailPage() {
     const [prefetchedChartData, setPrefetchedChartData] = useState<any>(null); // Shared between FinancialsTab & AnalysisTab
     const [isHistoryLoading, setIsHistoryLoading] = useState(true);
 
-    // PRE-FETCHING: Automatically load all tabs in the background after main content loads
-    useEffect(() => {
-        if (!symbol) return;
-        const timer = setTimeout(() => {
-            setVisitedTabs(new Set(['overview', 'financials', 'valuation', 'priceHistory', 'analysis']));
-        }, 3000); // Wait 3s for main chart and header to settle
-        return () => clearTimeout(timer);
-    }, [symbol]);
+    const handleTabChange = useCallback((nextTab: 'overview' | 'financials' | 'valuation' | 'priceHistory' | 'analysis') => {
+        if (nextTab === activeTab) return;
+        startTransition(() => {
+            setActiveTab(nextTab);
+        });
+    }, [activeTab, startTransition]);
 
     // SHARED DATA: Fetch historical-chart-data ONCE, share with FinancialsTab & AnalysisTab
     useEffect(() => {
@@ -400,7 +399,7 @@ export default function StockDetailPage() {
         if (fullHistoryData.length === 0) return;
 
         const now = new Date();
-        let cutoff = new Date();
+        const cutoff = new Date();
 
         switch (timeRange) {
             case '3M': cutoff.setDate(now.getDate() - 90); break;
@@ -585,7 +584,7 @@ export default function StockDetailPage() {
                                 <button
                                     key={tab.id}
                                     type="button"
-                                    onClick={() => setActiveTab(tab.id as any)}
+                                    onClick={() => handleTabChange(tab.id as 'overview' | 'financials' | 'valuation' | 'priceHistory' | 'analysis')}
                                     className={classNames(
                                         activeTab === tab.id
                                             ? 'border-tremor-brand text-tremor-brand dark:border-dark-tremor-brand dark:text-dark-tremor-brand'

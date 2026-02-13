@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
     Card,
 } from '@tremor/react';
@@ -32,12 +32,16 @@ export default function MarketPulse({
 }: MarketPulseProps) {
     const [categoryIndex, setCategoryIndex] = useState(0); // 0: Movers, 1: Foreign
 
+    const handleCategoryChange = useCallback((nextIndex: 0 | 1) => {
+        setCategoryIndex((prev) => (prev === nextIndex ? prev : nextIndex));
+    }, []);
+
     return (
         <Card className="p-0 overflow-hidden bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm rounded-xl">
             {/* Header Tabs */}
             <div className="flex border-b border-gray-100 dark:border-gray-800">
                 <button
-                    onClick={() => setCategoryIndex(0)}
+                    onClick={() => handleCategoryChange(0)}
                     className={`flex-1 py-3 text-sm font-medium transition-colors ${categoryIndex === 0
                         ? 'text-tremor-brand border-b-2 border-tremor-brand'
                         : 'text-tremor-content-emphasis hover:text-tremor-content-strong border-transparent hover:border-tremor-content-subtle'
@@ -46,7 +50,7 @@ export default function MarketPulse({
                     Top Movers
                 </button>
                 <button
-                    onClick={() => setCategoryIndex(1)}
+                    onClick={() => handleCategoryChange(1)}
                     className={`flex-1 py-3 text-sm font-medium transition-colors ${categoryIndex === 1
                         ? 'text-tremor-brand border-b-2 border-tremor-brand'
                         : 'text-tremor-content-emphasis hover:text-tremor-content-strong border-transparent hover:border-tremor-content-subtle'
@@ -100,14 +104,18 @@ function MarketList({
     const [subTab, setSubTab] = useState(0); // 0 or 1
     const items = subTab === 0 ? items1 : items2;
 
+    const handleSubTabChange = useCallback((nextTab: 0 | 1) => {
+        setSubTab((prev) => (prev === nextTab ? prev : nextTab));
+    }, []);
+
     return (
         <div className="flex flex-col">
             {/* Sub-tabs (Pills) */}
             <div className="bg-gray-50 dark:bg-gray-800/50 px-3 py-2 border-b border-gray-100 dark:border-gray-800">
                 <div className="flex p-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
                     <button
-                        onClick={() => setSubTab(0)}
-                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${subTab === 0
+                        onClick={() => handleSubTabChange(0)}
+                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${subTab === 0
                             ? 'bg-white dark:bg-gray-800 text-tremor-content-strong dark:text-dark-tremor-content-strong shadow-sm'
                             : 'text-tremor-content-subtle hover:text-tremor-content'
                             }`}
@@ -115,8 +123,8 @@ function MarketList({
                         {label1}
                     </button>
                     <button
-                        onClick={() => setSubTab(1)}
-                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${subTab === 1
+                        onClick={() => handleSubTabChange(1)}
+                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${subTab === 1
                             ? 'bg-white dark:bg-gray-800 text-tremor-content-strong dark:text-dark-tremor-content-strong shadow-sm'
                             : 'text-tremor-content-subtle hover:text-tremor-content'
                             }`}

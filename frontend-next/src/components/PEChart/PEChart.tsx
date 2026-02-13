@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     LineChart,
     Line,
@@ -83,6 +83,10 @@ export default function PEChart({ initialData = [] }: PEChartProps) {
     const [data, setData] = useState<PEChartData[]>(initialData);
     const [timeRange, setTimeRange] = useState<TimeRange>('1Y');
     const [isLoading, setIsLoading] = useState(initialData.length === 0);
+
+    const handleRangeChange = useCallback((nextRange: TimeRange) => {
+        setTimeRange((prev) => (prev === nextRange ? prev : nextRange));
+    }, []);
 
     useEffect(() => {
         if (initialData.length > 0) return;
@@ -170,12 +174,12 @@ export default function PEChart({ initialData = [] }: PEChartProps) {
                             key={item.key}
                             type="button"
                             title={item.tooltip}
-                            onClick={() => setTimeRange(item.key)}
+                            onClick={() => handleRangeChange(item.key)}
                             className={cx(
                                 index === 0 ? 'rounded-l-tremor-small' : '-ml-px',
                                 index === filterButtons.length - 1 ? 'rounded-r-tremor-small' : '',
                                 focusInput,
-                                'border border-tremor-border bg-tremor-background px-4 py-2 text-tremor-content-strong hover:bg-tremor-background-muted hover:text-tremor-content-strong focus:z-10 focus:outline-none dark:border-dark-tremor-border dark:bg-gray-950 dark:text-dark-tremor-content-strong hover:dark:bg-gray-950/50 transition-all',
+                                'border border-tremor-border bg-tremor-background px-4 py-2 text-tremor-content-strong hover:bg-tremor-background-muted hover:text-tremor-content-strong focus:z-10 focus:outline-none dark:border-dark-tremor-border dark:bg-gray-950 dark:text-dark-tremor-content-strong hover:dark:bg-gray-950/50 transition-colors',
                                 timeRange === item.key ? 'bg-tremor-brand-muted text-tremor-brand dark:bg-dark-tremor-brand-muted dark:text-dark-tremor-brand font-bold' : ''
                             )}
                         >
@@ -191,11 +195,11 @@ export default function PEChart({ initialData = [] }: PEChartProps) {
                             key={item.key}
                             type="button"
                             title={item.tooltip}
-                            onClick={() => setTimeRange(item.key)}
+                            onClick={() => handleRangeChange(item.key)}
                             className={cx(
                                 index === 0 ? 'rounded-l-tremor-small' : '-ml-px',
                                 index === filterButtons.length - 1 ? 'rounded-r-tremor-small' : '',
-                                'flex-1 border border-tremor-border bg-tremor-background py-2 text-center text-tremor-content-strong hover:bg-tremor-background-muted hover:text-tremor-content-strong focus:z-10 focus:outline-none dark:border-dark-tremor-border dark:bg-gray-950 dark:text-dark-tremor-content-strong hover:dark:bg-gray-950/50 transition-all',
+                                'flex-1 border border-tremor-border bg-tremor-background py-2 text-center text-tremor-content-strong hover:bg-tremor-background-muted hover:text-tremor-content-strong focus:z-10 focus:outline-none dark:border-dark-tremor-border dark:bg-gray-950 dark:text-dark-tremor-content-strong hover:dark:bg-gray-950/50 transition-colors',
                                 timeRange === item.key ? 'bg-tremor-brand-muted text-tremor-brand dark:bg-dark-tremor-brand-muted dark:text-dark-tremor-brand font-bold' : ''
                             )}
                         >
