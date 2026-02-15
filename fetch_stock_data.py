@@ -531,8 +531,15 @@ def fetch_stock_ratios(stock, symbol: str, period_type: str, conn):
         return 0
 
 
-def fetch_stock(symbol: str, db_path: str = None, api_key: str | None = None):
-    """Fetch all financial data for a single stock"""
+def fetch_stock(symbol: str, db_path: str = None, api_key: str | None = None, delay: float = 0.0) -> tuple[int, int]:
+    """Fetch all ratio data for a single stock.
+
+    Returns:
+        (quarter_saved_count, year_saved_count)
+
+    Raises:
+        SystemExit / BaseException from underlying libraries (caller decides retry).
+    """
     logger.info(f"\n{'='*60}")
     logger.info(f"📊 Fetching data for {symbol}")
     logger.info(f"{'='*60}")
@@ -549,22 +556,37 @@ def fetch_stock(symbol: str, db_path: str = None, api_key: str | None = None):
         
         # Fetch quarterly ratios
         q_count = fetch_stock_ratios(stock, symbol, 'quarter', conn)
+
+        # Delay between API calls (quarter -> year)
+        if delay and delay > 0:
+            time.sleep(delay)
         
         # Fetch yearly ratios
         y_count = fetch_stock_ratios(stock, symbol, 'year', conn)
         
         conn.commit()
         logger.info(f"\n✅ {symbol}: {q_count} quarterly + {y_count} yearly records saved")
-        
-    except Exception as e:
-        logger.error(f"❌ Error processing {symbol}: {e}")
-        conn.rollback()
+
+        return q_count, y_count
+
+    except BaseException as e:
+        # Let caller (batch) decide whether to retry on rate-limit/SystemExit.
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         conn.close()
 
 
 def fetch_batch(symbols: list, db_path: str = None, delay: float = 1.0):
-    """Fetch data for multiple stocks"""
+    """Fetch data for multiple stocks.
+
+    `delay` is applied:
+    - between quarter and year calls within a symbol
+    - between symbols
+    """
     logger.info(f"\n{'='*60}")
     logger.info(f"🚀 Batch fetch started: {len(symbols)} stocks")
     logger.info(f"{'='*60}\n")
@@ -592,15 +614,36 @@ def fetch_batch(symbols: list, db_path: str = None, delay: float = 1.0):
                     set_vnstock_key(active_key)
 
                 logger.info(f"[{i}/{len(symbols)}] Processing {symbol}...")
-                fetch_stock(symbol, db_path, api_key=active_key)
-                success_count += 1
+                q_saved, y_saved = fetch_stock(symbol, db_path, api_key=active_key, delay=delay)
+                if (q_saved + y_saved) > 0:
+                    success_count += 1
+                else:
+                    # Consider it a soft-fail when nothing is saved
+                    fail_count += 1
                 
                 # Rate limiting
                 if i < len(symbols):
                     time.sleep(delay)
                 
                 break  # Success, exit retry loop
-                    
+
+            except KeyboardInterrupt:
+                raise
+
+            except SystemExit as e:
+                # vnstock may terminate the process on rate limit (SystemExit is not an Exception)
+                msg = str(e)
+                wait_time = check_rate_limit_message(msg)
+                if wait_time <= 0:
+                    # Conservative fallback: treat as rate limit and wait a bit
+                    wait_time = 10
+                logger.warning(f"⚠️  SystemExit while processing {symbol}. Waiting {wait_time}s then retrying...")
+                time.sleep(wait_time + 2)
+                retry_count += 1
+                if retry_count >= max_retries:
+                    logger.error(f"❌ Failed {symbol} after {max_retries} retries: SystemExit")
+                    fail_count += 1
+
             except Exception as e:
                 # Check for rate limit
                 wait_time = check_rate_limit_message(str(e))
@@ -629,12 +672,12 @@ def fetch_batch(symbols: list, db_path: str = None, delay: float = 1.0):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Fetch financial data V3 (optimized 3-table schema)')
+    parser = argparse.ArgumentParser(description='Fetch ratio data into ratio_wide (optimized schema)')
     parser.add_argument('--symbol', type=str, help='Stock symbol to fetch')
     parser.add_argument('--symbols', type=str, nargs='+', help='Multiple stock symbols')
     parser.add_argument('--file', type=str, help='File containing stock symbols (one per line)')
     parser.add_argument('--db', type=str, default=resolve_stocks_db_path(), help='Database path')
-    parser.add_argument('--delay', type=float, default=1.0, help='Delay between requests (seconds)')
+    parser.add_argument('--delay', type=float, default=1.1, help='Delay between requests (seconds)')
     
     args = parser.parse_args()
     

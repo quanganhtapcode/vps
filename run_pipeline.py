@@ -87,7 +87,10 @@ def main() -> int:
     symbols_file = ensure_symbols_file(os.path.join(BASE_DIR, 'symbols.txt'))
     if symbols_file:
         # fetch_stock_data.py lives in project root (not scripts/)
+        fetch_delay = os.getenv('FETCH_DELAY_SECONDS', '').strip()
         fetch_cmd = [os.path.join(BASE_DIR, 'fetch_stock_data.py'), '--file', symbols_file, '--db', DB_PATH]
+        if fetch_delay:
+            fetch_cmd.extend(['--delay', fetch_delay])
         if not run_command(fetch_cmd, "Fetching Financial Data (V3)"):
             logger.error("Stopping pipeline because fetch step failed.")
             return 1
