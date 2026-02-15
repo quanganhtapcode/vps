@@ -319,10 +319,53 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
             ('Chỉ tiêu khả năng sinh lợi', 'EBIT Margin (%)')),
     }
     
-    # === Banking metrics ===
-    nim = get_ratio_value(df_row,
+    # === Banking metrics (best-effort; not all symbols/periods will have these) ===
+    nim = get_ratio_value(
+        df_row,
         ('Profitability Ratios', 'NIM (%)'),
-        ('Chỉ tiêu khả năng sinh lợi', 'NIM (%)'))
+        ('Chỉ tiêu khả năng sinh lợi', 'NIM (%)'),
+        default=None,
+    )
+    cof = get_ratio_value(
+        df_row,
+        ('Profitability Ratios', 'COF (%)'),
+        ('Chỉ tiêu khả năng sinh lợi', 'COF (%)'),
+        ('Liquidity Ratios', 'COF (%)'),
+        ('Chỉ tiêu thanh khoản', 'COF (%)'),
+        default=None,
+    )
+    casa_ratio = get_ratio_value(
+        df_row,
+        ('Liquidity Ratios', 'CASA (%)'),
+        ('Chỉ tiêu thanh khoản', 'CASA (%)'),
+        ('Profitability Ratios', 'CASA (%)'),
+        ('Chỉ tiêu khả năng sinh lợi', 'CASA (%)'),
+        default=None,
+    )
+    loan_to_deposit = get_ratio_value(
+        df_row,
+        ('Liquidity Ratios', 'LDR (%)'),
+        ('Chỉ tiêu thanh khoản', 'LDR (%)'),
+        ('Liquidity Ratios', 'Loan to Deposit (%)'),
+        ('Chỉ tiêu thanh khoản', 'Loan to Deposit (%)'),
+        default=None,
+    )
+    npl_ratio = get_ratio_value(
+        df_row,
+        ('Asset Quality Ratios', 'NPL (%)'),
+        ('Chỉ tiêu chất lượng tài sản', 'NPL (%)'),
+        ('Profitability Ratios', 'NPL (%)'),
+        ('Chỉ tiêu khả năng sinh lợi', 'NPL (%)'),
+        default=None,
+    )
+    cir = get_ratio_value(
+        df_row,
+        ('Efficiency Ratios', 'CIR (%)'),
+        ('Chỉ tiêu hiệu quả hoạt động', 'CIR (%)'),
+        ('Efficiency Ratios', 'C/I Ratio (%)'),
+        ('Chỉ tiêu hiệu quả hoạt động', 'C/I Ratio (%)'),
+        default=None,
+    )
 
     # Period label (for convenience)
     if period_type == 'quarter' and quarter:
@@ -344,14 +387,14 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
     ]):
         cursor.execute(
             '''
-            INSERT OR REPLACE INTO ratio_wide (
+            INSERT INTO ratio_wide (
                 symbol, period_type, year, quarter, period_label,
                 pe, pb, ps, p_cash_flow, ev_ebitda, market_cap, outstanding_share, eps, bvps,
                 roe, roa, roic, net_profit_margin, gross_profit_margin, ebit_margin,
                 current_ratio, quick_ratio, cash_ratio, interest_coverage,
                 financial_leverage, debt_equity, fixed_asset_to_equity, owners_equity_charter_capital,
                 asset_turnover, inventory_turnover,
-                nim,
+                nim, cof, casa_ratio, loan_to_deposit, npl_ratio, cir,
                 fetched_at
             ) VALUES (
                 ?, ?, ?, ?, ?,
@@ -360,9 +403,44 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?,
-                ?,
+                ?, ?, ?, ?, ?, ?,
                 CURRENT_TIMESTAMP
             )
+            ON CONFLICT(symbol, period_type, year, quarter)
+            DO UPDATE SET
+                period_label = excluded.period_label,
+                pe = COALESCE(excluded.pe, ratio_wide.pe),
+                pb = COALESCE(excluded.pb, ratio_wide.pb),
+                ps = COALESCE(excluded.ps, ratio_wide.ps),
+                p_cash_flow = COALESCE(excluded.p_cash_flow, ratio_wide.p_cash_flow),
+                ev_ebitda = COALESCE(excluded.ev_ebitda, ratio_wide.ev_ebitda),
+                market_cap = COALESCE(excluded.market_cap, ratio_wide.market_cap),
+                outstanding_share = COALESCE(excluded.outstanding_share, ratio_wide.outstanding_share),
+                eps = COALESCE(excluded.eps, ratio_wide.eps),
+                bvps = COALESCE(excluded.bvps, ratio_wide.bvps),
+                roe = COALESCE(excluded.roe, ratio_wide.roe),
+                roa = COALESCE(excluded.roa, ratio_wide.roa),
+                roic = COALESCE(excluded.roic, ratio_wide.roic),
+                net_profit_margin = COALESCE(excluded.net_profit_margin, ratio_wide.net_profit_margin),
+                gross_profit_margin = COALESCE(excluded.gross_profit_margin, ratio_wide.gross_profit_margin),
+                ebit_margin = COALESCE(excluded.ebit_margin, ratio_wide.ebit_margin),
+                current_ratio = COALESCE(excluded.current_ratio, ratio_wide.current_ratio),
+                quick_ratio = COALESCE(excluded.quick_ratio, ratio_wide.quick_ratio),
+                cash_ratio = COALESCE(excluded.cash_ratio, ratio_wide.cash_ratio),
+                interest_coverage = COALESCE(excluded.interest_coverage, ratio_wide.interest_coverage),
+                financial_leverage = COALESCE(excluded.financial_leverage, ratio_wide.financial_leverage),
+                debt_equity = COALESCE(excluded.debt_equity, ratio_wide.debt_equity),
+                fixed_asset_to_equity = COALESCE(excluded.fixed_asset_to_equity, ratio_wide.fixed_asset_to_equity),
+                owners_equity_charter_capital = COALESCE(excluded.owners_equity_charter_capital, ratio_wide.owners_equity_charter_capital),
+                asset_turnover = COALESCE(excluded.asset_turnover, ratio_wide.asset_turnover),
+                inventory_turnover = COALESCE(excluded.inventory_turnover, ratio_wide.inventory_turnover),
+                nim = COALESCE(excluded.nim, ratio_wide.nim),
+                cof = COALESCE(excluded.cof, ratio_wide.cof),
+                casa_ratio = COALESCE(excluded.casa_ratio, ratio_wide.casa_ratio),
+                loan_to_deposit = COALESCE(excluded.loan_to_deposit, ratio_wide.loan_to_deposit),
+                npl_ratio = COALESCE(excluded.npl_ratio, ratio_wide.npl_ratio),
+                cir = COALESCE(excluded.cir, ratio_wide.cir),
+                fetched_at = excluded.fetched_at
             ''',
             (
                 symbol.upper(),
@@ -402,6 +480,11 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
                 ext_data['inventory_turnover'],
 
                 nim,
+                cof,
+                casa_ratio,
+                loan_to_deposit,
+                npl_ratio,
+                cir,
             ),
         )
 
