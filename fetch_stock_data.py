@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Fetch Financial Data V3 - Optimized 3-Table Schema
-Saves to: stock_ratios_core, stock_ratios_extended, stock_ratios_banking
+Fetch Financial Data - Wide Ratio Schema
+Saves to: ratio_wide
 """
 
 import sqlite3
@@ -16,6 +16,13 @@ from dotenv import load_dotenv
 import time
 import re
 
+# Ensure project root import works when script is executed directly
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+from backend.db_path import resolve_stocks_db_path
+
 # Load environment variables
 load_dotenv()
 
@@ -25,6 +32,47 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def has_value(value) -> bool:
+    """Return True when value is present (including numeric zero)."""
+    if value is None:
+        return False
+    return pd.notna(value)
+
+
+def get_vnstock_keys() -> list[str]:
+    """Load vnstock API keys from environment.
+
+    Supported env vars:
+    - VNSTOCK_API_KEY: single key
+    - VNSTOCK_API_KEYS: comma-separated keys
+    """
+    keys: list[str] = []
+
+    single_key = os.getenv('VNSTOCK_API_KEY', '').strip()
+    if single_key:
+        keys.append(single_key)
+
+    key_list_raw = os.getenv('VNSTOCK_API_KEYS', '').strip()
+    if key_list_raw:
+        keys.extend([k.strip() for k in key_list_raw.split(',') if k.strip()])
+
+    # Keep unique order
+    seen = set()
+    unique_keys: list[str] = []
+    for key in keys:
+        if key not in seen:
+            unique_keys.append(key)
+            seen.add(key)
+
+    return unique_keys
+
+
+def set_vnstock_key(api_key: str) -> None:
+    """Set active vnstock key for current process."""
+    if api_key:
+        os.environ['VNSTOCK_API_KEY'] = api_key
 
 def check_rate_limit_message(text):
     """Check if text contains rate limit warning and extract wait time"""
@@ -48,12 +96,12 @@ def check_rate_limit_message(text):
     return 0
 
 def init_database_v3(conn):
-    """Initialize database with optimized 3-table schema"""
+    """Initialize database with wide ratio schema (single source of truth)."""
     cursor = conn.cursor()
     
     # Companies table (existing)
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS companies (
+        CREATE TABLE IF NOT EXISTS company (
             symbol TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             exchange TEXT,
@@ -65,112 +113,75 @@ def init_database_v3(conn):
         )
     ''')
     
-    # Table 1: Core metrics (always populated, high query frequency)
+    # Wide ratio table (mirrors the UI/API needs; single source for ratios)
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS stock_ratios_core (
+        CREATE TABLE IF NOT EXISTS ratio_wide (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol TEXT NOT NULL,
             period_type TEXT NOT NULL,
             year INTEGER NOT NULL,
             quarter INTEGER,
-            
-            -- Profitability (core)
+            period_label TEXT,
+
+            pe REAL,
+            pb REAL,
+            ps REAL,
+            p_cash_flow REAL,
+            ev_ebitda REAL,
+            market_cap REAL,
+            outstanding_share REAL,
+            eps REAL,
+            bvps REAL,
+
             roe REAL,
             roa REAL,
             roic REAL,
             net_profit_margin REAL,
-            
-            -- Per share (core)
-            eps REAL,
-            bvps REAL,
-            
-            -- Valuation (core)
-            pe REAL,
-            pb REAL,
-            
-            -- Market data
-            market_cap REAL,
-            outstanding_shares REAL,
-            
-            -- Capital structure (core)
-            financial_leverage REAL,
-            equity_to_charter_capital REAL,
-            
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            
-            UNIQUE(symbol, period_type, year, quarter)
-        )
-    ''')
-    
-    # Table 2: Extended metrics (less frequently queried)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS stock_ratios_extended (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol TEXT NOT NULL,
-            period_type TEXT NOT NULL,
-            year INTEGER NOT NULL,
-            quarter INTEGER,
-            
-            -- Capital structure (extended)
-            debt_equity REAL,
-            fixed_asset_to_equity REAL,
-            
-            -- Valuation (extended)
-            ps REAL,
-            p_cashflow REAL,
-            ev_ebitda REAL,
-            
-            -- Liquidity (extended)
+            gross_profit_margin REAL,
+            ebit_margin REAL,
+
             current_ratio REAL,
             quick_ratio REAL,
             cash_ratio REAL,
             interest_coverage REAL,
-            
-            -- Efficiency (extended)
+
+            financial_leverage REAL,
+            debt_equity REAL,
+            total_borrowings_equity REAL,
+            fixed_asset_to_equity REAL,
+            owners_equity_charter_capital REAL,
+
             asset_turnover REAL,
             inventory_turnover REAL,
-            
-            -- Profitability (extended)
-            gross_profit_margin REAL,
-            operating_profit_margin REAL,
-            
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            
-            UNIQUE(symbol, period_type, year, quarter)
-        )
-    ''')
-    
-    # Table 3: Banking-specific (only 27 stocks)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS stock_ratios_banking (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol TEXT NOT NULL,
-            period_type TEXT NOT NULL,
-            year INTEGER NOT NULL,
-            quarter INTEGER,
-            
-            -- Banking metrics
+            dso REAL,
+            dio REAL,
+            dpo REAL,
+            cash_cycle REAL,
+            dividend_yield REAL,
+
+            ebitda REAL,
+            ebit REAL,
+
             nim REAL,
-            
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            
+            cof REAL,
+            casa_ratio REAL,
+            loan_to_deposit REAL,
+            npl_ratio REAL,
+            loan_loss_reserve REAL,
+            cir REAL,
+
+            fetched_at TEXT,
+
             UNIQUE(symbol, period_type, year, quarter)
         )
     ''')
-    
-    # Create indexes
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_core_symbol_year ON stock_ratios_core(symbol, year DESC, quarter DESC)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_core_period ON stock_ratios_core(period_type, year DESC, quarter DESC)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_core_roe ON stock_ratios_core(roe) WHERE roe IS NOT NULL')
-    
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_ext_symbol_year ON stock_ratios_extended(symbol, year DESC, quarter DESC)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_banking_symbol ON stock_ratios_banking(symbol, year DESC, quarter DESC)')
+
+    # Indexes for common lookups
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_ratio_wide_lookup ON ratio_wide(symbol, period_type, year DESC, quarter DESC)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_ratio_wide_pe ON ratio_wide(pe) WHERE pe IS NOT NULL')
     
     conn.commit()
-    logger.info("✅ Database V3 initialized successfully.")
+    logger.info("✅ Wide ratio schema initialized successfully.")
 
 
 def get_ratio_value(df_row, *key_variants, default=None):
@@ -182,7 +193,7 @@ def get_ratio_value(df_row, *key_variants, default=None):
         for key in key_variants:
             if key in df_row.index:
                 val = df_row[key]
-                if pd.notna(val) and val != 0.0:  # Skip 0.0 values
+                if has_value(val):
                     if isinstance(val, (int, float)):
                         return float(val)
                     return val
@@ -192,7 +203,7 @@ def get_ratio_value(df_row, *key_variants, default=None):
 
 
 def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: int, df_row):
-    """Save ratio data to 3 optimized tables"""
+    """Save ratio data to ratio_wide."""
     cursor = conn.cursor()
     
     # === Table 1: Core metrics ===
@@ -249,24 +260,7 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
             ('Chỉ tiêu cơ cấu nguồn vốn', "Owners' Equity/Charter Capital")),
     }
     
-    # Insert core data (skip if all major metrics are NULL)
-    if core_data['roe'] or core_data['roa'] or core_data['eps']:
-        cursor.execute('''
-            INSERT OR REPLACE INTO stock_ratios_core (
-                symbol, period_type, year, quarter,
-                roe, roa, roic, net_profit_margin,
-                eps, bvps, pe, pb,
-                market_cap, outstanding_shares,
-                financial_leverage, equity_to_charter_capital,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (
-            core_data['symbol'], core_data['period_type'], core_data['year'], core_data['quarter'],
-            core_data['roe'], core_data['roa'], core_data['roic'], core_data['net_profit_margin'],
-            core_data['eps'], core_data['bvps'], core_data['pe'], core_data['pb'],
-            core_data['market_cap'], core_data['outstanding_shares'],
-            core_data['financial_leverage'], core_data['equity_to_charter_capital']
-        ))
+    # === Extended metrics ===
     
     # === Table 2: Extended metrics ===
     ext_data = {
@@ -325,45 +319,91 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
             ('Chỉ tiêu khả năng sinh lợi', 'EBIT Margin (%)')),
     }
     
-    # Insert extended data (only if has data)
-    if any([
-        ext_data['debt_equity'], ext_data['fixed_asset_to_equity'], 
-        ext_data['ps'], ext_data['p_cashflow'], ext_data['ev_ebitda'],
-        ext_data['current_ratio'], ext_data['quick_ratio'], ext_data['cash_ratio'],
-        ext_data['asset_turnover'], ext_data['inventory_turnover'],
-        ext_data['gross_profit_margin'], ext_data['operating_profit_margin']
-    ]):
-        cursor.execute('''
-            INSERT OR REPLACE INTO stock_ratios_extended (
-                symbol, period_type, year, quarter,
-                debt_equity, fixed_asset_to_equity, ps, p_cashflow, ev_ebitda,
-                current_ratio, quick_ratio, cash_ratio, interest_coverage,
-                asset_turnover, inventory_turnover,
-                gross_profit_margin, operating_profit_margin,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (
-            ext_data['symbol'], ext_data['period_type'], ext_data['year'], ext_data['quarter'],
-            ext_data['debt_equity'], ext_data['fixed_asset_to_equity'], ext_data['ps'], ext_data['p_cashflow'], ext_data['ev_ebitda'],
-            ext_data['current_ratio'], ext_data['quick_ratio'], ext_data['cash_ratio'], ext_data['interest_coverage'],
-            ext_data['asset_turnover'], ext_data['inventory_turnover'],
-            ext_data['gross_profit_margin'], ext_data['operating_profit_margin']
-        ))
-    
-    # === Table 3: Banking metrics ===
+    # === Banking metrics ===
     nim = get_ratio_value(df_row,
         ('Profitability Ratios', 'NIM (%)'),
         ('Chỉ tiêu khả năng sinh lợi', 'NIM (%)'))
-    
-    # Only insert if NIM exists (banking stocks only)
-    if nim:
-        cursor.execute('''
-            INSERT OR REPLACE INTO stock_ratios_banking (
-                symbol, period_type, year, quarter,
+
+    # Period label (for convenience)
+    if period_type == 'quarter' and quarter:
+        period_label = f"Q{int(quarter)} '{str(year)[-2:]}"
+    else:
+        period_label = str(year)
+
+    # Insert into ratio_wide (single source of truth)
+    # Only write a row when we have at least some meaningful metrics.
+    if any([
+        has_value(core_data['roe']),
+        has_value(core_data['roa']),
+        has_value(core_data['pe']),
+        has_value(core_data['pb']),
+        has_value(core_data['eps']),
+        has_value(ext_data['ps']),
+        has_value(ext_data['current_ratio']),
+        has_value(nim),
+    ]):
+        cursor.execute(
+            '''
+            INSERT OR REPLACE INTO ratio_wide (
+                symbol, period_type, year, quarter, period_label,
+                pe, pb, ps, p_cash_flow, ev_ebitda, market_cap, outstanding_share, eps, bvps,
+                roe, roa, roic, net_profit_margin, gross_profit_margin, ebit_margin,
+                current_ratio, quick_ratio, cash_ratio, interest_coverage,
+                financial_leverage, debt_equity, fixed_asset_to_equity, owners_equity_charter_capital,
+                asset_turnover, inventory_turnover,
                 nim,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (symbol.upper(), period_type, year, quarter, nim))
+                fetched_at
+            ) VALUES (
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?,
+                ?,
+                CURRENT_TIMESTAMP
+            )
+            ''',
+            (
+                symbol.upper(),
+                period_type,
+                int(year),
+                int(quarter) if quarter is not None else None,
+                period_label,
+
+                core_data['pe'],
+                core_data['pb'],
+                ext_data['ps'],
+                ext_data['p_cashflow'],
+                ext_data['ev_ebitda'],
+                core_data['market_cap'],
+                core_data['outstanding_shares'],
+                core_data['eps'],
+                core_data['bvps'],
+
+                core_data['roe'],
+                core_data['roa'],
+                core_data['roic'],
+                core_data['net_profit_margin'],
+                ext_data['gross_profit_margin'],
+                ext_data['operating_profit_margin'],
+
+                ext_data['current_ratio'],
+                ext_data['quick_ratio'],
+                ext_data['cash_ratio'],
+                ext_data['interest_coverage'],
+
+                core_data['financial_leverage'],
+                ext_data['debt_equity'],
+                ext_data['fixed_asset_to_equity'],
+                core_data['equity_to_charter_capital'],
+
+                ext_data['asset_turnover'],
+                ext_data['inventory_turnover'],
+
+                nim,
+            ),
+        )
 
 
 def fetch_stock_ratios(stock, symbol: str, period_type: str, conn):
@@ -402,13 +442,17 @@ def fetch_stock_ratios(stock, symbol: str, period_type: str, conn):
         return 0
 
 
-def fetch_stock(symbol: str, db_path: str = 'stocks.db'):
+def fetch_stock(symbol: str, db_path: str = None, api_key: str | None = None):
     """Fetch all financial data for a single stock"""
     logger.info(f"\n{'='*60}")
     logger.info(f"📊 Fetching data for {symbol}")
     logger.info(f"{'='*60}")
     
-    conn = sqlite3.connect(db_path)
+    resolved_db = db_path or resolve_stocks_db_path()
+    if api_key:
+        set_vnstock_key(api_key)
+
+    conn = sqlite3.connect(resolved_db)
     init_database_v3(conn)
     
     try:
@@ -430,7 +474,7 @@ def fetch_stock(symbol: str, db_path: str = 'stocks.db'):
         conn.close()
 
 
-def fetch_batch(symbols: list, db_path: str = 'stocks.db', delay: float = 1.0):
+def fetch_batch(symbols: list, db_path: str = None, delay: float = 1.0):
     """Fetch data for multiple stocks"""
     logger.info(f"\n{'='*60}")
     logger.info(f"🚀 Batch fetch started: {len(symbols)} stocks")
@@ -438,6 +482,12 @@ def fetch_batch(symbols: list, db_path: str = 'stocks.db', delay: float = 1.0):
     
     success_count = 0
     fail_count = 0
+    vnstock_keys = get_vnstock_keys()
+
+    if vnstock_keys:
+        logger.info(f"🔑 Loaded {len(vnstock_keys)} vnstock API key(s) for rotation")
+    else:
+        logger.warning("⚠️ No VNSTOCK_API_KEY(S) found in environment; vnstock requests may fail")
     
     for i, symbol in enumerate(symbols, 1):
         retry_count = 0
@@ -445,8 +495,15 @@ def fetch_batch(symbols: list, db_path: str = 'stocks.db', delay: float = 1.0):
         
         while retry_count < max_retries:
             try:
+                # Rotate key by stock index + retry count
+                active_key = None
+                if vnstock_keys:
+                    key_index = (i - 1 + retry_count) % len(vnstock_keys)
+                    active_key = vnstock_keys[key_index]
+                    set_vnstock_key(active_key)
+
                 logger.info(f"[{i}/{len(symbols)}] Processing {symbol}...")
-                fetch_stock(symbol, db_path)
+                fetch_stock(symbol, db_path, api_key=active_key)
                 success_count += 1
                 
                 # Rate limiting
@@ -487,7 +544,7 @@ if __name__ == '__main__':
     parser.add_argument('--symbol', type=str, help='Stock symbol to fetch')
     parser.add_argument('--symbols', type=str, nargs='+', help='Multiple stock symbols')
     parser.add_argument('--file', type=str, help='File containing stock symbols (one per line)')
-    parser.add_argument('--db', type=str, default='stocks.db', help='Database path')
+    parser.add_argument('--db', type=str, default=resolve_stocks_db_path(), help='Database path')
     parser.add_argument('--delay', type=float, default=1.0, help='Delay between requests (seconds)')
     
     args = parser.parse_args()

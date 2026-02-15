@@ -49,3 +49,5 @@ node_modules/
 # Database files
 stocks.db
 *.db
+*.db-wal
+*.db-shm

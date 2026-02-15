@@ -184,7 +184,7 @@ class StockDataProvider:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT industry FROM stock_overview WHERE symbol = ?", (symbol_upper,))
+            cursor.execute("SELECT industry FROM overview WHERE symbol = ?", (symbol_upper,))
             row = cursor.fetchone()
             conn.close()
             return row[0] if row else "Unknown"
@@ -200,7 +200,7 @@ class StockDataProvider:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM companies WHERE symbol = ?", (symbol_upper,))
+            cursor.execute("SELECT name FROM company WHERE symbol = ?", (symbol_upper,))
             row = cursor.fetchone()
             conn.close()
             return row[0] if row else symbol_upper
@@ -214,7 +214,7 @@ class StockDataProvider:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT symbol FROM stock_overview")
+            cursor.execute("SELECT symbol FROM overview")
             symbols = [row[0].upper() for row in cursor.fetchall()]
             conn.close()
             return symbols
@@ -265,7 +265,7 @@ class StockDataProvider:
         return None
 
     def _get_data_from_db(self, symbol, period):
-        """Fetch stock data from SQLite database (stock_overview table)"""
+        """Fetch stock data from SQLite database (overview table)"""
         if not os.path.exists(self.db_path):
             return None
 
@@ -274,8 +274,8 @@ class StockDataProvider:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # Query stock_overview table which has pre-calculated metrics
-            cursor.execute("SELECT * FROM stock_overview WHERE symbol = ?", (symbol,))
+            # Query overview table which has pre-calculated metrics
+            cursor.execute("SELECT * FROM overview WHERE symbol = ?", (symbol,))
             row = cursor.fetchone()
 
             data = {}
@@ -288,7 +288,7 @@ class StockDataProvider:
                 # Ensure name is present (join with companies if needed, but overview has some info)
 
                 # Get additional company info (description)
-                cursor.execute("SELECT name, company_profile FROM companies WHERE symbol = ?", (symbol,))
+                cursor.execute("SELECT name, company_profile FROM company WHERE symbol = ?", (symbol,))
                 comp_row = cursor.fetchone()
 
                 if comp_row:
@@ -303,14 +303,14 @@ class StockDataProvider:
                     data['overview'] = {'description': "No description available."}
 
                 # Enrich banking metrics from normalized wide ratio table (if available)
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='financial_ratio_wide_periods'")
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ratio_wide'")
                 has_ratio_wide = cursor.fetchone() is not None
 
                 if has_ratio_wide:
                     cursor.execute(
                         """
                         SELECT nim, casa_ratio, npl_ratio, loan_to_deposit, cof, cir, debt_equity
-                        FROM financial_ratio_wide_periods
+                                                FROM ratio_wide
                         WHERE symbol = ?
                           AND period_type = 'quarter'
                         ORDER BY year DESC, quarter DESC
@@ -343,7 +343,7 @@ class StockDataProvider:
                             data['debt_to_equity'] = bank_row['debt_equity']
 
                 # Fallback for key metrics from summary snapshot
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='company_ratio_summary_snapshot'")
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ratio_snap'")
                 has_summary_snapshot = cursor.fetchone() is not None
 
                 if has_summary_snapshot and (
@@ -355,7 +355,7 @@ class StockDataProvider:
                     cursor.execute(
                         """
                         SELECT net_profit_growth, de
-                        FROM company_ratio_summary_snapshot
+                        FROM ratio_snap
                         WHERE symbol = ?
                         ORDER BY year_report DESC, length_report DESC
                         LIMIT 1
@@ -453,7 +453,7 @@ class StockDataProvider:
             cursor = conn.cursor()
             
             # 1. Get industry of the symbol
-            cursor.execute("SELECT industry FROM stock_overview WHERE symbol = ?", (symbol,))
+            cursor.execute("SELECT industry FROM overview WHERE symbol = ?", (symbol,))
             row = cursor.fetchone()
             industry = row['industry'] if row and row['industry'] else None
             
@@ -469,8 +469,8 @@ class StockDataProvider:
             # Exclude current symbol
             cursor.execute("""
                 SELECT s.symbol, c.name, s.industry, s.current_price, s.pe, s.pb, s.roe, s.roa, s.market_cap, s.net_profit_margin, s.profit_growth
-                FROM stock_overview s
-                LEFT JOIN companies c ON s.symbol = c.symbol
+                FROM overview s
+                LEFT JOIN company c ON s.symbol = c.symbol
                 WHERE s.industry = ? AND s.symbol != ?
                 ORDER BY s.market_cap DESC
                 LIMIT 10

@@ -17,7 +17,7 @@ def resolve_table_name(conn: sqlite3.Connection, preferred: str, legacy: str) ->
 def ensure_companies_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         '''
-        CREATE TABLE IF NOT EXISTS companies (
+        CREATE TABLE IF NOT EXISTS company (
             symbol TEXT PRIMARY KEY,
             name TEXT,
             exchange TEXT,
@@ -32,7 +32,7 @@ def ensure_companies_table(conn: sqlite3.Connection) -> None:
 def ensure_stock_overview_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         '''
-        CREATE TABLE IF NOT EXISTS stock_overview (
+        CREATE TABLE IF NOT EXISTS overview (
             symbol TEXT PRIMARY KEY,
             exchange TEXT,
             industry TEXT,
@@ -86,15 +86,16 @@ def main() -> None:
     conn.execute('PRAGMA journal_mode=WAL')
     conn.execute("ATTACH DATABASE ? AS olddb", (args.old_db,))
 
-    ratio_wide_table = resolve_table_name(conn, 'stock_ratio_wide_periods', 'financial_ratio_wide_periods')
-    ratio_summary_table = resolve_table_name(conn, 'stock_company_ratio_snapshot', 'company_ratio_summary_snapshot')
+    # New unified short schema names (fallback to legacy names if needed)
+    ratio_wide_table = resolve_table_name(conn, 'ratio_wide', 'financial_ratio_wide_periods')
+    ratio_summary_table = resolve_table_name(conn, 'ratio_snap', 'company_ratio_summary_snapshot')
 
     ensure_companies_table(conn)
     ensure_stock_overview_table(conn)
 
     conn.execute(
         '''
-        INSERT OR REPLACE INTO companies(symbol, name, exchange, industry, company_profile, updated_at)
+        INSERT OR REPLACE INTO company(symbol, name, exchange, industry, company_profile, updated_at)
         SELECT symbol, name, exchange, industry, company_profile, updated_at
         FROM olddb.companies
         '''
@@ -102,7 +103,7 @@ def main() -> None:
 
     conn.execute(
         '''
-        INSERT OR REPLACE INTO stock_overview(
+        INSERT OR REPLACE INTO overview(
             symbol, exchange, industry, pe, pb, ps, pcf, ev_ebitda, eps_ttm, bvps,
             dividend_per_share, roe, roa, roic, net_profit_margin, profit_growth,
             gross_margin, operating_margin, current_ratio, quick_ratio, cash_ratio,
@@ -168,9 +169,9 @@ def main() -> None:
     cur = conn.cursor()
     cur.execute(f'SELECT COUNT(*) FROM {ratio_wide_table} WHERE nim IS NOT NULL')
     nim_rows = cur.fetchone()[0]
-    cur.execute('SELECT COUNT(*) FROM companies')
+    cur.execute('SELECT COUNT(*) FROM company')
     companies_count = cur.fetchone()[0]
-    cur.execute('SELECT COUNT(*) FROM stock_overview')
+    cur.execute('SELECT COUNT(*) FROM overview')
     overview_count = cur.fetchone()[0]
 
     conn.commit()
@@ -179,7 +180,7 @@ def main() -> None:
     print('backfill_done')
     print('nim_non_null_rows', nim_rows)
     print('companies_rows', companies_count)
-    print('stock_overview_rows', overview_count)
+    print('overview_rows', overview_count)
 
 
 if __name__ == '__main__':

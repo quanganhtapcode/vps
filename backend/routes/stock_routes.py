@@ -343,7 +343,7 @@ def api_historical_chart_data(symbol):
                     conn.row_factory = sqlite3.Row
                     cursor = conn.cursor()
 
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='financial_ratio_wide_periods'")
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ratio_wide'")
                     has_ratio_wide = cursor.fetchone() is not None
 
                     if has_ratio_wide:
@@ -351,7 +351,7 @@ def api_historical_chart_data(symbol):
                             cursor.execute(
                                 """
                                 SELECT year, quarter, nim, cof
-                                FROM financial_ratio_wide_periods
+                                                                FROM ratio_wide
                                 WHERE symbol = ?
                                   AND period_type = 'quarter'
                                   AND nim IS NOT NULL
@@ -386,7 +386,7 @@ def api_historical_chart_data(symbol):
                                     WHEN cof IS NOT NULL AND nim > 0 AND nim < 2 THEN nim * 4
                                     ELSE nim
                                 END) AS nim_year
-                                FROM financial_ratio_wide_periods
+                                                                FROM ratio_wide
                                 WHERE symbol = ?
                                   AND period_type = 'quarter'
                                   AND nim IS NOT NULL
@@ -598,7 +598,7 @@ def api_tickers():
         cursor = conn.cursor()
         cursor.execute("""
             SELECT symbol, name, industry, exchange
-            FROM companies
+            FROM company
             ORDER BY symbol
         """)
         rows = cursor.fetchall()
@@ -693,36 +693,170 @@ def api_revenue_profit(symbol):
     symbol = result
     
     try:
-        import sqlite3
-        # Database path relative to this file
-        # backend/routes/stock_routes.py -> backend/routes -> backend -> root -> stocks.db
-        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        db_path = os.path.join(root_dir, 'stocks.db')
-        
-        if not os.path.exists(db_path): return {"periods": [], "error": "Database not found"}
-        
+        provider = get_provider()
+        db_path = getattr(provider, 'db_path', None)
+
+        if not db_path or not os.path.exists(db_path):
+            return jsonify({"periods": [], "error": "Database not found"})
+
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT year, quarter, data FROM financial_statements WHERE symbol = ? AND report_type = 'income' AND period_type = ? ORDER BY year DESC, quarter DESC LIMIT 20", (symbol, period))
-        rows = cursor.fetchall()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='fin_stmt'")
+        has_financial_statements = cursor.fetchone() is not None
+
+        rows = []
+        if has_financial_statements:
+            cursor.execute(
+                """
+                SELECT year, quarter, data
+                                FROM fin_stmt
+                WHERE symbol = ?
+                  AND report_type = 'income'
+                  AND period_type = ?
+                ORDER BY year DESC, quarter DESC
+                LIMIT 24
+                """,
+                (symbol, period),
+            )
+            rows = cursor.fetchall()
         conn.close()
-        
+
+        revenue_key_hints = [
+            'revenue',
+            'doanh thu',
+            'net sales',
+            'sales',
+        ]
+        net_profit_key_hints = [
+            'attribute to parent company',
+            'net profit',
+            'net income',
+            'lợi nhuận sau thuế',
+            'profit after tax',
+        ]
+        net_margin_key_hints = [
+            'net profit margin',
+            'biên lợi nhuận ròng',
+        ]
+
+        def _safe_float(value):
+            try:
+                return float(value)
+            except Exception:
+                return None
+
+        def _pick_metric(data_dict, hints, reject_tokens=None):
+            reject_tokens = reject_tokens or []
+            for key, value in data_dict.items():
+                key_lower = str(key).lower()
+                if any(token in key_lower for token in reject_tokens):
+                    continue
+                if any(hint in key_lower for hint in hints):
+                    val = _safe_float(value)
+                    if val is not None:
+                        return val
+            return None
+
         periods = []
         for year, quarter, data_json in rows:
             try:
-                data = json.loads(data_json)
-                revenue = data.get('Revenue (Bn. VND)') or data.get('Sales') or 0
-                net_profit = data.get('Attribute to parent company (Bn. VND)') or data.get('Net Profit') or 0
-                net_margin = round((net_profit / revenue) * 100, 2) if revenue > 0 else 0
+                data = json.loads(data_json) if data_json else {}
+
+                revenue = _pick_metric(
+                    data,
+                    revenue_key_hints,
+                    reject_tokens=['yoy', '%', 'growth', 'margin'],
+                )
+                net_profit = _pick_metric(
+                    data,
+                    net_profit_key_hints,
+                    reject_tokens=['yoy', '%', 'growth', 'margin'],
+                )
+                net_margin = _pick_metric(data, net_margin_key_hints)
+
+                if revenue is None:
+                    continue
+
+                # Normalize revenue to billions for chart display.
+                # If value is already in Bn it is typically < 1,000,000.
+                revenue_bn = (revenue / 1_000_000_000) if abs(revenue) > 1_000_000 else revenue
+
+                if net_margin is None and net_profit is not None and revenue not in (0, None):
+                    net_margin = (net_profit / revenue) * 100
+
+                q = int(quarter or 0)
                 periods.append({
-                    "period": f"{year} Q{quarter}",
-                    "revenue": round(revenue / 1_000_000_000, 2) if revenue else 0, # Assuming data in DB is full value
-                    "netMargin": net_margin,
-                    "year": year, "quarter": quarter
+                    "period": f"{year}" if period == 'year' else f"{year} Q{q}",
+                    "revenue": round(revenue_bn, 2),
+                    "netMargin": round(float(net_margin), 2) if net_margin is not None else 0,
+                    "year": int(year),
+                    "quarter": q,
                 })
-            except: continue
-        periods.reverse()
-        return jsonify({"periods": periods})
+            except Exception:
+                continue
+
+        if not periods:
+            try:
+                stock = Vnstock().stock(symbol=symbol, source='VCI')
+                income_df = stock.finance.income_statement(period=period, lang='en', dropna=True)
+                if income_df is None or income_df.empty:
+                    income_df = stock.finance.income_statement(period=period, lang='vn', dropna=True)
+
+                if income_df is not None and not income_df.empty:
+                    year_col = None
+                    quarter_col = None
+                    for col in income_df.columns:
+                        col_text = str(col)
+                        if 'yearReport' in col_text or col_text.lower() == 'year':
+                            year_col = col
+                        if 'lengthReport' in col_text or col_text.lower() == 'quarter':
+                            quarter_col = col
+
+                    if year_col:
+                        sort_cols = [year_col]
+                        sort_dirs = [True]
+                        if period == 'quarter' and quarter_col:
+                            sort_cols.append(quarter_col)
+                            sort_dirs.append(True)
+                        income_df = income_df.sort_values(sort_cols, ascending=sort_dirs)
+
+                    for _, row in income_df.tail(24).iterrows():
+                        row_dict = row.to_dict()
+                        revenue = _pick_metric(
+                            row_dict,
+                            revenue_key_hints,
+                            reject_tokens=['yoy', '%', 'growth', 'margin'],
+                        )
+                        net_profit = _pick_metric(
+                            row_dict,
+                            net_profit_key_hints,
+                            reject_tokens=['yoy', '%', 'growth', 'margin'],
+                        )
+                        net_margin = _pick_metric(row_dict, net_margin_key_hints)
+
+                        if revenue is None:
+                            continue
+
+                        revenue_bn = (revenue / 1_000_000_000) if abs(revenue) > 1_000_000 else revenue
+                        if net_margin is None and net_profit is not None and revenue not in (0, None):
+                            net_margin = (net_profit / revenue) * 100
+
+                        y_raw = row.get(year_col) if year_col is not None else datetime.now().year
+                        q_raw = row.get(quarter_col) if quarter_col is not None else 0
+                        y = int(_safe_float(y_raw) or datetime.now().year)
+                        q = int(_safe_float(q_raw) or 0)
+
+                        periods.append({
+                            "period": f"{y}" if period == 'year' else f"{y} Q{q}",
+                            "revenue": round(revenue_bn, 2),
+                            "netMargin": round(float(net_margin), 2) if net_margin is not None else 0,
+                            "year": y,
+                            "quarter": q,
+                        })
+            except Exception as live_exc:
+                logger.warning(f"Revenue live fallback failed for {symbol}: {live_exc}")
+
+        periods.sort(key=lambda item: (item['year'], item.get('quarter', 0)))
         return jsonify({"periods": periods})
     except Exception as ex:
         logger.error(f"Error fetching revenue/profit for {symbol}: {ex}")
@@ -735,66 +869,123 @@ def api_valuation(symbol):
     Simplified implementation to support the frontend UI.
     """
     try:
-        data = request.json
-        current_price = data.get('currentPrice', 0)
-        
-        # In a real implementation, we would fetch fresh financial data here.
-        # For now, we will use simplified logic or placeholders to avoid 500 errors.
-        
-        # Try to get some real metrics if possible from provider
+        is_valid, clean_symbol = validate_stock_symbol(symbol)
+        if not is_valid:
+            return jsonify({'success': False, 'error': clean_symbol}), 400
+
+        data = request.get_json(silent=True) or {}
+
+        def to_float(value, default=0.0):
+            try:
+                if value is None or pd.isna(value):
+                    return default
+                return float(value)
+            except Exception:
+                return default
+
         provider = get_provider()
-        stock_data = provider.get_stock_data(symbol)
-        
-        eps = stock_data.get('eps', 0) or 0
-        pe = stock_data.get('pe', 0) or 0
-        pb = stock_data.get('pb', 0) or 0
-        book_value = stock_data.get('book_value', 0) or 0
-        
-        # 1. Graham Formula: V = sqrt(22.5 * EPS * BVPS)
-        graham = 0
-        if eps > 0 and book_value > 0:
-            graham = (22.5 * eps * book_value) ** 0.5
-            
-        # 2. P/E Comparable (Justified P/E)
-        # Simple assumption: Industry P/E average is ~15 (or use current PE if reasonable)
-        # Let's say we value at 15x EPS
-        justified_pe = eps * 15
-        
-        # 3. P/B Comparable
-        # Simple assumption: Industry P/B ~1.5
-        justified_pb = book_value * 1.5
-        
-        # 4. DCF Models (FCFE/FCFF) - Very simplified placeholders
-        # Assume intrinsic value is around current price +/- 20% based on growth
-        growth = data.get('revenueGrowth', 10) / 100
-        dcf_value = current_price * (1 + growth) # Naive placeholder
-        
+
+        stock_data = provider.get_stock_data(clean_symbol, period='quarter')
+        if not stock_data or not stock_data.get('success'):
+            stock_data = provider.get_stock_data(clean_symbol, period='year')
+
+        current_price = to_float(data.get('currentPrice'), 0.0)
+        if current_price <= 0:
+            current_price = to_float(stock_data.get('current_price'), 0.0)
+
+        eps = to_float(stock_data.get('eps_ttm'))
+        if eps <= 0:
+            eps = to_float(stock_data.get('eps'))
+        if eps <= 0:
+            eps = to_float(stock_data.get('earnings_per_share'))
+
+        bvps = to_float(stock_data.get('bvps'))
+        if bvps <= 0:
+            bvps = to_float(stock_data.get('book_value_per_share'))
+        if bvps <= 0:
+            total_equity = to_float(stock_data.get('total_equity'))
+            shares_outstanding = to_float(stock_data.get('shares_outstanding'))
+            if total_equity > 0 and shares_outstanding > 0:
+                bvps = total_equity / shares_outstanding
+
+        peers = provider.get_stock_peers(clean_symbol) or []
+        peer_pe_values = []
+        peer_pb_values = []
+
+        for peer in peers:
+            pe_val = to_float(peer.get('pe'))
+            pb_val = to_float(peer.get('pb'))
+
+            if 0 < pe_val <= 80:
+                peer_pe_values.append(pe_val)
+            if 0 < pb_val <= 20:
+                peer_pb_values.append(pb_val)
+
+        if peer_pe_values:
+            peer_pe_values.sort()
+            peer_pe = peer_pe_values[len(peer_pe_values) // 2]
+        else:
+            peer_pe = 15.0
+
+        if peer_pb_values:
+            peer_pb_values.sort()
+            peer_pb = peer_pb_values[len(peer_pb_values) // 2]
+        else:
+            peer_pb = 1.5
+
+        graham = 0.0
+        if eps > 0 and bvps > 0:
+            graham = float((22.5 * eps * bvps) ** 0.5)
+
+        justified_pe = float(eps * peer_pe) if eps > 0 else 0.0
+        justified_pb = float(bvps * peer_pb) if bvps > 0 else 0.0
+
+        growth = to_float(data.get('revenueGrowth'), 8.0) / 100
+        dcf_base = current_price if current_price > 0 else max(justified_pe, justified_pb, graham, 0)
+        dcf_value = float(dcf_base * (1 + growth)) if dcf_base > 0 else 0.0
+
         valuations = {
             'fcfe': dcf_value,
-            'fcff': dcf_value * 0.95, # FCFF usually lower/different
+            'fcff': dcf_value * 0.95,
             'justified_pe': justified_pe,
             'justified_pb': justified_pb,
-            'graham': graham
+            'graham': graham,
         }
-        
-        # Calculate Weighted Average
-        weights = data.get('modelWeights', {})
-        total_val = 0
-        total_weight = 0
-        
-        for k, weight in weights.items():
-            val = valuations.get(k, 0)
-            if val > 0 and weight > 0:
-                total_val += val * weight
-                total_weight += weight
-                
-        weighted_avg = total_val / total_weight if total_weight > 0 else 0
+
+        weights = data.get('modelWeights', {}) or {}
+        if not any(to_float(w) > 0 for w in weights.values()):
+            weights = {
+                'fcfe': 20,
+                'fcff': 20,
+                'justified_pe': 20,
+                'justified_pb': 20,
+                'graham': 20,
+            }
+
+        total_val = 0.0
+        total_weight = 0.0
+        for key, weight in weights.items():
+            val = to_float(valuations.get(key))
+            w = to_float(weight)
+            if val > 0 and w > 0:
+                total_val += val * w
+                total_weight += w
+
+        weighted_avg = (total_val / total_weight) if total_weight > 0 else 0.0
         valuations['weighted_average'] = weighted_avg
-        
+
         return jsonify({
             'success': True,
             'valuations': valuations,
-            'symbol': symbol
+            'symbol': clean_symbol,
+            'inputs': {
+                'current_price': current_price,
+                'eps_ttm': eps,
+                'bvps': bvps,
+                'peer_pe_used': peer_pe,
+                'peer_pb_used': peer_pb,
+                'peer_count': len(peers),
+            },
         })
 
     except Exception as e:
