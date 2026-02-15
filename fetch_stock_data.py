@@ -179,6 +179,12 @@ def init_database_v3(conn):
     # Indexes for common lookups
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_ratio_wide_lookup ON ratio_wide(symbol, period_type, year DESC, quarter DESC)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_ratio_wide_pe ON ratio_wide(pe) WHERE pe IS NOT NULL')
+
+    # Critical: enable UPSERT target for ON CONFLICT(symbol, period_type, year, quarter)
+    # Many existing DBs were created without a UNIQUE constraint; a UNIQUE INDEX is enough.
+    cursor.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS ux_ratio_wide_key ON ratio_wide(symbol, period_type, year, quarter)'
+    )
     
     conn.commit()
     logger.info("✅ Wide ratio schema initialized successfully.")
