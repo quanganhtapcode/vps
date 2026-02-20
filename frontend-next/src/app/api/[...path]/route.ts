@@ -46,14 +46,26 @@ export async function GET(
             );
         }
 
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
 
-        return NextResponse.json(data, {
-            headers: {
-                'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
-                'X-Proxy-Backend': BACKEND_API,
-            },
-        });
+        if (contentType.includes('application/json')) {
+            const data = await response.json();
+            return NextResponse.json(data, {
+                headers: {
+                    'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+                    'X-Proxy-Backend': BACKEND_API,
+                },
+            });
+        } else {
+            // Forward non-JSON responses (like files/streams/redirects) directly
+            const headers = new Headers(response.headers);
+            headers.set('X-Proxy-Backend', BACKEND_API);
+            return new NextResponse(response.body, {
+                status: response.status,
+                statusText: response.statusText,
+                headers,
+            });
+        }
     } catch (error) {
         console.error('API Proxy Error:', error);
         return NextResponse.json(
@@ -99,8 +111,20 @@ export async function POST(
             );
         }
 
-        const data = await response.json();
-        return NextResponse.json(data);
+        const contentType = response.headers.get('content-type') || '';
+
+        if (contentType.includes('application/json')) {
+            const data = await response.json();
+            return NextResponse.json(data);
+        } else {
+            // Forward non-JSON responses (files, etc) directly
+            const headers = new Headers(response.headers);
+            return new NextResponse(response.body, {
+                status: response.status,
+                statusText: response.statusText,
+                headers,
+            });
+        }
     } catch (error) {
         console.error('API Proxy POST Error:', error);
         return NextResponse.json(
