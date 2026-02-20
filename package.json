@@ -4,8 +4,9 @@
   "description": "Vietnamese Stock Valuation Tool",
   "main": "index.html",
   "scripts": {
-    "start": "python backend/server.py",
-    "dev": "python backend/server.py"
+    "start-backend": "python -m backend.server",
+    "start-frontend": "cd frontend-next && npm run dev",
+    "dev": "echo \"Vui lòng mở 2 terminal: 1 cái chạy 'npm run start-backend', 1 cái chạy 'npm run start-frontend'\""
   },
   "keywords": [
     "stock",

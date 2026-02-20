@@ -1,10 +1,9 @@
 import { Suspense } from 'react';
 import OverviewClient from './OverviewClient';
 import {
-  fetchAllIndices,
+  fetchVciIndices,
   fetchPEChart,
   INDEX_MAP,
-  MarketIndexData,
 } from '@/lib/api';
 
 export const revalidate = 30;
@@ -16,6 +15,13 @@ interface IndexData {
   change: number;
   percentChange: number;
   chartData: number[];
+  advances: number;
+  declines: number;
+  noChanges: number;
+  ceilings: number;
+  floors: number;
+  totalShares: number;
+  totalValue: number;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
@@ -37,7 +43,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 
 export default async function OverviewPage() {
   const [indicesResult, peResult] = await Promise.allSettled([
-    withTimeout(fetchAllIndices(), 2000),
+    withTimeout(fetchVciIndices(), 2000),
     withTimeout(fetchPEChart(), 2000),
   ]);
 
@@ -45,16 +51,25 @@ export default async function OverviewPage() {
   let initialIndices: IndexData[] = [];
 
   if (indicesResult.status === 'fulfilled' && indicesResult.value) {
-    const marketData = indicesResult.value;
+    const vciDataArray = indicesResult.value;
 
     const chartPromises = Object.entries(INDEX_MAP).map(async ([indexId, info]) => {
-      const data = marketData[indexId] as MarketIndexData | undefined;
-      if (!data) return null;
+      const vciData = vciDataArray.find((item) => item.symbol === info.vciSymbol);
+      if (!vciData) return null;
 
-      const currentIndex = data.CurrentIndex;
-      const prevIndex = data.PrevIndex;
-      const change = currentIndex - prevIndex;
-      const percent = prevIndex > 0 ? (change / prevIndex) * 100 : 0;
+      const currentIndex = vciData.price;
+      const prevIndex = vciData.refPrice;
+      const change = vciData.change;
+      const percent = vciData.changePercent;
+
+      const advances = vciData.totalStockIncrease;
+      const declines = vciData.totalStockDecline;
+      const noChanges = vciData.totalStockNoChange;
+      const ceilings = vciData.totalStockCeiling;
+      const floors = vciData.totalStockFloor;
+
+      const totalShares = vciData.totalShares;
+      const totalValue = vciData.totalValue;
 
       const chartData = [prevIndex, currentIndex].filter((v) => typeof v === 'number');
 
@@ -65,13 +80,22 @@ export default async function OverviewPage() {
         change,
         percentChange: percent,
         chartData,
+        advances,
+        declines,
+        noChanges,
+        ceilings,
+        floors,
+        totalShares,
+        totalValue,
       };
     });
 
     const chartsResults = await Promise.all(chartPromises);
     initialIndices = chartsResults.filter((r): r is IndexData => r !== null);
   } else {
-    console.error('Error fetching indices:', indicesResult.reason);
+    // Extract reason if the promise was rejected
+    const reason = indicesResult.status === 'rejected' ? indicesResult.reason : 'Unknown error';
+    console.error('Error fetching indices:', reason);
   }
 
   // Defer non-critical sections to client-side fetching for faster first paint

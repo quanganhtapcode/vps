@@ -204,6 +204,9 @@
     display: block;
     width: 100%;
     margin-top: 1.5rem;
+    /* Reserve space to prevent CLS when lazy-loaded tabs mount */
+    min-height: 600px;
+    contain: layout;
 }
 
 .leftColumn {

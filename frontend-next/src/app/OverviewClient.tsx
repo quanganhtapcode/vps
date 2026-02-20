@@ -7,20 +7,26 @@ import NewsSection from '@/components/NewsSection';
 
 import { GoldPrice, Lottery, MarketPulse } from '@/components/Sidebar';
 import {
-    fetchAllIndices,
-    fetchIndexChart,
     fetchNews,
     fetchTopMovers,
     fetchForeignFlow,
     fetchGoldPrices,
+    fetchVciIndices,
     INDEX_MAP,
     MarketIndexData,
     NewsItem,
     TopMoverItem,
     GoldPriceItem,
-    PEChartData
+    PEChartData,
+    VciIndexData
 } from '@/lib/api';
 import styles from './page.module.css';
+
+// Static placeholders — ensures 4 card slots are reserved before data arrives (prevents CLS)
+const PLACEHOLDER_INDICES: { id: string; name: string }[] = Object.entries(INDEX_MAP).map(([, info]) => ({
+    id: info.id,
+    name: info.name,
+}));
 
 interface IndexData {
     id: string;
@@ -29,6 +35,13 @@ interface IndexData {
     change: number;
     percentChange: number;
     chartData: number[];
+    advances: number;
+    declines: number;
+    noChanges: number;
+    ceilings: number;
+    floors: number;
+    totalShares: number;
+    totalValue: number;
 }
 
 interface OverviewClientProps {
@@ -97,28 +110,25 @@ export default function OverviewClient({
     const loadIndices = useCallback(async () => {
         try {
             // Don't set loading to true for background refresh to avoid flickering
-            const marketData = await fetchAllIndices();
+            const vciDataArray = await fetchVciIndices();
 
             const indexDataPromises = Object.entries(INDEX_MAP).map(async ([indexId, info]) => {
-                const data = marketData[indexId] as MarketIndexData | undefined;
-                if (!data) return null;
+                const vciData = vciDataArray.find((item: VciIndexData) => item.symbol === info.vciSymbol);
+                if (!vciData) return null;
 
-                const currentIndex = data.CurrentIndex;
-                const prevIndex = data.PrevIndex;
-                const change = currentIndex - prevIndex;
-                const percent = prevIndex > 0 ? (change / prevIndex) * 100 : 0;
+                const currentIndex = vciData.price;
+                const prevIndex = vciData.refPrice;
+                const change = vciData.change;
+                const percent = vciData.changePercent;
 
-                // Fetch chart data
-                let chartData: number[] = [];
-                try {
-                    const chartPoints = await fetchIndexChart(indexId);
-                    const numeric = chartPoints
-                        .map(p => Number(String(p.Data).replace(/[^0-9.-]/g, '')))
-                        .filter(v => !Number.isNaN(v));
-                    chartData = numeric.length >= 2 ? numeric : [prevIndex, currentIndex].filter(v => typeof v === 'number');
-                } catch (e) {
-                    console.error(`Error fetching chart for ${info.name}:`, e);
-                }
+                const advances = vciData.totalStockIncrease;
+                const declines = vciData.totalStockDecline;
+                const noChanges = vciData.totalStockNoChange;
+                const ceilings = vciData.totalStockCeiling;
+                const floors = vciData.totalStockFloor;
+
+                const totalShares = vciData.totalShares;
+                const totalValue = vciData.totalValue;
 
                 return {
                     id: info.id,
@@ -126,7 +136,14 @@ export default function OverviewClient({
                     value: currentIndex,
                     change,
                     percentChange: percent,
-                    chartData,
+                    chartData: [] as number[],
+                    advances,
+                    declines,
+                    noChanges,
+                    ceilings,
+                    floors,
+                    totalShares,
+                    totalValue,
                 };
             });
 
@@ -221,12 +238,25 @@ export default function OverviewClient({
         }
     }, [initialForeignBuys, initialForeignSells, loadForeign]);
 
-    // Auto refresh indices every 15 seconds
+    // Auto refresh indices every 1s - using recursive setTimeout (not setInterval)
+    // so we never queue a second request while one is still in-flight
     useEffect(() => {
-        const interval = setInterval(() => {
-            loadIndices();
-        }, 10000);
-        return () => clearInterval(interval);
+        let timer: ReturnType<typeof setTimeout>;
+        let active = true;
+
+        const schedule = () => {
+            timer = setTimeout(async () => {
+                if (!active) return;
+                await loadIndices();
+                if (active) schedule();
+            }, 1000);
+        };
+
+        schedule();
+        return () => {
+            active = false;
+            clearTimeout(timer);
+        };
     }, [loadIndices]);
 
     // Auto refresh gold every 60 seconds
@@ -258,32 +288,30 @@ export default function OverviewClient({
                 <div className={styles.leftColumn}>
                     {/* Indices Grid - 2x2 layout, no title */}
                     <div className={styles.indicesGrid}>
-                        {indicesLoading ? (
-                            // Loading skeletons
-                            Array.from({ length: 4 }).map((_, i) => (
+                        {/* Always render 4 cards — skeleton shows immediately, data fills in */}
+                        {PLACEHOLDER_INDICES.map((placeholder) => {
+                            const data = indices.find(d => d.id === placeholder.id);
+                            const hasData = !!data;
+                            return (
                                 <IndexCard
-                                    key={i}
-                                    id={`skeleton-${i}`}
-                                    name=""
-                                    value={0}
-                                    change={0}
-                                    percentChange={0}
-                                    isLoading={true}
+                                    key={placeholder.id}
+                                    id={placeholder.id}
+                                    name={placeholder.name}
+                                    value={data?.value ?? 0}
+                                    change={data?.change ?? 0}
+                                    percentChange={data?.percentChange ?? 0}
+                                    chartData={data?.chartData ?? []}
+                                    advances={data?.advances ?? 0}
+                                    declines={data?.declines ?? 0}
+                                    noChanges={data?.noChanges ?? 0}
+                                    ceilings={data?.ceilings ?? 0}
+                                    floors={data?.floors ?? 0}
+                                    totalShares={data?.totalShares ?? 0}
+                                    totalValue={data?.totalValue ?? 0}
+                                    isLoading={!hasData}
                                 />
-                            ))
-                        ) : (
-                            indices.map((index) => (
-                                <IndexCard
-                                    key={index.id}
-                                    id={index.id}
-                                    name={index.name}
-                                    value={index.value}
-                                    change={index.change}
-                                    percentChange={index.percentChange}
-                                    chartData={index.chartData}
-                                />
-                            ))
-                        )}
+                            );
+                        })}
                     </div>
 
 

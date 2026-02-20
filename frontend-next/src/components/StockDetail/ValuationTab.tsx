@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { calculateValuation } from '@/lib/stockApi';
 import { Card, Title, Text, Metric, Button, Badge, Grid, Col, TextInput, Callout } from '@tremor/react';
 import { RiRefreshLine, RiStackLine, RiMoneyDollarCircleLine, RiBuildingLine, RiBarChartLine, RiBookOpenLine, RiScales3Line, RiErrorWarningFill } from '@remixicon/react';
@@ -433,4 +433,13 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
     );
 };
 
-export default ValuationTab;
+// Memoize: only re-render when symbol changes or currentPrice changes by >0.5%
+export default React.memo(ValuationTab, (prev, next) => {
+    if (prev.symbol !== next.symbol) return false; // re-render on symbol change
+    if (prev.isBank !== next.isBank) return false;
+    // Skip re-render for tiny price fluctuations (< 0.5% change)
+    const priceChanged = prev.currentPrice > 0
+        ? Math.abs((next.currentPrice - prev.currentPrice) / prev.currentPrice) > 0.005
+        : next.currentPrice !== prev.currentPrice;
+    return !priceChanged; // true = skip re-render
+});

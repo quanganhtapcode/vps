@@ -22,6 +22,12 @@ import {
 } from '@/lib/api';
 import styles from './page.module.css';
 
+// Static placeholders — card slots reserved before data arrives
+const PLACEHOLDER_INDICES: { id: string; name: string }[] = Object.entries(INDEX_MAP).map(([, info]) => ({
+    id: info.id,
+    name: info.name,
+}));
+
 interface IndexData {
     id: string;
     name: string;
@@ -188,32 +194,22 @@ export default function OverviewClient({
                 <div className={styles.leftColumn}>
                     {/* Indices Grid - 2x2 layout, no title */}
                     <div className={styles.indicesGrid}>
-                        {indicesLoading ? (
-                            // Loading skeletons
-                            Array.from({ length: 4 }).map((_, i) => (
+                        {/* Always render 4 cards — skeleton shows immediately, data fills in */}
+                        {PLACEHOLDER_INDICES.map((placeholder) => {
+                            const data = indices.find(d => d.id === placeholder.id);
+                            return (
                                 <IndexCard
-                                    key={i}
-                                    id={`skeleton-${i}`}
-                                    name=""
-                                    value={0}
-                                    change={0}
-                                    percentChange={0}
-                                    isLoading={true}
+                                    key={placeholder.id}
+                                    id={placeholder.id}
+                                    name={placeholder.name}
+                                    value={data?.value ?? 0}
+                                    change={data?.change ?? 0}
+                                    percentChange={data?.percentChange ?? 0}
+                                    chartData={data?.chartData ?? []}
+                                    isLoading={!data}
                                 />
-                            ))
-                        ) : (
-                            indices.map((index) => (
-                                <IndexCard
-                                    key={index.id}
-                                    id={index.id}
-                                    name={index.name}
-                                    value={index.value}
-                                    change={index.change}
-                                    percentChange={index.percentChange}
-                                    chartData={index.chartData}
-                                />
-                            ))
-                        )}
+                            );
+                        })}
                     </div>
 
 

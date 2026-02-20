@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useTransition } from 'react';
 import { fetchPriceHistory } from '@/lib/stockApi';
 import { formatNumber } from '@/lib/api';
 import type { PriceData } from '@/lib/types';
@@ -12,13 +12,19 @@ interface PriceHistoryTabProps {
 
 type PeriodType = '1M' | '6M' | '1Y' | '3Y' | '5Y';
 
-import { Select, SelectItem } from '@tremor/react';
-
-export default function PriceHistoryTab({ symbol, initialData }: PriceHistoryTabProps) {
+function PriceHistoryTab({ symbol, initialData }: PriceHistoryTabProps) {
     const [allPriceData, setAllPriceData] = useState<PriceData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [period, setPeriod] = useState<PeriodType>('1Y');
+    const [period, setPeriod] = useState<PeriodType>('1Y'); // visual (instant)
+    const [deferredPeriod, setDeferredPeriod] = useState<PeriodType>('1Y'); // table filter (deferred)
+    const [isPending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
+
+    const handlePeriodChange = (p: PeriodType) => {
+        if (p === period) return;
+        setPeriod(p); // sync: button highlights immediately
+        startTransition(() => setDeferredPeriod(p)); // defer: filter table in background
+    };
 
     useEffect(() => {
         if (initialData && initialData.length > 0) {
@@ -60,7 +66,7 @@ export default function PriceHistoryTab({ symbol, initialData }: PriceHistoryTab
         if (!allPriceData || allPriceData.length === 0) return [];
         const now = new Date();
         const cutoff = new Date();
-        switch (period) {
+        switch (deferredPeriod) {
             case '1M': cutoff.setMonth(now.getMonth() - 1); break;
             case '6M': cutoff.setMonth(now.getMonth() - 6); break;
             case '1Y': cutoff.setFullYear(now.getFullYear() - 1); break;
@@ -68,7 +74,7 @@ export default function PriceHistoryTab({ symbol, initialData }: PriceHistoryTab
             case '5Y': cutoff.setFullYear(now.getFullYear() - 5); break;
         }
         return allPriceData.filter(d => new Date(d.time) >= cutoff);
-    }, [allPriceData, period]);
+    }, [allPriceData, deferredPeriod]);
 
     const handleDownload = () => {
         if (!priceData || priceData.length === 0) return;
@@ -106,18 +112,26 @@ export default function PriceHistoryTab({ symbol, initialData }: PriceHistoryTab
 
                 {/* Toolbar */}
                 <div className="flex items-center gap-2">
-                    <Select
-                        className="w-[80px] sm:w-fit [&>button]:rounded-tremor-small"
-                        enableClear={false}
-                        value={period}
-                        onValueChange={(value) => setPeriod(value as PeriodType)}
-                    >
-                        {periodButtons.map((item) => (
-                            <SelectItem key={item.id} value={item.id}>
+                    <div className="flex items-center gap-0">
+                        {periodButtons.map((item, index) => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => handlePeriodChange(item.id)}
+                                className={[
+                                    'border border-tremor-border px-3 py-1.5 text-sm font-medium focus:z-10 focus:outline-none transition-colors dark:border-dark-tremor-border',
+                                    index === 0 ? 'rounded-l-tremor-small' : '-ml-px',
+                                    index === periodButtons.length - 1 ? 'rounded-r-tremor-small' : '',
+                                    period === item.id
+                                        ? 'bg-tremor-brand-muted text-tremor-brand dark:bg-dark-tremor-brand-muted dark:text-dark-tremor-brand font-bold'
+                                        : 'bg-white text-tremor-content-strong hover:bg-tremor-background-muted dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong hover:dark:bg-gray-950/50',
+                                    isPending && deferredPeriod !== item.id && period === item.id ? 'opacity-75' : '',
+                                ].join(' ')}
+                            >
                                 {item.label}
-                            </SelectItem>
+                            </button>
                         ))}
-                    </Select>
+                    </div>
 
                     {/* Download Button */}
                     <button
@@ -191,3 +205,6 @@ export default function PriceHistoryTab({ symbol, initialData }: PriceHistoryTab
         </div>
     );
 }
+
+// Memoize: only re-mounts when symbol changes, not on parent price updates
+export default React.memo(PriceHistoryTab, (prev, next) => prev.symbol === next.symbol);

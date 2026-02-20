@@ -283,4 +283,9 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory, isLoading =
     );
 };
 
-export default AnalysisTab;
+// Skip re-renders when parent state (price, news) changes — only symbol/sector matter
+export default React.memo(AnalysisTab, (prev, next) =>
+    prev.symbol === next.symbol &&
+    prev.sector === next.sector &&
+    prev.isLoading === next.isLoading
+);

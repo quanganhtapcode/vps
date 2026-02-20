@@ -78,14 +78,15 @@ interface OverviewTabProps {
     financials: FinancialData | null;
     news: NewsItem[];
     historicalData: HistoricalData[];
-    timeRange: '3M' | '6M' | '1Y' | '3Y' | '5Y';
+    timeRange: '3M' | '6M' | '1Y' | '3Y' | '5Y';         // visual: button active state (instant)
+    deferredTimeRange?: '3M' | '6M' | '1Y' | '3Y' | '5Y'; // chart: data filter (deferred)
     setTimeRange: (range: '3M' | '6M' | '1Y' | '3Y' | '5Y') => void;
     isDescExpanded: boolean;
     setIsDescExpanded: (v: boolean) => void;
     isLoading: boolean;
 }
 
-export default function OverviewTab({
+function OverviewTab({
     symbol,
     stockInfo,
     priceData,
@@ -93,6 +94,7 @@ export default function OverviewTab({
     news,
     historicalData,
     timeRange,
+    deferredTimeRange,
     setTimeRange,
     isDescExpanded,
     setIsDescExpanded,
@@ -100,6 +102,8 @@ export default function OverviewTab({
 }: OverviewTabProps) {
     const isUp = priceData ? priceData.change >= 0 : true;
     const priceColor = isUp ? styles.positive : styles.negative;
+    // Use deferredTimeRange for heavy chart filter (deferred), fallback to timeRange
+    const activeRange = deferredTimeRange ?? timeRange;
 
     // Prepare chart data for Tremor
     const chartData = useMemo(() => {
@@ -504,3 +508,6 @@ export default function OverviewTab({
         </>
     );
 }
+
+// Prevent re-renders from parent price polling — only re-render when actual content changes
+export default React.memo(OverviewTab);

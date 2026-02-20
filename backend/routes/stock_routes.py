@@ -17,11 +17,13 @@ logger = logging.getLogger(__name__)
 # ===================== IN-MEMORY CACHE =====================
 import time as _time
 _cache = {}  # key -> (timestamp, data)
-_CACHE_TTL = 600  # 10 minutes
+_CACHE_TTL = 600  # 10 minutes default
+_CACHE_TTL_LONG = 3600  # 1 hour for static-ish data (profile, history)
 
-def _cache_get(key):
+def _cache_get(key, ttl=None):
     entry = _cache.get(key)
-    if entry and (_time.time() - entry[0]) < _CACHE_TTL:
+    effective_ttl = ttl if ttl is not None else _CACHE_TTL
+    if entry and (_time.time() - entry[0]) < effective_ttl:
         return entry[1]
     return None
 
@@ -442,9 +444,9 @@ def get_company_profile(symbol):
         if not is_valid: return jsonify({'error': result, 'success': False}), 400
         symbol = result
         
-        # Check cache
+        # Check cache (1 hour TTL - profile almost never changes)
         cache_key = f'profile_{symbol}'
-        cached = _cache_get(cache_key)
+        cached = _cache_get(cache_key, ttl=_CACHE_TTL_LONG)
         if cached:
             return jsonify(cached)
         
@@ -482,23 +484,38 @@ def get_company_profile(symbol):
             return jsonify(profile_result)
             
         except Exception as e:
-            logger.error(f"Error fetching overview for {symbol}: {e}")
-            return jsonify({'success': False, 'error': str(e)}), 500
-            
+            logger.warning(f"Could not fetch profile for {symbol} via vnstock: {e}")
+            # Return a graceful fallback instead of 500
+            fallback = {
+                'symbol': symbol,
+                'company_name': symbol,
+                'company_profile': '',
+                'industry': '',
+                'success': False,
+                'error': str(e)
+            }
+            return jsonify(fallback), 200  # Return 200 so frontend doesn't retry aggressively
+
     except Exception as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 500
+        return jsonify({'success': False, 'error': str(exc)}), 200
 
 @stock_bp.route('/stock/history/<symbol>')
 def get_stock_history(symbol):
-    """Get historical price data for charting (returns last 6M to 10Y based on param)"""
+    """Get historical price data for charting (cached 1h for ALL period)"""
     try:
         is_valid, result = validate_stock_symbol(symbol)
         if not is_valid: return jsonify({'error': result, 'success': False}), 400
         symbol = result
         
+        range_param = request.args.get('period', request.args.get('range', '6M')).upper()
+        cache_key = f'history_{symbol}_{range_param}'
+        ttl = _CACHE_TTL_LONG if range_param == 'ALL' else _CACHE_TTL  # cache ALL for 1h, rest 10min
+        cached = _cache_get(cache_key, ttl=ttl)
+        if cached:
+            return jsonify(cached)
+        
         try:
             quote = Quote(symbol=symbol, source='VCI')
-            range_param = request.args.get('period', request.args.get('range', '6M')).upper()
             days_map = {'1M': 30, '3M': 90, '6M': 180, '1Y': 365, '5Y': 1825, 'ALL': 3650}
             days_back = days_map.get(range_param, 180)
             
@@ -529,7 +546,9 @@ def get_stock_history(symbol):
                     })
                 except: continue
             
-            return jsonify({'symbol': symbol, 'data': history_data, 'count': len(history_data), 'success': True})
+            result_data = {'symbol': symbol, 'data': history_data, 'count': len(history_data), 'success': True}
+            _cache_set(cache_key, result_data)
+            return jsonify(result_data)
             
         except Exception as e:
             logger.error(f"Error fetching history for {symbol}: {e}")

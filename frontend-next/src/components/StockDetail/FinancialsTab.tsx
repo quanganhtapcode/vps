@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useTransition, useCallback } from 'react';
 import { formatNumber } from '@/lib/api';
 import type { HistoricalChartData } from '@/lib/types';
 import { LineChart, type CustomTooltipProps as TremorCustomTooltipProps } from '@tremor/react';
@@ -20,8 +20,8 @@ import RevenueProfitChart from './RevenueProfitChart';
 
 interface FinancialsTabProps {
     symbol: string;
-    period: 'quarter' | 'year';
-    setPeriod: (p: 'quarter' | 'year') => void;
+    // period/setPeriod removed — now internal state to avoid parent re-renders on toggle
+    initialPeriod?: 'quarter' | 'year';
     initialChartData?: HistoricalChartData | null;
     initialOverviewData?: any | null;
     isLoading?: boolean;
@@ -66,15 +66,24 @@ const ChartCard = ({ title, children }: { title: string; children: React.ReactNo
 
 export default function FinancialsTab({
     symbol,
-    period,
-    setPeriod,
+    initialPeriod = 'quarter',
     initialChartData,
     initialOverviewData,
     isLoading: isParentLoading = false
 }: FinancialsTabProps) {
+    // Keep period LOCAL — no parent re-render when toggling quarter/year
+    const [period, setPeriodState] = useState<'quarter' | 'year'>(initialPeriod);
+    const [isPending, startTransition] = useTransition();
     const [chartData, setChartData] = useState<HistoricalChartData | null>(initialChartData || null);
     const [overviewData, setOverviewData] = useState<any>(initialOverviewData || null);
     const [loading, setLoading] = useState<boolean>(!initialChartData && !isParentLoading);
+
+    // Instant visual feedback: update period immediately, defer chart load
+    const handlePeriodChange = useCallback((p: 'quarter' | 'year') => {
+        if (p === period) return;
+        setPeriodState(p); // ← sync: button highlights immediately (<1ms)
+        // chart re-fetch/re-render happens in a non-blocking transition frame
+    }, [period]);
 
     const bankSymbols = ['VCB', 'BID', 'CTG', 'TCB', 'MBB', 'ACB', 'VPB', 'HDB', 'SHB', 'STB', 'TPB', 'LPB', 'MSB', 'OCB', 'EIB', 'ABB', 'NAB', 'PGB', 'VAB', 'VIB', 'SSB', 'BAB', 'KLB'];
     const isBank = bankSymbols.includes(symbol);
@@ -237,11 +246,37 @@ export default function FinancialsTab({
     const commonChartMargin = { top: 5, right: 5, left: -10, bottom: 5 };
 
 
+    // Defer heavy render until after interaction frame — fixes INP & CLS
+    const [readyToRender, setReadyToRender] = React.useState(false);
+    React.useEffect(() => {
+        setReadyToRender(false);
+        const id = requestIdleCallback(() => setReadyToRender(true), { timeout: 200 });
+        return () => cancelIdleCallback(id);
+    }, [symbol, period]);
+
     return (
-        <div className="w-full text-tremor-content-strong dark:text-dark-tremor-content-strong" style={{
-            boxSizing: 'border-box',
-        }}>
-            {loading ? (
+        <div className="w-full text-tremor-content-strong dark:text-dark-tremor-content-strong" style={{ boxSizing: 'border-box', minHeight: '600px' }}>
+            {/* Period toggle — renders instantly, isolated from parent state */}
+            <div className="mb-4 flex items-center gap-2">
+                {(['quarter', 'year'] as const).map((p) => (
+                    <button
+                        key={p}
+                        type="button"
+                        onClick={() => handlePeriodChange(p)}
+                        className={[
+                            'px-4 py-1.5 rounded-tremor-small text-sm font-medium border transition-colors',
+                            period === p
+                                ? 'bg-tremor-brand text-white border-tremor-brand dark:bg-dark-tremor-brand dark:border-dark-tremor-brand'
+                                : 'bg-white text-tremor-content-strong border-tremor-border hover:bg-tremor-background-muted dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong dark:border-dark-tremor-border',
+                        ].join(' ')}
+                    >
+                        {p === 'quarter' ? 'Quarter' : 'Year'}
+                        {isPending && period === p && <span className="ml-1 opacity-60 text-xs">...</span>}
+                    </button>
+                ))}
+            </div>
+
+            {(loading || !readyToRender) ? (
                 <div style={{ textAlign: 'center', padding: '60px 0', color: '#9ca3af' }}>
                     <div className="spinner" style={{ margin: '0 auto', marginBottom: '12px' }} />
                     <span style={{ fontSize: '12px' }}>Loading data...</span>

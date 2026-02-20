@@ -40,13 +40,29 @@ logger = logging.getLogger(__name__)
 def run_command(cmd, description):
     logger.info(f">>> Starting: {description}")
     try:
-        # Pass the same python executable to ensure environment consistency
-        result = subprocess.run([sys.executable] + cmd, check=True, capture_output=True, text=True)
-        logger.info(f"✅ Finished: {description}")
-        return True
-    except subprocess.CalledProcessError as e:
+        # Stream child process output to our logger (stdout + pipeline.log) so
+        # long-running steps are observable under systemd/journalctl.
+        proc = subprocess.Popen(
+            [sys.executable] + cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            logger.info(line.rstrip())
+
+        rc = proc.wait()
+        if rc == 0:
+            logger.info(f"✅ Finished: {description}")
+            return True
+
+        logger.error(f"❌ Failed: {description} (exit code {rc})")
+        return False
+    except Exception as e:
         logger.error(f"❌ Failed: {description}")
-        logger.error(f"Error: {e.stderr}")
+        logger.error(f"Error: {e}")
         return False
 
 def ensure_symbols_file(symbols_file: str):

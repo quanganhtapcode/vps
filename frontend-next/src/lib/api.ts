@@ -20,6 +20,7 @@ export const API = {
     INDICES: `${API_BASE}/market/indices`,
     REALTIME_CHART: `${API_BASE}/market/realtime-chart`,
     REALTIME_MARKET: `${API_BASE}/market/realtime-market`,
+    VCI_INDICES: `${API_BASE}/market/vci-indices`,
     REPORTS: `${API_BASE}/market/reports`,
     NEWS: `${API_BASE}/market/news`,
     TOP_MOVERS: `${API_BASE}/market/top-movers`,
@@ -46,12 +47,12 @@ export const API = {
     HEALTH: `${API_BASE}/health`,
 } as const;
 
-// Index mapping from CafeF
-export const INDEX_MAP: Record<string, { id: string; name: string }> = {
-    '1': { id: 'vnindex', name: 'VN-Index' },
-    '2': { id: 'hnx', name: 'HNX-Index' },
-    '9': { id: 'upcom', name: 'UPCOM' },
-    '11': { id: 'vn30', name: 'VN30' },
+// Index mapping from CafeF to VCI
+export const INDEX_MAP: Record<string, { id: string; name: string; vciSymbol: string }> = {
+    '1': { id: 'vnindex', name: 'VN-Index', vciSymbol: 'VNINDEX' },
+    '2': { id: 'hnx', name: 'HNX-Index', vciSymbol: 'HNXIndex' },
+    '9': { id: 'upcom', name: 'UPCOM', vciSymbol: 'HNXUpcomIndex' },
+    '11': { id: 'vn30', name: 'VN30', vciSymbol: 'VN30' },
 };
 
 // ============ API Fetching Functions ============
@@ -133,6 +134,28 @@ export interface PEChartData {
 
 // ============ Market Data Fetchers ============
 
+export interface VciIndexData {
+    board: string;
+    change: number;
+    changePercent: number;
+    code: string;
+    messageType: string;
+    price: number;
+    refPrice: number;
+    symbol: string;
+    time: string;
+    totalShares: number;
+    totalStockCeiling: number;
+    totalStockDecline: number;
+    totalStockFloor: number;
+    totalStockIncrease: number;
+    totalStockNoChange: number;
+    totalValue: number;
+    estimatedChange: number;
+    estimatedFsp: number;
+    sendingTime: string;
+}
+
 /**
  * Fetch all indices data with realtime prices
  */
@@ -141,6 +164,10 @@ export async function fetchAllIndices(): Promise<Record<string, MarketIndexData>
         `${API.REALTIME_MARKET}?indices=1;2;9;11`
     );
     return response;
+}
+
+export async function fetchVciIndices(): Promise<VciIndexData[]> {
+    return await fetchAPI<VciIndexData[]>(API.VCI_INDICES);
 }
 
 /**
