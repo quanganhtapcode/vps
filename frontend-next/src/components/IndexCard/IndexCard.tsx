@@ -3,6 +3,7 @@
 import { Card } from '@tremor/react';
 import { cx } from '@/lib/utils';
 import React, { useState } from 'react';
+import { RiHistoryLine } from '@remixicon/react';
 import IndexHistoryModal from './IndexHistoryModal';
 
 interface IndexCardProps {
@@ -86,13 +87,14 @@ export default React.memo(function IndexCard({
     return (
         <>
             <Card
-                className="p-3 md:p-4 cursor-pointer hover:bg-tremor-background-subtle dark:hover:bg-dark-tremor-background-muted transition-colors"
+                className="group p-3 md:p-4 cursor-pointer hover:bg-tremor-background-subtle dark:hover:bg-dark-tremor-background-muted transition-colors"
                 onClick={() => setIsModalOpen(true)}
             >
                 {/* Header: name + price */}
                 <div className="flex items-start justify-between gap-2">
-                    <dt className="text-xs md:text-sm font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong truncate">
+                    <dt className="text-xs md:text-sm font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong truncate flex items-center gap-1.5 group-hover:text-tremor-brand transition-colors">
                         {name}
+                        <RiHistoryLine className="w-3.5 h-3.5 text-tremor-content-subtle group-hover:text-tremor-brand" />
                     </dt>
                     <dd
                         className={cx(

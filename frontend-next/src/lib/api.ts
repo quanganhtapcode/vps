@@ -25,6 +25,7 @@ export const API = {
     NEWS: `${API_BASE}/market/news`,
     TOP_MOVERS: `${API_BASE}/market/top-movers`,
     FOREIGN_FLOW: `${API_BASE}/market/foreign-flow`,
+    STANDOUTS: `${API_BASE}/market/standouts`,
     GOLD: `${API_BASE}/market/gold`,
     LOTTERY: `${API_BASE}/market/lottery`,
 
@@ -208,6 +209,14 @@ export async function fetchTopMovers(type: 'UP' | 'DOWN', centerID: string = 'HO
         `${API.TOP_MOVERS}?centerID=${centerID}&type=${type}`
     );
     return response.Data || [];
+}
+
+/**
+ * Fetch standout stocks based on stockStrength
+ */
+export async function fetchStandouts(): Promise<any[]> {
+    const response = await fetchAPI<any[]>(API.STANDOUTS);
+    return Array.isArray(response) ? response : [];
 }
 
 /**

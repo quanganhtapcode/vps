@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import IndexCard from '@/components/IndexCard';
 import PEChart from '@/components/PEChart';
 import NewsSection from '@/components/NewsSection';
+import Standouts from '@/components/Standouts/Standouts';
 
 import { GoldPrice, Lottery, MarketPulse } from '@/components/Sidebar';
 import {
@@ -12,6 +13,7 @@ import {
     fetchForeignFlow,
     fetchGoldPrices,
     fetchVciIndices,
+    fetchStandouts,
     INDEX_MAP,
     MarketIndexData,
     NewsItem,
@@ -94,6 +96,10 @@ export default function OverviewClient({
     const [goldPrices, setGoldPrices] = useState<GoldPriceItem[]>(initialGoldPrices);
     const [goldLoading, setGoldLoading] = useState(false);
     const [goldUpdatedAt, setGoldUpdatedAt] = useState<string>(initialGoldUpdated || new Date().toISOString());
+
+    // Standouts
+    const [standouts, setStandouts] = useState<any[]>([]);
+    const [standoutsLoading, setStandoutsLoading] = useState(true);
 
     // Last update time - only render on client to avoid hydration mismatch
     const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -238,6 +244,14 @@ export default function OverviewClient({
         }
     }, [initialForeignBuys, initialForeignSells, loadForeign]);
 
+    // Load Standouts on mount
+    useEffect(() => {
+        fetchStandouts().then(data => {
+            setStandouts(data);
+            setStandoutsLoading(false);
+        }).catch(() => setStandoutsLoading(false));
+    }, []);
+
     // Auto refresh indices every 1s - using recursive setTimeout (not setInterval)
     // so we never queue a second request while one is still in-flight
     useEffect(() => {
@@ -318,6 +332,9 @@ export default function OverviewClient({
 
                     {/* P/E Chart */}
                     <PEChart initialData={initialPEData} />
+
+                    {/* Standouts */}
+                    <Standouts data={standouts} isLoading={standoutsLoading} />
 
                     {/* News Section */}
                     <NewsSection
