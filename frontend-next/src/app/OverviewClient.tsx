@@ -249,7 +249,7 @@ export default function OverviewClient({
                 if (!active) return;
                 await loadIndices();
                 if (active) schedule();
-            }, 1000);
+            }, 3000);
         };
 
         schedule();

@@ -157,11 +157,11 @@ export default function OverviewClient({
         }
     }, []);
 
-    // Auto refresh indices every 15 seconds
+    // Auto refresh indices every 3 seconds
     useEffect(() => {
         const interval = setInterval(() => {
             loadIndices();
-        }, 10000);
+        }, 3000);
         return () => clearInterval(interval);
     }, [loadIndices]);
 

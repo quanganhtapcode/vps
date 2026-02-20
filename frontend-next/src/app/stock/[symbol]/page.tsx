@@ -427,7 +427,7 @@ export default function StockDetailPage() {
         setIsWatchlisted(!isWatchlisted);
     };
 
-    // Polling Price every 5 seconds
+    // Polling Price every 3 seconds
     useEffect(() => {
         if (!symbol) return;
 
@@ -479,7 +479,7 @@ export default function StockDetailPage() {
                     }
                 })
                 .catch(err => console.error("Polling error", err));
-        }, 10000);
+        }, 3000);
 
         return () => clearInterval(interval);
     }, [symbol]);
