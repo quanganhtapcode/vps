@@ -1899,10 +1899,10 @@ class StockDataProvider:
         symbol = symbol.upper()
         now = datetime.now()
         
-        # 0. Check short-term cache (30 seconds)
+        # 0. Check short-term cache (2 seconds)
         if symbol in self._price_cache:
             data, timestamp = self._price_cache[symbol]
-            if (now - timestamp).total_seconds() < 15:
+            if (now - timestamp).total_seconds() < 2:
                 logger.debug(f"✓ Returning CACHED price for {symbol}")
                 return data
 
