@@ -58,7 +58,7 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                     <Icon icon={RiNewspaperLine} className="mr-1.5 md:mr-2 text-blue-500" size="sm" />
                     Market News
                 </Title>
-                {news.length > 6 && (
+                {news.length > 8 && (
                     <Link href="/news" className="text-xs font-medium text-tremor-brand hover:underline flex items-center">
                         View More<span className="hidden sm:inline">&nbsp;News</span> <Icon icon={RiArrowRightUpLine} size="xs" className="ml-0.5 md:ml-1" />
                     </Link>
@@ -66,7 +66,7 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
             </Flex>
 
             <div className="mt-4 md:mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                {news.slice(0, 6).map((item, index) => {
+                {news.slice(0, 8).map((item, index) => {
                     const title = item.Title || '';
                     const link = item.Link || item.NewsUrl || '#';
                     const url = link.startsWith('http') ? link : `https://cafef.vn${link}`;

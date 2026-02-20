@@ -2,7 +2,8 @@
 
 import { Card } from '@tremor/react';
 import { cx } from '@/lib/utils';
-import React from 'react';
+import React, { useState } from 'react';
+import IndexHistoryModal from './IndexHistoryModal';
 
 interface IndexCardProps {
     id: string;
@@ -53,6 +54,7 @@ export default React.memo(function IndexCard({
 }: IndexCardProps) {
     const isUp = change >= 0;
     const changeType = isUp ? 'positive' : 'negative';
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     if (isLoading) {
         return (
@@ -82,57 +84,75 @@ export default React.memo(function IndexCard({
     }
 
     return (
-        <Card className="p-3 md:p-4">
-            {/* Header: name + price */}
-            <div className="flex items-start justify-between gap-2">
-                <dt className="text-xs md:text-sm font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong truncate">
-                    {name}
-                </dt>
-                <dd
-                    className={cx(
-                        'font-bold tracking-tight text-sm md:text-base whitespace-nowrap',
-                        changeType === 'positive' ? 'text-emerald-500' : 'text-red-500',
-                    )}
-                >
-                    {value.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-                </dd>
-            </div>
-
-            {/* Subtitle: Đóng cửa + change */}
-            <div className="mt-0.5 flex items-center justify-between">
-                <span className="text-[10px] text-tremor-content-subtle dark:text-dark-tremor-content-subtle">
-                    ● Đóng cửa
-                </span>
-                <dd className={cx(
-                    'text-[11px] md:text-xs font-medium',
-                    changeType === 'positive' ? 'text-emerald-500' : 'text-red-500'
-                )}>
-                    {isUp ? '+' : ''}{change.toFixed(2)}({isUp ? '+' : ''}{percentChange.toFixed(2)}%)
-                </dd>
-            </div>
-
-            {/* KL & GT */}
-            {(totalShares > 0 || totalValue > 0) && (
-                <div className="mt-2 text-[10px] md:text-[11px] text-tremor-content dark:text-dark-tremor-content">
-                    <span className="font-medium">KL:</span>{' '}
-                    <span>{totalShares.toLocaleString('en-US')}</span>
-                    <span className="mx-1 text-tremor-content-subtle">•</span>
-                    <span className="font-medium">GT:</span>{' '}
-                    <span>{formatValue(totalValue)}</span>
+        <>
+            <Card
+                className="p-3 md:p-4 cursor-pointer hover:bg-tremor-background-subtle dark:hover:bg-dark-tremor-background-muted transition-colors"
+                onClick={() => setIsModalOpen(true)}
+            >
+                {/* Header: name + price */}
+                <div className="flex items-start justify-between gap-2">
+                    <dt className="text-xs md:text-sm font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong truncate">
+                        {name}
+                    </dt>
+                    <dd
+                        className={cx(
+                            'font-bold tracking-tight text-sm md:text-base whitespace-nowrap',
+                            changeType === 'positive' ? 'text-emerald-500' : 'text-red-500',
+                        )}
+                    >
+                        {value.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                    </dd>
                 </div>
-            )}
 
-            {/* Breadth: Trần / Tăng / TC / Giảm / Sàn */}
-            <div className="mt-2 flex items-center gap-1 text-[10px] md:text-[11px] font-medium border-t border-tremor-border dark:border-dark-tremor-border pt-2">
-                <span className="text-violet-500">↑{ceilings}</span>
-                <span className="text-[8px] text-tremor-content-subtle">(Tr)</span>
-                <span className="text-emerald-500 ml-1">↑{advances}</span>
-                <span className="text-amber-500 mx-1">●{noChanges}</span>
-                <span className="text-red-500">↓{declines}</span>
-                <span className="text-[8px] text-tremor-content-subtle ml-0.5">(S</span>
-                <span className="text-cyan-500">{floors}</span>
-                <span className="text-[8px] text-tremor-content-subtle">)</span>
-            </div>
-        </Card>
+                {/* Subtitle: Đóng cửa + change */}
+                <div className="mt-0.5 flex items-center justify-between">
+                    <span className="text-[10px] text-tremor-content-subtle dark:text-dark-tremor-content-subtle">
+                        ● Đóng cửa
+                    </span>
+                    <dd className={cx(
+                        'text-[11px] md:text-xs font-medium',
+                        changeType === 'positive' ? 'text-emerald-500' : 'text-red-500'
+                    )}>
+                        {isUp ? '+' : ''}{change.toFixed(2)}({isUp ? '+' : ''}{percentChange.toFixed(2)}%)
+                    </dd>
+                </div>
+
+                {/* KL & GT + Breadth (Compact) */}
+                <div className="mt-2 pt-2 border-t border-tremor-border dark:border-dark-tremor-border">
+                    {/* KL & GT */}
+                    {(totalShares > 0 || totalValue > 0) && (
+                        <div className="text-[11px] text-tremor-content-subtle dark:text-dark-tremor-content-subtle font-medium">
+                            <span className="text-tremor-content dark:text-dark-tremor-content">KL: {totalShares.toLocaleString('en-US')}</span>
+                            <span className="mx-1.5">•</span>
+                            <span className="text-tremor-content dark:text-dark-tremor-content">GT: {formatValue(totalValue)}</span>
+                        </div>
+                    )}
+
+                    {/* Breadth: Tăng(Trần) ◾ Đứng ↙ Giảm(Sàn) */}
+                    <div className="mt-1 flex items-center text-[11px] font-bold gap-3">
+                        <div className="flex items-center text-emerald-500">
+                            ↗ {advances}
+                            <span className="text-violet-500 ml-0.5">({ceilings})</span>
+                        </div>
+                        <div className="flex items-center text-amber-500">
+                            ◾ {noChanges}
+                        </div>
+                        <div className="flex items-center text-red-500">
+                            ↙ {declines}
+                            <span className="text-cyan-500 ml-0.5">({floors})</span>
+                        </div>
+                    </div>
+                </div>
+            </Card>
+
+            {isModalOpen && (
+                <IndexHistoryModal
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    indexId={id}
+                    indexName={name}
+                />
+            )}
+        </>
     );
 });
