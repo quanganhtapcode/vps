@@ -51,3 +51,7 @@ stocks.db
 *.db
 *.db-wal
 *.db-shm
+
+# SQLite (fetch_sqlite caches + backups)
+fetch_sqlite/backups/
+fetch_sqlite/backups/**

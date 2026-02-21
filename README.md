@@ -20,6 +20,12 @@ Repo đã được dọn gọn theo hướng production-first: chỉ giữ các 
 3. `automation/stock-fetch.service` gọi `run_pipeline.py`.
 4. `automation/stock-fetch.timer` chạy daily lúc 18:00.
 
+## News cache (SQLite)
+
+News từ VCI AI được prefetch định kỳ và lưu vào SQLite để API đọc nhanh:
+- DB: `fetch_sqlite/vci_ai_news.sqlite`
+- Docs: `docs/NEWS_SQLITE_CACHE.md`
+
 ## Chạy local nhanh
 
 ```bash

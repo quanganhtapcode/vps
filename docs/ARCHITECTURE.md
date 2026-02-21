@@ -18,6 +18,23 @@ Hệ thống hoạt động với 2 cơ sở dữ liệu chính:
   - Data được kéo với 10 threads song song, 1 lần pull RAW data (ko filter) và 1 lần pull Enhanced data (có lọc) ghép lại.
 - **Vị trí file:** Nằm ở `/var/www/valuation/fetch_sqlite/vci_screening.sqlite`.
 
+**Backup policy (VPS):**
+- Backup **1 tuần / 1 lần** (cron Sunday 03:00) bằng `fetch_sqlite/backup_vci_screening.py`.
+- Auto xoá backup cũ sau **30 ngày** (retention).
+- Log: `/var/www/valuation/fetch_sqlite/cron_backup_vci_screening.log`.
+
+### C. Fast-Moving Database: `fetch_sqlite/vci_ai_news.sqlite` (VCI AI News Cache)
+- **Mục tiêu:** Prefetch news định kỳ để API đọc từ SQLite (tránh gọi upstream mỗi request).
+- **Phương thức cập nhật:**
+   - Cronjob chạy mỗi **5 phút** gọi: `fetch_sqlite/fetch_vci_news.py` (có thể chạy nhiều workers để fetch nhanh).
+   - Backend ưu tiên đọc SQLite trong `/api/market/news` và `/api/stock/news/<symbol>`.
+- **Vị trí file:** `/var/www/valuation/fetch_sqlite/vci_ai_news.sqlite`.
+
+### D. Fast-Moving Database: `fetch_sqlite/vci_ai_standouts.sqlite` (VCI AI Standouts Cache)
+- **Mục tiêu:** Cache payload AI standouts (top tickers) theo giờ để endpoint `/api/market/standouts` đọc nhanh.
+- **Phương thức cập nhật:** Cronjob chạy mỗi **1 giờ** gọi: `fetch_sqlite/fetch_vci_standouts.py`.
+- **Vị trí file:** `/var/www/valuation/fetch_sqlite/vci_ai_standouts.sqlite`.
+
 ---
 
 ## 2. API Endpoints Chính Mới Update
@@ -84,6 +101,16 @@ Hệ thống hoạt động với 2 cơ sở dữ liệu chính:
 3. **Xem cron log của file Fast-Moving data 5 phút:**
    ```bash
    cat /var/www/valuation/fetch_sqlite/cron_screener.log
+   ```
+
+   **Xem cron log của News cache 5 phút:**
+   ```bash
+   cat /var/www/valuation/fetch_sqlite/cron_vci_ai_news.log
+   ```
+
+   **Xem cron log của Standouts cache (hourly):**
+   ```bash
+   cat /var/www/valuation/fetch_sqlite/cron_vci_ai_standouts.log
    ```
 
 4. **Deploy Mới Lên VPS nhanh nhất:**

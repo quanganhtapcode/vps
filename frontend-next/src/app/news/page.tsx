@@ -11,12 +11,14 @@ export default function NewsPage() {
     const [news, setNews] = useState<NewsItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [page, setPage] = useState(1);
+    const pageSize = 50;
 
     useEffect(() => {
         async function loadNews() {
             try {
                 setIsLoading(true);
-                const response = await fetch('/api/market/news?page=1&size=50');
+                const response = await fetch(`/api/market/news?page=${page}&size=${pageSize}`);
                 if (!response.ok) throw new Error('Failed to fetch news');
                 const data = await response.json();
                 // Handle API response with Data property
@@ -30,7 +32,21 @@ export default function NewsPage() {
             }
         }
         loadNews();
-    }, []);
+    }, [page]);
+
+    const goToPage = (p: number) => {
+        const next = Math.max(1, p);
+        setPage(next);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const pageButtons = (() => {
+        const start = Math.max(1, page - 2);
+        const end = page + 2;
+        const buttons: number[] = [];
+        for (let p = start; p <= end; p++) buttons.push(p);
+        return buttons;
+    })();
 
     return (
         <div className={styles.container}>
@@ -53,6 +69,7 @@ export default function NewsPage() {
             )}
 
             {!isLoading && !error && (
+                <>
                 <div className={styles.newsList}>
                     {news.map((item, index) => {
                         const title = item.Title || '';
@@ -127,6 +144,36 @@ export default function NewsPage() {
                         );
                     })}
                 </div>
+                <div className={styles.pagination}>
+                    <button
+                        className={styles.pageButton}
+                        onClick={() => goToPage(page - 1)}
+                        disabled={page <= 1 || isLoading}
+                    >
+                        Prev
+                    </button>
+
+                    {pageButtons.map((p) => (
+                        <button
+                            key={p}
+                            className={`${styles.pageButton} ${p === page ? styles.pageActive : ''}`}
+                            onClick={() => goToPage(p)}
+                            disabled={isLoading}
+                        >
+                            {p}
+                        </button>
+                    ))}
+
+                    <button
+                        className={styles.pageButton}
+                        onClick={() => goToPage(page + 1)}
+                        disabled={isLoading || news.length < pageSize}
+                        title={news.length < pageSize ? 'No more pages' : ''}
+                    >
+                        Next
+                    </button>
+                </div>
+                </>
             )}
 
             {!isLoading && news.length === 0 && !error && (

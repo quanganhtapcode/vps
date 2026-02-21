@@ -200,6 +200,8 @@ export async function fetchNews(page: number = 1, size: number = 100): Promise<N
     interface NewsResponse {
         Data?: NewsItem[];
         data?: NewsItem[];
+        news?: NewsItem[];
+        data?: NewsItem[];
     }
     const response = await fetchAPI<NewsResponse | NewsItem[]>(
         `${API.NEWS}?page=${page}&size=${size}`
@@ -221,7 +223,7 @@ export async function fetchTopMovers(type: 'UP' | 'DOWN', centerID: string = 'HO
     const response = await fetchAPI<TopMoversResponse>(
         `${API.TOP_MOVERS}?centerID=${centerID}&type=${type}`
     );
-    return response.Data || [];
+    return response.data || response.Data || response.news || [];
 }
 
 /**

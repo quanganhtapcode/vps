@@ -1,3 +1,26 @@
+"""Stock routes blueprint (bootstrap).
+
+This file intentionally stays small: it creates the Flask blueprint and
+registers route groups implemented in backend/routes/stock/.
+
+Public contract:
+- Exports `stock_bp` for backend/server.py and backend/routes/__init__.py.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from flask import Blueprint
+
+from backend.routes.stock import register_stock_routes
+
+
+logger = logging.getLogger(__name__)
+
+
+stock_bp = Blueprint("stock", __name__)
+register_stock_routes(stock_bp)
 from flask import Blueprint, jsonify, request
 import logging
 import pandas as pd
@@ -10,6 +33,7 @@ import re
 from backend.extensions import get_provider
 from backend.utils import validate_stock_symbol
 from vnstock import Vnstock, Quote, Company
+from backend.routes.handlers.stock_symbol_news import get_symbol_news_from_sqlite
 from backend.services.news_service import NewsService
 
 stock_bp = Blueprint('stock', __name__)
@@ -48,6 +72,25 @@ def api_current_price(symbol):
 def api_price(symbol):
     """Get real-time price for a symbol (lightweight endpoint for auto-refresh)"""
     try:
+        # Prefer SQLite cache produced by fetch_sqlite/fetch_vci_news.py
+        try:
+            news_db = default_news_db_path()
+            cached_items = query_news_for_symbol(news_db, symbol, limit=15)
+            if cached_items:
+                news_data = []
+                for item in cached_items:
+                    pub_date = item.get('update_date') or item.get('publish_date') or ''
+                    link = item.get('news_source_link') or item.get('url') or '#'
+                    news_data.append({
+                        "title": item.get('news_title') or item.get('title') or '',
+                        "url": link,
+                        "source": item.get('news_from_name') or item.get('news_from') or item.get('source') or 'VCI',
+                        "publish_date": str(pub_date),
+                    })
+                return jsonify({"success": True, "data": news_data})
+        except Exception as e:
+            logger.warning(f"SQLite news lookup failed for {symbol}: {e}")
+
         # Validate symbol
         is_valid, clean_symbol = validate_stock_symbol(symbol)
         if not is_valid:
@@ -649,6 +692,16 @@ def api_news(symbol):
     try:
         is_valid, clean_symbol = validate_stock_symbol(symbol)
         if not is_valid: return jsonify({"success": False, "error": clean_symbol}), 400
+
+        # Prefer SQLite cache produced by fetch_sqlite/fetch_vci_news.py
+        try:
+            sqlite_items = get_symbol_news_from_sqlite(symbol=clean_symbol, limit=12)
+            if sqlite_items:
+                result = {"success": True, "data": sqlite_items}
+                _cache_set(f'news_{clean_symbol}', result)
+                return jsonify(result)
+        except Exception as e:
+            logger.warning(f"SQLite news lookup failed for {clean_symbol}: {e}")
 
         # Check cache
         cache_key = f'news_{clean_symbol}'
