@@ -110,7 +110,7 @@ function OverviewTab({
         if (!historicalData || historicalData.length === 0) return [];
 
         return historicalData.map((d, i) => {
-            const date = new Date(d.time);
+            const date = new Date(String(d.time).replace(' ', 'T'));
             const month = (date.getMonth() + 1).toString().padStart(2, '0');
             const year = date.getFullYear().toString().slice(-2);
 
@@ -151,7 +151,7 @@ function OverviewTab({
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - 365);
 
-        const last52w = historicalData.filter((d) => new Date(d.time).getTime() >= cutoff.getTime());
+        const last52w = historicalData.filter((d) => new Date(String(d.time).replace(' ', 'T')).getTime() >= cutoff.getTime());
         if (last52w.length === 0) {
             return {
                 high52w: null as number | null,

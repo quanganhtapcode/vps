@@ -50,7 +50,7 @@ function PriceHistoryTab({ symbol, initialData }: PriceHistoryTabProps) {
                     close: normalize(item.close || item.Close || 0),
                     volume: item.volume || item.Volume || 0,
                 }));
-                normalized.sort((a: any, b: any) => new Date(a.time).getTime() - new Date(b.time).getTime());
+                normalized.sort((a: any, b: any) => new Date(String(a.time).replace(' ', 'T')).getTime() - new Date(String(b.time).replace(' ', 'T')).getTime());
                 setAllPriceData(normalized);
             } catch (err) {
                 setError('Failed to load price data');
@@ -73,14 +73,14 @@ function PriceHistoryTab({ symbol, initialData }: PriceHistoryTabProps) {
             case '3Y': cutoff.setFullYear(now.getFullYear() - 3); break;
             case '5Y': cutoff.setFullYear(now.getFullYear() - 5); break;
         }
-        return allPriceData.filter(d => new Date(d.time) >= cutoff);
+        return allPriceData.filter(d => new Date(String(d.time).replace(' ', 'T')) >= cutoff);
     }, [allPriceData, deferredPeriod]);
 
     const handleDownload = () => {
         if (!priceData || priceData.length === 0) return;
         const header = 'DATE,OPEN,HIGH,LOW,CLOSE,VOLUME';
         const rows = priceData.map(row => {
-            const dateStr = new Date(row.time).toISOString().split('T')[0];
+            const dateStr = new Date(String(row.time).replace(' ', 'T')).toISOString().split('T')[0];
             return `${dateStr},${row.open},${row.high},${row.low},${row.close},${row.volume}`;
         });
         const csvContent = '\uFEFF' + [header, ...rows].join('\n');
@@ -179,7 +179,7 @@ function PriceHistoryTab({ symbol, initialData }: PriceHistoryTabProps) {
                             {[...priceData].reverse().map((item, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-900/50 transition-colors">
                                     <td className="px-4 py-3 text-sm font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
-                                        {new Date(item.time).toISOString().split('T')[0]}
+                                        {new Date(String(item.time).replace(' ', 'T')).toISOString().split('T')[0]}
                                     </td>
                                     <td className="px-4 py-3 text-right text-sm text-tremor-content dark:text-dark-tremor-content">
                                         {formatNumber(item.open)}

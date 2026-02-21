@@ -353,7 +353,7 @@ export default function StockDetailPage() {
                             volume: d.volume,
                         }));
                         // Sort by date ascending to ensure proper charting
-                        mapped.sort((a: any, b: any) => new Date(a.time).getTime() - new Date(b.time).getTime());
+                        mapped.sort((a: any, b: any) => new Date(String(a.time).replace(' ', 'T')).getTime() - new Date(String(b.time).replace(' ', 'T')).getTime());
                         setFullHistoryData(mapped);
 
                         // Update priceData with latest session info (high, low, open, change)
@@ -401,7 +401,7 @@ export default function StockDetailPage() {
             default: cutoff.setDate(now.getDate() - 90);
         }
 
-        const filtered = fullHistoryData.filter(d => new Date(d.time) >= cutoff);
+        const filtered = fullHistoryData.filter(d => new Date(String(d.time).replace(' ', 'T')) >= cutoff);
         setHistoricalData(filtered);
     }, [deferredTimeRange, fullHistoryData]);
 
