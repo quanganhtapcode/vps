@@ -196,12 +196,10 @@ export async function fetchIndexChart(indexId: string): Promise<ChartPoint[]> {
     return response[indexId] || [];
 }
 
-/**
- * Fetch market news
- */
 export async function fetchNews(page: number = 1, size: number = 100): Promise<NewsItem[]> {
     interface NewsResponse {
         Data?: NewsItem[];
+        data?: NewsItem[];
     }
     const response = await fetchAPI<NewsResponse | NewsItem[]>(
         `${API.NEWS}?page=${page}&size=${size}`
@@ -210,7 +208,7 @@ export async function fetchNews(page: number = 1, size: number = 100): Promise<N
     if (Array.isArray(response)) {
         return response;
     }
-    return response.Data || [];
+    return response.data || response.Data || [];
 }
 
 /**
