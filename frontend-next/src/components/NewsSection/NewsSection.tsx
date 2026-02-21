@@ -26,7 +26,7 @@ interface SymbolPrice {
 export default function NewsSection({ news, isLoading, error }: NewsSectionProps) {
     const [prices, setPrices] = useState<Record<string, SymbolPrice>>({});
 
-    // Fetch prices for unique symbols in the news list
+    // Fetch prices for ALL news symbols in 1 single request using bulk endpoint
     useEffect(() => {
         if (!news || news.length === 0) return;
 
@@ -36,30 +36,13 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
 
         if (uniqueSymbols.length === 0) return;
 
-        // Fetch all prices in parallel
-        Promise.allSettled(
-            uniqueSymbols.map(sym =>
-                fetch(`/api/current-price/${sym}`)
-                    .then(r => r.ok ? r.json() : null)
-                    .then(data => ({ sym, data }))
-                    .catch(() => ({ sym, data: null }))
-            )
-        ).then(results => {
-            const priceMap: Record<string, SymbolPrice> = {};
-            results.forEach(r => {
-                if (r.status === 'fulfilled' && r.value?.data) {
-                    const d = r.value.data;
-                    const sym = r.value.sym;
-                    const price = (d.price || d.current_price || 0);
-                    const change = d.change || 0;
-                    const changePercent = d.changePercent || d.change_percent || 0;
-                    if (price > 0) {
-                        priceMap[sym] = { price, change, changePercent };
-                    }
-                }
-            });
-            setPrices(priceMap);
-        });
+        // ONE request with ?symbols=FMC,SSI,VNM,... instead of N separate requests
+        fetch(`/api/market/prices?symbols=${uniqueSymbols.join(',')}`)
+            .then(r => r.ok ? r.json() : {})
+            .then((data: Record<string, SymbolPrice>) => {
+                setPrices(data);
+            })
+            .catch(() => { /* silently fail - prices are optional */ });
     }, [news]);
 
     if (isLoading) {
