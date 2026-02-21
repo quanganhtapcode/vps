@@ -1,5 +1,8 @@
 # ========================================
-# BACKEND & AUTOMATION (Stay on VPS/Local)
+# STANDARD IGNORES (Artifacts / Secrets)
+# ========================================
+# ========================================
+# LOCAL/VPS-ONLY FOLDERS (not tracked here)
 # ========================================
 backend/
 automation/
@@ -25,15 +28,6 @@ backups/
 sector_peers.json
 stock_list.json
 
-# SSH Keys & Secrets
-*.pem
-.env
-.env.*
-.env.vps
-
-# ========================================
-# STANDARD IGNORES
-# ========================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -42,8 +36,16 @@ env/
 node_modules/
 .vscode/
 .idea/
+.next/
+.idea/
 *.log
 *.zip
+
+# SSH Keys & Secrets
+*.pem
+.env
+.env.*
+.env.vps
 *.bak
 
 # Database files
@@ -51,7 +53,17 @@ stocks.db
 *.db
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 
-# SQLite (fetch_sqlite caches + backups)
+# Local debug / artifacts
+inspect_db_output.txt
+fmc_news.json
+
+# SQLite caches + backups
 fetch_sqlite/backups/
 fetch_sqlite/backups/**
+fetch_sqlite/*.sqlite
+fetch_sqlite/*.sqlite-wal
+fetch_sqlite/*.sqlite-shm
