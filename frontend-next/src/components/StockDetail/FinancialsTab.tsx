@@ -250,8 +250,13 @@ export default function FinancialsTab({
     const [readyToRender, setReadyToRender] = React.useState(false);
     React.useEffect(() => {
         setReadyToRender(false);
-        const id = requestIdleCallback(() => setReadyToRender(true), { timeout: 200 });
-        return () => cancelIdleCallback(id);
+        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+            const id = window.requestIdleCallback(() => setReadyToRender(true), { timeout: 200 });
+            return () => window.cancelIdleCallback(id);
+        } else {
+            const id = setTimeout(() => setReadyToRender(true), 1);
+            return () => clearTimeout(id);
+        }
     }, [symbol, period]);
 
     return (
