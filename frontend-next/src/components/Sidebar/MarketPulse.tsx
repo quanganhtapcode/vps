@@ -216,7 +216,7 @@ function MarketList({
                                                 <div className={`text-sm font-semibold ${subTab === 0 ? 'text-emerald-600' : 'text-red-500'} tabular-nums`}>
                                                     {subTab === 0 ? '+' : '-'}{valueFormatted}
                                                 </div>
-                                                <div className="text-[10px] font-medium text-gray-400">
+                                                <div className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
                                                     VND
                                                 </div>
                                             </>
@@ -227,7 +227,7 @@ function MarketList({
                         })}
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                    <div className="flex flex-col items-center justify-center h-32 text-gray-600 dark:text-gray-400">
                         <span className="text-xs">No data available</span>
                     </div>
                 )}

@@ -218,8 +218,8 @@ export function Navbar() {
             <div className="w-full md:my-auto">
                 <div className="flex items-center justify-between gap-4">
                     <div className="flex-shrink-0">
-                        <Link href={siteConfig.baseLinks.home} aria-label="Home">
-                            <span className="sr-only">Company logo</span>
+                        <Link href={siteConfig.baseLinks.home}>
+                            <span className="sr-only">Home</span>
                             <DatabaseLogo className="w-24 md:w-32" />
                         </Link>
                     </div>
@@ -256,7 +256,7 @@ export function Navbar() {
                                     ref={desktopInputRef}
                                     type="text"
                                     className={cx(
-                                        "w-32 lg:w-48 rounded-full border border-gray-200 bg-gray-50/50 py-1.5 pl-9 pr-4 text-sm outline-none transition-all placeholder:text-gray-400 focus:w-64 lg:focus:w-72 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-50 dark:focus:border-blue-500",
+                                        "w-32 lg:w-48 rounded-full border border-gray-200 bg-gray-50/50 py-1.5 pl-9 pr-4 text-sm outline-none transition-all placeholder:text-gray-500 focus:w-64 lg:focus:w-72 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-50 dark:placeholder:text-gray-400 dark:focus:border-blue-500",
                                         focusInput
                                     )}
                                     placeholder="Search..."
@@ -286,7 +286,7 @@ export function Navbar() {
                             {searchOpen && searchQuery && (
                                 <div className="absolute right-0 top-full mt-2 w-[320px] lg:w-[400px] rounded-xl border border-gray-200 bg-white p-2 shadow-2xl shadow-blue-500/10 backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95 overflow-hidden">
                                     <div className="px-2 py-1 mb-1">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Search Results</span>
+                                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest">Search Results</span>
                                     </div>
                                     <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
                                         {searchResults.length > 0 ? (
@@ -317,7 +317,7 @@ export function Navbar() {
                                                                     }
                                                                 }}
                                                             />
-                                                            <span className="hidden text-[10px] font-bold text-gray-400">
+                                                            <span className="hidden text-[10px] font-bold text-gray-600 dark:text-gray-400">
                                                                 {result.symbol[0]}
                                                             </span>
                                                         </div>
@@ -401,7 +401,7 @@ export function Navbar() {
                                     type="text"
                                     autoFocus
                                     className={cx(
-                                        "w-full rounded-md border border-gray-200 bg-gray-50 py-2 pl-9 pr-4 text-sm outline-none transition-all placeholder:text-gray-400 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-50",
+                                        "w-full rounded-md border border-gray-200 bg-gray-50 py-2 pl-9 pr-4 text-sm outline-none transition-all placeholder:text-gray-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-50 dark:placeholder:text-gray-400",
                                         focusInput
                                     )}
                                     placeholder="Search stock symbol..."

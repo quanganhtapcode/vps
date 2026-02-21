@@ -65,7 +65,7 @@ export default function GoldPrice({ prices, isLoading, updatedAt }: GoldPricePro
                                             <span className="text-[13px] font-bold text-gray-700 dark:text-gray-200 truncate">
                                                 {item.TypeName}
                                             </span>
-                                            <span className="text-[11px] text-gray-400 dark:text-gray-500 font-medium">
+                                            <span className="text-[11px] text-gray-600 dark:text-gray-400 font-medium">
                                                 BTMC
                                             </span>
                                         </div>
@@ -95,7 +95,7 @@ export default function GoldPrice({ prices, isLoading, updatedAt }: GoldPricePro
 
             {/* Footer Update Time */}
             <div className="text-center py-3">
-                <span className="text-[11px] text-gray-400 dark:text-gray-500 italic">
+                <span className="text-[11px] text-gray-600 dark:text-gray-400 italic">
                     Cập nhật: {(() => {
                         try {
                             if (!updatedAt) return '';

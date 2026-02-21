@@ -151,13 +151,13 @@ export default function Lottery() {
 
                     {/* Date Footer */}
                     <div className="text-center py-2">
-                        <span className="text-[11px] text-gray-400 dark:text-gray-500 italic">
+                        <span className="text-[11px] text-gray-600 dark:text-gray-400 italic">
                             Kết quả ngày: {data.pubDate || new Date().toLocaleDateString('vi-VN')}
                         </span>
                     </div>
                 </div>
             ) : (
-                <div className="py-20 text-center text-gray-400 text-xs italic">
+                <div className="py-20 text-center text-gray-600 dark:text-gray-400 text-xs italic">
                     Không tìm thấy kết quả cho {REGIONS.find(r => r.key === region)?.label}.
                 </div>
             )}
