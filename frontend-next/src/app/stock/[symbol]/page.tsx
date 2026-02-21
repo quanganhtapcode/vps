@@ -306,12 +306,13 @@ export default function StockDetailPage() {
                         const newsData = newsRes.value.Data || newsRes.value.data || newsRes.value || [];
                         if (Array.isArray(newsData)) {
                             const mappedNews = newsData.map((item: any) => ({
+                                ...item,
                                 Title: item.Title || item.title,
                                 Link: item.Link || item.url || item.NewsUrl,
                                 NewsUrl: item.NewsUrl || item.url,
                                 PublishDate: item.PublishDate || item.publish_date || item.PostDate
                             }));
-                            setNews(mappedNews.slice(0, 5));
+                            setNews(mappedNews.slice(0, 12));
                         }
                     }
                 });

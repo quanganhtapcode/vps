@@ -688,7 +688,7 @@ def api_news(symbol):
             })
             
         result = {"success": True, "data": news_data}
-        _cache_set(cache_key, result, ttl=1800) # Cache for 30 minutes
+        _cache_set(cache_key, result) # Cache for default TTL
         return jsonify(result)
     except Exception as exc:
         logger.error(f"Error fetching VCI AI news for {symbol}: {exc}")

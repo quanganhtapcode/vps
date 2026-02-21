@@ -112,12 +112,16 @@ export interface NewsItem {
     title?: string;
     url?: string;
     source?: string;
+    Source?: string;
     publish_date?: string;
     image_url?: string;
     sentiment?: string;
+    Sentiment?: string;
     score?: number;
+    Score?: number;
     female_audio_duration?: number;
     male_audio_duration?: number;
+    symbol?: string;
 }
 
 export interface TopMoverItem {
