@@ -644,33 +644,54 @@ def api_tickers():
 
 @stock_bp.route("/news/<symbol>")
 def api_news(symbol):
-    """Get news for a symbol"""
+    """Get news for a symbol from AI VCI API"""
     try:
+        is_valid, clean_symbol = validate_stock_symbol(symbol)
+        if not is_valid: return jsonify({"success": False, "error": clean_symbol}), 400
+
         # Check cache
-        cache_key = f'news_{symbol}'
+        cache_key = f'news_{clean_symbol}'
         cached = _cache_get(cache_key)
         if cached: return jsonify(cached)
 
-        stock = Vnstock().stock(symbol=symbol, source='VCI')
-        news_df = stock.company.news()
+        # Get news for 1 year period up to now
+        from datetime import datetime, timedelta
+        import requests
         
-        result = {"success": True, "data": []}
-        if news_df is not None and not news_df.empty:
-            news_data = []
-            for _, row in news_df.head(15).iterrows():
-                # Extract date logic omitted for brevity, simplified
-                pub_date = row.get('public_date') or row.get('created_at')
-                news_data.append({
-                    "title": row.get('news_title', row.get('title', '')),
-                    "url": row.get('news_source_link', row.get('url', '#')),
-                    "source": "HSX" if "hsx.vn" in str(row.get('news_source_link', '')) else "VCI",
-                    "publish_date": str(pub_date)
-                })
-            result = {"success": True, "data": news_data}
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=365)
         
-        _cache_set(cache_key, result)
+        url = f"https://ai.vietcap.com.vn/api/v3/news_info?page=1&ticker={clean_symbol}&industry=&update_from={start_date.strftime('%Y-%m-%d')}&update_to={end_date.strftime('%Y-%m-%d')}&sentiment=&newsfrom=&language=vi&page_size=12"
+        headers = {
+            'Accept': 'application/json, text/plain, */*',
+            'Origin': 'https://trading.vietcap.com.vn',
+            'Referer': 'https://trading.vietcap.com.vn/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+        }
+        
+        r = requests.get(url, headers=headers, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        
+        news_data = []
+        for item in data.get('news_info', []):
+            news_data.append({
+                "title": item.get('news_title', ''),
+                "url": item.get('news_source_link', '#'),
+                "source": item.get('news_from_name', ''),
+                "publish_date": item.get('public_date', ''),
+                "image_url": item.get('image_url', ''),
+                "sentiment": item.get('sentiment', ''),
+                "score": item.get('score', 0),
+                "female_audio_duration": item.get('female_audio_duration', 0),
+                "male_audio_duration": item.get('male_audio_duration', 0)
+            })
+            
+        result = {"success": True, "data": news_data}
+        _cache_set(cache_key, result, ttl=1800) # Cache for 30 minutes
         return jsonify(result)
     except Exception as exc:
+        logger.error(f"Error fetching VCI AI news for {symbol}: {exc}")
         return jsonify({"success": False, "error": str(exc)}), 500
 
 @stock_bp.route("/events/<symbol>")

@@ -97,7 +97,7 @@ export interface ChartPoint {
 }
 
 export interface NewsItem {
-    Title: string;
+    Title?: string;
     Link?: string;
     NewsUrl?: string;
     ImageThumb?: string;
@@ -107,6 +107,17 @@ export interface NewsItem {
     Symbol?: string;
     Price?: number;
     ChangePrice?: number;
+
+    // AI VCI keys
+    title?: string;
+    url?: string;
+    source?: string;
+    publish_date?: string;
+    image_url?: string;
+    sentiment?: string;
+    score?: number;
+    female_audio_duration?: number;
+    male_audio_duration?: number;
 }
 
 export interface TopMoverItem {
