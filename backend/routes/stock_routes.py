@@ -10,6 +10,7 @@ import re
 from backend.extensions import get_provider
 from backend.utils import validate_stock_symbol
 from vnstock import Vnstock, Quote, Company
+from backend.services.news_service import NewsService
 
 stock_bp = Blueprint('stock', __name__)
 logger = logging.getLogger(__name__)
@@ -655,37 +656,7 @@ def api_news(symbol):
         if cached: return jsonify(cached)
 
         # Get news for 1 year period up to now
-        from datetime import datetime, timedelta
-        import requests
-        
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=365)
-        
-        url = f"https://ai.vietcap.com.vn/api/v3/news_info?page=1&ticker={clean_symbol}&industry=&update_from={start_date.strftime('%Y-%m-%d')}&update_to={end_date.strftime('%Y-%m-%d')}&sentiment=&newsfrom=&language=vi&page_size=12"
-        headers = {
-            'Accept': 'application/json, text/plain, */*',
-            'Origin': 'https://trading.vietcap.com.vn',
-            'Referer': 'https://trading.vietcap.com.vn/',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-        }
-        
-        r = requests.get(url, headers=headers, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        
-        news_data = []
-        for item in data.get('news_info', []):
-            news_data.append({
-                "title": item.get('news_title', ''),
-                "url": item.get('news_source_link', '#'),
-                "source": item.get('news_from_name', ''),
-                "publish_date": item.get('update_date', ''),
-                "image_url": item.get('news_image_url', ''),
-                "sentiment": item.get('sentiment', ''),
-                "score": item.get('score', 0),
-                "female_audio_duration": item.get('female_audio_duration', 0),
-                "male_audio_duration": item.get('male_audio_duration', 0)
-            })
+        news_data = NewsService.fetch_news(ticker=clean_symbol, page=1, page_size=12)
             
         result = {"success": True, "data": news_data}
         _cache_set(cache_key, result) # Cache for default TTL

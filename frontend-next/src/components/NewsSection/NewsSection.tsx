@@ -1,16 +1,14 @@
 'use client';
 
-import { NewsItem, formatDate } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { NewsItem, formatDate, formatNumber } from '@/lib/api';
 import {
     Card,
-    Text,
     Title,
     Flex,
     Icon,
-    Badge,
-    Divider,
 } from '@tremor/react';
-import { RiNewspaperLine, RiTimeLine, RiArrowRightUpLine, RiExternalLinkLine } from '@remixicon/react';
+import { RiNewspaperLine, RiArrowRightUpLine } from '@remixicon/react';
 import Link from 'next/link';
 
 interface NewsSectionProps {
@@ -19,9 +17,51 @@ interface NewsSectionProps {
     error?: string | null;
 }
 
-const LOGO_BASE_URL = '/logos/';
+interface SymbolPrice {
+    price: number;
+    change: number;
+    changePercent: number;
+}
 
 export default function NewsSection({ news, isLoading, error }: NewsSectionProps) {
+    const [prices, setPrices] = useState<Record<string, SymbolPrice>>({});
+
+    // Fetch prices for unique symbols in the news list
+    useEffect(() => {
+        if (!news || news.length === 0) return;
+
+        const uniqueSymbols = [...new Set(
+            news.map(item => item.Symbol || item.symbol || '').filter(Boolean)
+        )];
+
+        if (uniqueSymbols.length === 0) return;
+
+        // Fetch all prices in parallel
+        Promise.allSettled(
+            uniqueSymbols.map(sym =>
+                fetch(`/api/current-price/${sym}`)
+                    .then(r => r.ok ? r.json() : null)
+                    .then(data => ({ sym, data }))
+                    .catch(() => ({ sym, data: null }))
+            )
+        ).then(results => {
+            const priceMap: Record<string, SymbolPrice> = {};
+            results.forEach(r => {
+                if (r.status === 'fulfilled' && r.value?.data) {
+                    const d = r.value.data;
+                    const sym = r.value.sym;
+                    const price = (d.price || d.current_price || 0);
+                    const change = d.change || 0;
+                    const changePercent = d.changePercent || d.change_percent || 0;
+                    if (price > 0) {
+                        priceMap[sym] = { price, change, changePercent };
+                    }
+                }
+            });
+            setPrices(priceMap);
+        });
+    }, [news]);
+
     if (isLoading) {
         return (
             <Card className="p-6">
@@ -31,7 +71,7 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                 </Title>
                 <div className="flex flex-col items-center justify-center py-12 space-y-4">
                     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-tremor-brand" />
-                    <Text>Loading latest news...</Text>
+                    <p className="text-tremor-content dark:text-dark-tremor-content text-sm">Loading latest news...</p>
                 </div>
             </Card>
         );
@@ -45,7 +85,7 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                     Market News
                 </Title>
                 <div className="py-12 text-center text-rose-500">
-                    <Text className="text-rose-500 font-medium">⚠️ {error}</Text>
+                    <p className="text-rose-500 font-medium text-sm">⚠️ {error}</p>
                 </div>
             </Card>
         );
@@ -75,19 +115,21 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                     const timeFormat = pubDateStr ? formatDate(pubDateStr) : '';
                     const image = item.image_url || item.ImageThumb || item.Avatar || '';
                     const symbol = item.Symbol || item.symbol || '';
+                    const priceInfo = symbol ? prices[symbol] : undefined;
 
                     // Sentiment formatting
-                    let sentiment = 'Trung lập';
+                    let sentiment = '';
                     let sentimentColor = 'text-yellow-600 dark:text-yellow-500';
-                    let hasSentiment = false;
-                    if (item.sentiment === 'Positive' || item.Sentiment === 'Positive') {
+                    const rawSentiment = item.sentiment || item.Sentiment || '';
+                    if (rawSentiment === 'Positive') {
                         sentiment = 'Tích cực';
                         sentimentColor = 'text-emerald-600 dark:text-emerald-500';
-                        hasSentiment = true;
-                    } else if (item.sentiment === 'Negative' || item.Sentiment === 'Negative') {
+                    } else if (rawSentiment === 'Negative') {
                         sentiment = 'Tiêu cực';
                         sentimentColor = 'text-rose-600 dark:text-rose-500';
-                        hasSentiment = true;
+                    } else if (rawSentiment === 'Neutral') {
+                        sentiment = 'Trung lập';
+                        sentimentColor = 'text-yellow-600 dark:text-yellow-500';
                     }
 
                     // Audio duration
@@ -96,13 +138,28 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                     const secs = Math.floor(audioDur % 60);
                     const durString = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
+                    // Price color
+                    const priceUp = priceInfo && priceInfo.change > 0;
+                    const priceDown = priceInfo && priceInfo.change < 0;
+                    const priceColor = priceUp
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : priceDown
+                            ? 'text-rose-600 dark:text-rose-400'
+                            : 'text-yellow-600 dark:text-yellow-400';
+                    const priceBg = priceUp
+                        ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
+                        : priceDown
+                            ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400'
+                            : 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400';
+
                     return (
-                        <div key={index}
+                        <div
+                            key={index}
                             className="flex flex-col rounded-xl border border-tremor-border dark:border-dark-tremor-border bg-white dark:bg-[#1a1c23] overflow-hidden hover:ring-1 hover:ring-tremor-brand transition-all cursor-pointer shadow-sm hover:shadow-md"
                             onClick={() => window.open(finalUrl, '_blank')}
                         >
                             {/* Image Header */}
-                            <div className="h-44 w-full bg-tremor-background-subtle dark:bg-dark-tremor-background-subtle relative overflow-hidden group">
+                            <div className="h-44 w-full bg-slate-100 dark:bg-slate-800 relative overflow-hidden group">
                                 {image ? (
                                     <img
                                         src={image}
@@ -112,49 +169,68 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                     />
                                 ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-tremor-content-subtle dark:text-dark-tremor-content-subtle bg-slate-100 dark:bg-slate-800">
-                                        <svg className="w-10 h-10 opacity-30" fill="currentColor" viewBox="0 0 24 24"><path d="M19.5 3h-15C3.12 3 2 4.12 2 5.5v13C2 19.88 3.12 21 4.5 21h15c1.38 0 2.5-1.12 2.5-2.5v-13C22 4.12 20.88 3 19.5 3zM19.5 19h-15V5.5h15V19zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <svg className="w-10 h-10 opacity-20 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M19.5 3h-15C3.12 3 2 4.12 2 5.5v13C2 19.88 3.12 21 4.5 21h15c1.38 0 2.5-1.12 2.5-2.5v-13C22 4.12 20.88 3 19.5 3zM19.5 19h-15V5.5h15V19zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
+                                        </svg>
                                     </div>
                                 )}
                             </div>
 
                             {/* Content */}
                             <div className="p-4 flex flex-col flex-1">
-                                {/* Meta data row */}
-                                <div className="flex items-center gap-1.5 text-xs font-semibold mb-2">
-                                    {hasSentiment && <span className={sentimentColor}>{sentiment}</span>}
-                                    {hasSentiment && <span className="text-gray-400 dark:text-gray-600">•</span>}
-                                    {symbol && <span className="text-tremor-content-strong dark:text-dark-tremor-content-strong font-bold">{symbol}</span>}
+                                {/* Meta: Sentiment + Symbol + Price */}
+                                <div className="flex items-center gap-1.5 text-xs font-semibold mb-2 flex-wrap">
+                                    {sentiment && (
+                                        <span className={sentimentColor}>{sentiment}</span>
+                                    )}
+                                    {sentiment && symbol && (
+                                        <span className="text-gray-400 dark:text-gray-600">•</span>
+                                    )}
+                                    {symbol && (
+                                        <span className={`font-bold ${priceColor}`}>{symbol}</span>
+                                    )}
+                                    {priceInfo && (
+                                        <div className="flex items-center gap-1 ml-0.5">
+                                            <span className={priceColor}>
+                                                {formatNumber(priceInfo.price, { maximumFractionDigits: 0 })}
+                                            </span>
+                                            <span className={`px-1 py-0.5 rounded text-[10px] font-bold ${priceBg}`}>
+                                                {priceInfo.change > 0 ? '+' : ''}{priceInfo.change === 0 ? '0' : formatNumber(priceInfo.change, { maximumFractionDigits: 0 })}
+                                                ({priceInfo.changePercent === 0 ? '0%' : (priceInfo.changePercent > 0 ? '+' : '') + priceInfo.changePercent.toFixed(1) + '%'})
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Title */}
-                                <h3 className="text-[15px] font-bold text-tremor-content-strong dark:text-dark-tremor-content-strong leading-normal line-clamp-2 md:line-clamp-3 mb-auto">
+                                <h3 className="text-[15px] font-bold text-tremor-content-strong dark:text-dark-tremor-content-strong leading-snug line-clamp-3 mb-auto">
                                     {title}
                                 </h3>
 
                                 {/* Footer */}
-                                <div className="flex items-center justify-between text-[12px] text-tremor-content-subtle dark:text-dark-tremor-content-subtle mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
-                                    <div className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
-                                        <span>{timeFormat}</span>
-                                        <span>•</span>
+                                <div className="flex items-center justify-between text-[12px] text-tremor-content-subtle dark:text-dark-tremor-content-subtle mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                        {timeFormat && <span className="shrink-0">{timeFormat}</span>}
+                                        {timeFormat && source && <span>•</span>}
                                         <span className="truncate">{source}</span>
                                     </div>
 
-                                    <div className="flex items-center gap-2.5 shrink-0 ml-2 font-medium">
+                                    <div className="flex items-center gap-2 shrink-0 ml-2">
                                         {audioDur > 0 && (
-                                            <div className="flex items-center gap-1 opacity-80">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                            <div className="flex items-center gap-1 opacity-70">
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                                                     <rect x="2" y="9" width="4" height="6" rx="1" />
                                                     <rect x="10" y="4" width="4" height="16" rx="1" />
                                                     <rect x="18" y="9" width="4" height="6" rx="1" />
                                                 </svg>
-                                                <span>{durString}</span>
+                                                <span className="font-medium">{durString}</span>
                                             </div>
                                         )}
-                                        <div className="w-7 h-7 rounded bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-500 flex items-center justify-center transition-colors hover:bg-blue-100 dark:hover:bg-blue-500/20">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M12 2A10 10 0 0 0 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2Z" />
-                                                <path d="M15 12 10 8v8l5-4Z" />
+                                        <div className="w-7 h-7 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <circle cx="12" cy="12" r="10" />
+                                                <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none" />
                                             </svg>
                                         </div>
                                     </div>
