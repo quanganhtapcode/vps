@@ -20,6 +20,7 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(initialData || null);
     const [manualPrice, setManualPrice] = useState<number>(currentPrice || 0);
+    const [userEditedPrice, setUserEditedPrice] = useState<boolean>(false);
 
     // Initial Assumptions
     const defaultAssumptions = {
@@ -42,10 +43,13 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
         graham: { id: 'graham', name: 'Graham', desc: 'Benjamin Graham Formula', enabled: !isBank, weight: isBank ? 0 : 20, icon: RiScales3Line }
     });
 
-    // Update manual price only if it hasn't been set by user interaction or initial load
+    // Sync to latest market price, unless user explicitly edited it
     useEffect(() => {
-        if (currentPrice > 0 && manualPrice === 0) setManualPrice(currentPrice);
-    }, [currentPrice]);
+        if (currentPrice > 0 && !userEditedPrice) {
+            // Round to 2 decimal places to prevent crazy floats like 7186.869725
+            setManualPrice(Math.round(currentPrice * 100) / 100);
+        }
+    }, [currentPrice, userEditedPrice]);
 
     // Update result if initialData changes
     useEffect(() => {
@@ -225,7 +229,8 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
 
     const handleReset = () => {
         setAssumptions(defaultAssumptions);
-        setManualPrice(currentPrice || 0);
+        setManualPrice(Math.round(currentPrice * 100) / 100 || 0);
+        setUserEditedPrice(false);
     };
 
     return (
@@ -263,7 +268,10 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                                             <TextInput
                                                 type="number"
                                                 value={manualPrice.toString()}
-                                                onValueChange={(v) => setManualPrice(parseFloat(v) || 0)}
+                                                onValueChange={(v) => {
+                                                    setManualPrice(parseFloat(v) || 0);
+                                                    setUserEditedPrice(true);
+                                                }}
                                             />
                                         </div>
                                     </div>
