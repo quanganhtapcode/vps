@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { NewsItem, formatDate, formatNumber } from '@/lib/api';
+import { NewsItem, formatRelativeTime, formatNumber } from '@/lib/api';
 import {
     Card,
     Title,
@@ -95,7 +95,7 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                     const title = item.title || item.Title || '';
                     const source = item.source || item.Source || 'Tổng hợp';
                     const pubDateStr = item.publish_date || item.PostDate || item.PublishDate;
-                    const timeFormat = pubDateStr ? formatDate(pubDateStr) : '';
+                    const timeFormat = pubDateStr ? formatRelativeTime(pubDateStr, 'vi-VN') : '';
                     const image = item.image_url || item.ImageThumb || item.Avatar || '';
                     const symbol = item.Symbol || item.symbol || '';
                     const priceInfo = symbol ? prices[symbol] : undefined;

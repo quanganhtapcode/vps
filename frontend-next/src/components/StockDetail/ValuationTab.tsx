@@ -124,6 +124,51 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
         csvRows.push(['Tax Rate (%)', assumptions.taxRate]);
         csvRows.push([]);
 
+        // Comparables breakdown (Industry median P/E TTM & P/B)
+        const exportData = result?.export;
+        const comparables = exportData?.comparables;
+        const peTtm = comparables?.pe_ttm;
+        const pb = comparables?.pb;
+        const calc = exportData?.calculation;
+
+        const industry = comparables?.industry || result?.inputs?.industry || '';
+        const epsTtm = calc?.justified_pe?.eps_ttm ?? result?.inputs?.eps_ttm ?? '';
+        const bvps = calc?.justified_pb?.bvps ?? result?.inputs?.bvps ?? '';
+
+        const peMedianComputed = peTtm?.median_computed ?? '';
+        const peUsed = peTtm?.used ?? result?.inputs?.industry_median_pe_ttm_used ?? '';
+        const peCount = peTtm?.count ?? result?.inputs?.industry_pe_sample_size ?? '';
+        const pbMedianComputed = pb?.median_computed ?? '';
+        const pbUsed = pb?.used ?? result?.inputs?.industry_median_pb_used ?? '';
+        const pbCount = pb?.count ?? result?.inputs?.industry_pb_sample_size ?? '';
+
+        const justifiedPeResult = calc?.justified_pe?.result ?? result?.valuations?.justified_pe ?? '';
+        const justifiedPbResult = calc?.justified_pb?.result ?? result?.valuations?.justified_pb ?? '';
+
+        const peValues = Array.isArray(peTtm?.values) ? peTtm.values : [];
+        const pbValues = Array.isArray(pb?.values) ? pb.values : [];
+        const peValuesText = peValues.length ? peValues.slice(0, 100).join(';') : '';
+        const pbValuesText = pbValues.length ? pbValues.slice(0, 100).join(';') : '';
+
+        csvRows.push(['COMPARABLES (INDUSTRY MEDIAN)']);
+        csvRows.push(['Field', 'Value']);
+        csvRows.push(['Industry', industry]);
+        csvRows.push(['EPS TTM', epsTtm]);
+        csvRows.push(['BVPS', bvps]);
+        csvRows.push(['PE TTM Median (Computed)', peMedianComputed]);
+        csvRows.push(['PE TTM Used', peUsed]);
+        csvRows.push(['PE Sample Size', peCount]);
+        csvRows.push(['PB Median (Computed)', pbMedianComputed]);
+        csvRows.push(['PB Used', pbUsed]);
+        csvRows.push(['PB Sample Size', pbCount]);
+        csvRows.push(['Justified PE Formula', 'EPS_TTM * PE_USED']);
+        csvRows.push(['Justified PE Result', justifiedPeResult]);
+        csvRows.push(['Justified PB Formula', 'BVPS * PB_USED']);
+        csvRows.push(['Justified PB Result', justifiedPbResult]);
+        if (peValuesText) csvRows.push(['PE values used (sample; max 100)', peValuesText]);
+        if (pbValuesText) csvRows.push(['PB values used (sample; max 100)', pbValuesText]);
+        csvRows.push([]);
+
         // Models
         csvRows.push(['VALUATION METHOD', 'Weight (%)', 'Value (CUR)', 'Upside (%)']);
         Object.keys(models).forEach(key => {

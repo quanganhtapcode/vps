@@ -13,6 +13,7 @@ import {
     fetchTopMovers,
     fetchForeignFlow,
     fetchGoldPrices,
+    formatRelativeTime,
     INDEX_MAP,
     MarketIndexData,
     NewsItem,
@@ -178,14 +179,7 @@ export default function OverviewClient({
             {/* Last update time - only show on client */}
             {isMounted && lastUpdate && (
                 <div className={styles.updateTime}>
-                    📅 Updated at: {lastUpdate.toLocaleString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                    })}
+                    📅 Updated at: {formatRelativeTime(lastUpdate, 'vi-VN')}
                 </div>
             )}
 

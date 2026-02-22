@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { NewsItem, formatDate } from '@/lib/api';
+import { NewsItem, formatRelativeTime } from '@/lib/api';
 import styles from './page.module.css';
 import { siteConfig } from '@/app/siteConfig';
 
@@ -76,7 +76,7 @@ export default function NewsPage() {
                         const link = item.Link || item.NewsUrl || '#';
                         const url = link.startsWith('http') ? link : `https://cafef.vn${link}`;
                         const img = item.ImageThumb || item.Avatar || '';
-                        const time = formatDate(item.PostDate || item.PublishDate);
+                        const time = formatRelativeTime(item.PostDate || item.PublishDate, 'vi-VN');
                         const symbol = item.Symbol || '';
                         const change = item.ChangePrice || 0;
                         const isUp = change >= 0;

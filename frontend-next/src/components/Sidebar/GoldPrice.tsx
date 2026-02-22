@@ -4,7 +4,7 @@ import {
     Card,
 } from '@tremor/react';
 import { RiCopperCoinLine, RiWaterFlashLine, RiTimeLine } from '@remixicon/react';
-import { GoldPriceItem } from '@/lib/api';
+import { GoldPriceItem, formatRelativeTime } from '@/lib/api';
 import { useEffect, useState } from 'react';
 
 interface GoldPriceProps {
@@ -99,6 +99,10 @@ export default function GoldPrice({ prices, isLoading, updatedAt }: GoldPricePro
                     Cập nhật: {(() => {
                         try {
                             if (!updatedAt) return '';
+
+                            const relative = formatRelativeTime(updatedAt, 'vi-VN');
+                            if (relative) return relative;
+
                             if (updatedAt.includes('/') && updatedAt.includes(':')) return updatedAt;
                             const date = new Date(updatedAt);
                             if (isNaN(date.getTime())) return updatedAt;

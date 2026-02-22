@@ -939,6 +939,13 @@ def api_valuation(symbol):
 
         data = request.get_json(silent=True) or {}
 
+        include_lists = bool(data.get('includeComparableLists') or data.get('include_comparable_lists'))
+        try:
+            comparable_list_limit = int(data.get('comparableListLimit') or (500 if include_lists else 50))
+        except Exception:
+            comparable_list_limit = 500 if include_lists else 50
+        comparable_list_limit = max(0, min(comparable_list_limit, 2000))
+
         def to_float(value, default=0.0):
             try:
                 if value is None or pd.isna(value):
@@ -972,30 +979,82 @@ def api_valuation(symbol):
             if total_equity > 0 and shares_outstanding > 0:
                 bvps = total_equity / shares_outstanding
 
-        peers = provider.get_stock_peers(clean_symbol) or []
-        peer_pe_values = []
-        peer_pb_values = []
+        def median(values: list[float]) -> float | None:
+            vals = [float(v) for v in values if v is not None]
+            if not vals:
+                return None
+            vals.sort()
+            n = len(vals)
+            mid = n // 2
+            if n % 2 == 1:
+                return vals[mid]
+            return (vals[mid - 1] + vals[mid]) / 2
 
-        for peer in peers:
-            pe_val = to_float(peer.get('pe'))
-            pb_val = to_float(peer.get('pb'))
+        # === Industry median multiples (TTM) ===
+        # Use full-industry distribution from the SQLite overview table (not just top-10 peers)
+        industry = None
+        peer_pe_values: list[float] = []
+        peer_pb_values: list[float] = []
 
-            if 0 < pe_val <= 80:
-                peer_pe_values.append(pe_val)
-            if 0 < pb_val <= 20:
-                peer_pb_values.append(pb_val)
+        try:
+            import sqlite3
 
-        if peer_pe_values:
-            peer_pe_values.sort()
-            peer_pe = peer_pe_values[len(peer_pe_values) // 2]
-        else:
-            peer_pe = 15.0
+            db_path = getattr(provider, 'db_path', None)
+            if db_path:
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
 
-        if peer_pb_values:
-            peer_pb_values.sort()
-            peer_pb = peer_pb_values[len(peer_pb_values) // 2]
-        else:
-            peer_pb = 1.5
+                cur.execute("SELECT industry FROM overview WHERE symbol = ?", (clean_symbol,))
+                row = cur.fetchone()
+                industry = row['industry'] if row and row['industry'] else None
+
+                if not industry and hasattr(provider, '_get_industry_for_symbol'):
+                    industry = provider._get_industry_for_symbol(clean_symbol)
+
+                if industry and industry != 'Unknown':
+                    cur.execute(
+                        "SELECT pe, pb FROM overview WHERE industry = ? AND symbol != ?",
+                        (industry, clean_symbol),
+                    )
+                    rows = cur.fetchall() or []
+                    for r in rows:
+                        pe_val = to_float(r['pe'])
+                        pb_val = to_float(r['pb'])
+                        if 0 < pe_val <= 80:
+                            peer_pe_values.append(pe_val)
+                        if 0 < pb_val <= 20:
+                            peer_pb_values.append(pb_val)
+                conn.close()
+        except Exception as exc:
+            logger.warning(f"Industry median multiples fallback for {clean_symbol} failed: {exc}")
+
+        industry_median_pe = median(peer_pe_values)
+        industry_median_pb = median(peer_pb_values)
+
+        # Sensible fallbacks if industry data is missing
+        peer_pe = float(industry_median_pe) if industry_median_pe is not None else 15.0
+        peer_pb = float(industry_median_pb) if industry_median_pb is not None else 1.5
+
+        def _summarize(values: list[float], computed_median: float | None) -> dict:
+            if not values:
+                return {
+                    'count': 0,
+                    'min': None,
+                    'max': None,
+                    'median_computed': computed_median,
+                }
+            return {
+                'count': len(values),
+                'min': float(min(values)),
+                'max': float(max(values)),
+                'median_computed': computed_median,
+            }
+
+        pe_values_export = peer_pe_values[:comparable_list_limit]
+        pb_values_export = peer_pb_values[:comparable_list_limit]
+        pe_truncated = len(peer_pe_values) > len(pe_values_export)
+        pb_truncated = len(peer_pb_values) > len(pb_values_export)
 
         graham = 0.0
         if eps > 0 and bvps > 0:
@@ -1046,9 +1105,48 @@ def api_valuation(symbol):
                 'current_price': current_price,
                 'eps_ttm': eps,
                 'bvps': bvps,
-                'peer_pe_used': peer_pe,
-                'peer_pb_used': peer_pb,
-                'peer_count': len(peers),
+                'industry': industry,
+                'industry_median_pe_ttm_used': peer_pe,
+                'industry_median_pb_used': peer_pb,
+                'industry_pe_sample_size': len(peer_pe_values),
+                'industry_pb_sample_size': len(peer_pb_values),
+            },
+            'export': {
+                'comparables': {
+                    'industry': industry,
+                    'pe_ttm': {
+                        **_summarize(peer_pe_values, industry_median_pe),
+                        'used': float(peer_pe),
+                        'values': [float(v) for v in pe_values_export],
+                        'truncated': bool(pe_truncated),
+                        'filter': {'min_exclusive': 0, 'max_inclusive': 80},
+                    },
+                    'pb': {
+                        **_summarize(peer_pb_values, industry_median_pb),
+                        'used': float(peer_pb),
+                        'values': [float(v) for v in pb_values_export],
+                        'truncated': bool(pb_truncated),
+                        'filter': {'min_exclusive': 0, 'max_inclusive': 20},
+                    },
+                    'defaults_if_missing': {'pe_ttm': 15.0, 'pb': 1.5},
+                    'source': 'sqlite.overview (same industry, symbol excluded)',
+                },
+                'calculation': {
+                    'justified_pe': {
+                        'eps_ttm': float(eps),
+                        'pe_used': float(peer_pe),
+                        'formula': 'eps_ttm * pe_used',
+                        'result': float(justified_pe),
+                    },
+                    'justified_pb': {
+                        'bvps': float(bvps),
+                        'pb_used': float(peer_pb),
+                        'formula': 'bvps * pb_used',
+                        'result': float(justified_pb),
+                    },
+                },
+                'list_limit': comparable_list_limit,
+                'include_lists': bool(include_lists),
             },
         })
 
