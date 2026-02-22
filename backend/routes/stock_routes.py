@@ -964,20 +964,35 @@ def api_valuation(symbol):
         if current_price <= 0:
             current_price = to_float(stock_data.get('current_price'), 0.0)
 
+        eps_source = 'provider'
+        bvps_source = 'provider'
+
         eps = to_float(stock_data.get('eps_ttm'))
+        if eps > 0:
+            eps_source = 'provider.eps_ttm'
         if eps <= 0:
             eps = to_float(stock_data.get('eps'))
+            if eps > 0:
+                eps_source = 'provider.eps'
         if eps <= 0:
             eps = to_float(stock_data.get('earnings_per_share'))
+            if eps > 0:
+                eps_source = 'provider.earnings_per_share'
 
         bvps = to_float(stock_data.get('bvps'))
+        if bvps > 0:
+            bvps_source = 'provider.bvps'
         if bvps <= 0:
             bvps = to_float(stock_data.get('book_value_per_share'))
+            if bvps > 0:
+                bvps_source = 'provider.book_value_per_share'
         if bvps <= 0:
             total_equity = to_float(stock_data.get('total_equity'))
             shares_outstanding = to_float(stock_data.get('shares_outstanding'))
             if total_equity > 0 and shares_outstanding > 0:
                 bvps = total_equity / shares_outstanding
+                if bvps > 0:
+                    bvps_source = 'provider.total_equity/shares_outstanding'
 
         # Fallback to SQLite overview for EPS/BVPS (provider can miss these for some symbols)
         if eps <= 0 or bvps <= 0:
@@ -989,18 +1004,44 @@ def api_valuation(symbol):
                     conn = sqlite3.connect(db_path)
                     conn.row_factory = sqlite3.Row
                     cur = conn.cursor()
-                    cur.execute(
-                        "SELECT eps_ttm, bvps, eps FROM overview WHERE symbol = ?",
-                        (clean_symbol,),
-                    )
+                    try:
+                        cur.execute(
+                            "SELECT eps_ttm, bvps, eps, pe, pb, current_price FROM overview WHERE symbol = ?",
+                            (clean_symbol,),
+                        )
+                    except Exception:
+                        # Older / slim schema fallback
+                        cur.execute(
+                            "SELECT pe, pb, current_price FROM overview WHERE symbol = ?",
+                            (clean_symbol,),
+                        )
                     row = cur.fetchone()
                     if row:
+                        row_pe = to_float(row['pe']) if 'pe' in row.keys() else 0.0
+                        row_pb = to_float(row['pb']) if 'pb' in row.keys() else 0.0
+                        row_price = to_float(row['current_price']) if 'current_price' in row.keys() else 0.0
+
                         if eps <= 0:
-                            eps = to_float(row['eps_ttm'])
-                            if eps <= 0:
+                            if 'eps_ttm' in row.keys():
+                                eps = to_float(row['eps_ttm'])
+                                if eps > 0:
+                                    eps_source = 'sqlite.overview.eps_ttm'
+                            if eps <= 0 and 'eps' in row.keys():
                                 eps = to_float(row['eps'])
+                                if eps > 0:
+                                    eps_source = 'sqlite.overview.eps'
+                            if eps <= 0 and current_price > 0 and row_pe > 0:
+                                eps = float(current_price / row_pe)
+                                eps_source = 'derived: current_price / overview.pe'
+
                         if bvps <= 0:
-                            bvps = to_float(row['bvps'])
+                            if 'bvps' in row.keys():
+                                bvps = to_float(row['bvps'])
+                                if bvps > 0:
+                                    bvps_source = 'sqlite.overview.bvps'
+                            if bvps <= 0 and current_price > 0 and row_pb > 0:
+                                bvps = float(current_price / row_pb)
+                                bvps_source = 'derived: current_price / overview.pb'
                     conn.close()
             except Exception as exc:
                 logger.warning(f"SQLite EPS/BVPS fallback failed for {clean_symbol}: {exc}")
@@ -1089,13 +1130,94 @@ def api_valuation(symbol):
         justified_pe = float(eps * peer_pe) if eps > 0 else 0.0
         justified_pb = float(bvps * peer_pb) if bvps > 0 else 0.0
 
-        growth = to_float(data.get('revenueGrowth'), 8.0) / 100
-        dcf_base = current_price if current_price > 0 else max(justified_pe, justified_pb, graham, 0)
-        dcf_value = float(dcf_base * (1 + growth)) if dcf_base > 0 else 0.0
+        # --- DCF models (per-share) ---
+        # NOTE: We intentionally treat EPS TTM as a proxy for per-share cash flow.
+        # If you want a stricter FCFE/FCFF, we can switch to cash-flow statement based inputs.
+        projection_years = int(to_float(data.get('projectionYears'), 5))
+        projection_years = max(1, min(projection_years, 20))
+
+        growth = to_float(data.get('revenueGrowth'), 8.0) / 100.0
+        terminal_growth = to_float(data.get('terminalGrowth'), 3.0) / 100.0
+        required_return = to_float(data.get('requiredReturn'), 12.0) / 100.0
+        wacc = to_float(data.get('wacc'), 10.5) / 100.0
+
+        def _dcf_per_share(
+            base_cashflow_per_share: float,
+            annual_growth: float,
+            discount_rate: float,
+            terminal_growth_rate: float,
+            years: int,
+        ) -> tuple[float, dict]:
+            details = {
+                'base_cashflow_per_share': float(base_cashflow_per_share),
+                'annual_growth': float(annual_growth),
+                'discount_rate': float(discount_rate),
+                'terminal_growth': float(terminal_growth_rate),
+                'years': int(years),
+                'pv_sum': 0.0,
+                'terminal_value': 0.0,
+                'terminal_value_discounted': 0.0,
+                'result': 0.0,
+                'notes': [],
+            }
+
+            if base_cashflow_per_share <= 0:
+                details['notes'].append('base_cashflow_per_share<=0 (cannot run DCF)')
+                return 0.0, details
+            if discount_rate <= 0:
+                details['notes'].append('discount_rate<=0 (invalid)')
+                return 0.0, details
+
+            # Guardrails to avoid invalid terminal formula
+            tg = terminal_growth_rate
+            if tg >= discount_rate:
+                tg = max(0.0, discount_rate - 0.01)
+                details['notes'].append('terminal_growth adjusted to keep (r > g)')
+            if tg < 0:
+                tg = 0.0
+                details['notes'].append('terminal_growth clamped to 0')
+
+            pv_sum = 0.0
+            cashflows = []
+            for t in range(1, years + 1):
+                cf_t = float(base_cashflow_per_share * ((1.0 + annual_growth) ** t))
+                pv_t = float(cf_t / ((1.0 + discount_rate) ** t))
+                pv_sum += pv_t
+                cashflows.append({'t': t, 'cashflow': cf_t, 'pv': pv_t})
+
+            # Terminal value at year N using Gordon Growth
+            cf_n = float(base_cashflow_per_share * ((1.0 + annual_growth) ** years))
+            tv = float((cf_n * (1.0 + tg)) / (discount_rate - tg))
+            tv_disc = float(tv / ((1.0 + discount_rate) ** years))
+
+            result = float(pv_sum + tv_disc)
+            details['pv_sum'] = float(pv_sum)
+            details['terminal_value'] = float(tv)
+            details['terminal_value_discounted'] = float(tv_disc)
+            details['cashflows'] = cashflows
+            details['terminal_growth_used'] = float(tg)
+            details['result'] = float(result)
+            return result, details
+
+        fcfe_value, fcfe_details = _dcf_per_share(
+            base_cashflow_per_share=float(eps),
+            annual_growth=float(growth),
+            discount_rate=float(required_return),
+            terminal_growth_rate=float(terminal_growth),
+            years=int(projection_years),
+        )
+
+        fcff_value, fcff_details = _dcf_per_share(
+            base_cashflow_per_share=float(eps),
+            annual_growth=float(growth),
+            discount_rate=float(wacc),
+            terminal_growth_rate=float(terminal_growth),
+            years=int(projection_years),
+        )
 
         valuations = {
-            'fcfe': dcf_value,
-            'fcff': dcf_value * 0.95,
+            'fcfe': float(fcfe_value),
+            'fcff': float(fcff_value),
             'justified_pe': justified_pe,
             'justified_pb': justified_pb,
             'graham': graham,
@@ -1158,14 +1280,42 @@ def api_valuation(symbol):
                     'source': 'sqlite.overview (same industry, symbol excluded)',
                 },
                 'calculation': {
+                    'dcf_fcfe': {
+                        'cashflow_proxy': 'eps_ttm (per-share proxy)',
+                        'eps_ttm': float(eps),
+                        'eps_source': eps_source,
+                        'inputs': {
+                            'projection_years': int(projection_years),
+                            'growth': float(growth),
+                            'terminal_growth': float(terminal_growth),
+                            'required_return': float(required_return),
+                        },
+                        'details': fcfe_details,
+                        'result': float(fcfe_value),
+                    },
+                    'dcf_fcff': {
+                        'cashflow_proxy': 'eps_ttm (per-share proxy)',
+                        'eps_ttm': float(eps),
+                        'eps_source': eps_source,
+                        'inputs': {
+                            'projection_years': int(projection_years),
+                            'growth': float(growth),
+                            'terminal_growth': float(terminal_growth),
+                            'wacc': float(wacc),
+                        },
+                        'details': fcff_details,
+                        'result': float(fcff_value),
+                    },
                     'justified_pe': {
                         'eps_ttm': float(eps),
+                        'eps_source': eps_source,
                         'pe_used': float(peer_pe),
                         'formula': 'eps_ttm * pe_used',
                         'result': float(justified_pe),
                     },
                     'justified_pb': {
                         'bvps': float(bvps),
+                        'bvps_source': bvps_source,
                         'pb_used': float(peer_pb),
                         'formula': 'bvps * pb_used',
                         'result': float(justified_pb),
