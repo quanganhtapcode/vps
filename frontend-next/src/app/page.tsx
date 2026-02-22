@@ -19,6 +19,13 @@ interface IndexData {
   change: number;
   percentChange: number;
   chartData: number[];
+  advances: number | undefined;
+  declines: number | undefined;
+  noChanges: number | undefined;
+  ceilings: number | undefined;
+  floors: number | undefined;
+  totalShares: number | undefined;
+  totalValue: number | undefined;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
@@ -68,6 +75,13 @@ export default async function OverviewPage() {
         change,
         percentChange: percent,
         chartData,
+        advances: data.Advances,
+        declines: data.Declines,
+        noChanges: data.NoChanges,
+        ceilings: data.Ceilings,
+        floors: data.Floors,
+        totalShares: data.Volume,
+        totalValue: data.Value,
       };
     });
 

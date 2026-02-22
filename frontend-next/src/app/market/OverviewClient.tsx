@@ -35,6 +35,13 @@ interface IndexData {
     change: number;
     percentChange: number;
     chartData: number[];
+    advances?: number;
+    declines?: number;
+    noChanges?: number;
+    ceilings?: number;
+    floors?: number;
+    totalShares?: number;
+    totalValue?: number;
 }
 
 interface OverviewClientProps {
@@ -123,6 +130,13 @@ export default function OverviewClient({
                     change,
                     percentChange: percent,
                     chartData,
+                    advances: data.Advances,
+                    declines: data.Declines,
+                    noChanges: data.NoChanges,
+                    ceilings: data.Ceilings,
+                    floors: data.Floors,
+                    totalShares: data.Volume,
+                    totalValue: data.Value,
                 };
             });
 
@@ -189,6 +203,13 @@ export default function OverviewClient({
                                     change={data?.change ?? 0}
                                     percentChange={data?.percentChange ?? 0}
                                     chartData={data?.chartData ?? []}
+                                    advances={data?.advances ?? 0}
+                                    declines={data?.declines ?? 0}
+                                    noChanges={data?.noChanges ?? 0}
+                                    ceilings={data?.ceilings ?? 0}
+                                    floors={data?.floors ?? 0}
+                                    totalShares={data?.totalShares ?? 0}
+                                    totalValue={data?.totalValue ?? 0}
                                     isLoading={!data}
                                 />
                             );

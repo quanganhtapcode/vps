@@ -21,6 +21,13 @@ interface IndexData {
   change: number;
   percentChange: number;
   chartData: number[];
+  advances?: number;
+  declines?: number;
+  noChanges?: number;
+  ceilings?: number;
+  floors?: number;
+  totalShares?: number;
+  totalValue?: number;
 }
 
 export default async function OverviewPage() {
@@ -77,6 +84,13 @@ export default async function OverviewPage() {
         change,
         percentChange: percent,
         chartData,
+        advances: data.Advances,
+        declines: data.Declines,
+        noChanges: data.NoChanges,
+        ceilings: data.Ceilings,
+        floors: data.Floors,
+        totalShares: data.Volume,
+        totalValue: data.Value,
       };
     });
 
