@@ -163,6 +163,8 @@ export default function OverviewClient({
 
     // Auto refresh indices every 3 seconds
     useEffect(() => {
+        // Load immediately on mount to avoid waiting for the first interval tick
+        loadIndices();
         const interval = setInterval(() => {
             loadIndices();
         }, 3000);
