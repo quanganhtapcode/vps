@@ -278,7 +278,8 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
             const payload = {
                 ...assumptions,
                 modelWeights,
-                currentPrice: manualPrice
+                currentPrice: manualPrice,
+                includeComparableLists: true
             };
 
             const data = await calculateValuation(symbol, payload);
@@ -532,6 +533,46 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                     </div>
                 </Col>
             </Grid>
+
+            {/* Peers List View */}
+            {result?.export?.comparables?.peers_detailed && result.export.comparables.peers_detailed.length > 0 && (
+                <Card className="mt-6 rounded-tremor-default">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <Title>Định giá Tương đối: Danh sách Cổ phiếu so sánh</Title>
+                            <Text>Nhóm ngành: {result.export.comparables.group?.name || result.export.comparables.industry} ({result.export.comparables.peers_detailed.length} mã)</Text>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto max-h-[400px] border border-gray-200 dark:border-gray-800 rounded-md">
+                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10 shadow-sm">
+                                <tr>
+                                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Mã Cổ Phiếu</th>
+                                    <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">P/E</th>
+                                    <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">P/B</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
+                                {result.export.comparables.peers_detailed.map((peer: any) => (
+                                    <tr key={peer.symbol} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                        <td className="px-4 py-2.5 font-medium text-blue-600 dark:text-blue-400">
+                                            <a href={`/stock/${peer.symbol}`} target="_blank" rel="noopener noreferrer">
+                                                {peer.symbol}
+                                            </a>
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right font-mono text-gray-700 dark:text-gray-300">
+                                            {peer.pe ? peer.pe.toFixed(2) : '-'}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right font-mono text-gray-700 dark:text-gray-300">
+                                            {peer.pb ? peer.pb.toFixed(2) : '-'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            )}
             {isBank && (
                 <Callout
                     title="Bank Valuation Notice"
