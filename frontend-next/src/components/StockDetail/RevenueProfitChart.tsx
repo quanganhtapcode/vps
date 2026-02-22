@@ -153,7 +153,7 @@ export default function RevenueProfitChart({
                     Revenue & Profit
                 </h3>
             )}
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                 <ComposedChart
                     data={chartData}
                     margin={{ top: 5, right: 5, left: -20, bottom: 5 }}

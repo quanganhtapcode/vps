@@ -218,7 +218,7 @@ export default function PEChart({ initialData = [] }: PEChartProps) {
                 ) : chartData.length === 0 ? (
                     <div className={styles.noData}>No data found for this period</div>
                 ) : (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                         <LineChart
                             data={chartData}
                             margin={{ top: 10, right: 10, left: 0, bottom: 10 }}
