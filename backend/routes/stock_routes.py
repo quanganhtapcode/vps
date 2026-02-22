@@ -961,8 +961,34 @@ def api_valuation(symbol):
             stock_data = provider.get_stock_data(clean_symbol, period='year')
 
         current_price = to_float(data.get('currentPrice'), 0.0)
+        current_price_source = 'request.currentPrice'
         if current_price <= 0:
             current_price = to_float(stock_data.get('current_price'), 0.0)
+            current_price_source = 'provider.current_price'
+
+        # Fallback: load current_price directly from SQLite overview (most reliable for our DB-backed API)
+        if current_price <= 0:
+            try:
+                import sqlite3
+
+                db_path = getattr(provider, 'db_path', None)
+                if db_path:
+                    conn = sqlite3.connect(db_path)
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.cursor()
+                    cur.execute(
+                        "SELECT current_price FROM overview WHERE symbol = ?",
+                        (clean_symbol,),
+                    )
+                    row = cur.fetchone()
+                    if row and row['current_price'] is not None:
+                        cp = to_float(row['current_price'])
+                        if cp > 0:
+                            current_price = cp
+                            current_price_source = 'sqlite.overview.current_price'
+                    conn.close()
+            except Exception as exc:
+                logger.warning(f"SQLite current_price fallback failed for {clean_symbol}: {exc}")
 
         eps_source = 'provider'
         bvps_source = 'provider'
@@ -1020,6 +1046,7 @@ def api_valuation(symbol):
                         row_pe = to_float(row['pe']) if 'pe' in row.keys() else 0.0
                         row_pb = to_float(row['pb']) if 'pb' in row.keys() else 0.0
                         row_price = to_float(row['current_price']) if 'current_price' in row.keys() else 0.0
+                        price_for_derive = current_price if current_price > 0 else row_price
 
                         if eps <= 0:
                             if 'eps_ttm' in row.keys():
@@ -1030,8 +1057,8 @@ def api_valuation(symbol):
                                 eps = to_float(row['eps'])
                                 if eps > 0:
                                     eps_source = 'sqlite.overview.eps'
-                            if eps <= 0 and current_price > 0 and row_pe > 0:
-                                eps = float(current_price / row_pe)
+                            if eps <= 0 and price_for_derive > 0 and row_pe > 0:
+                                eps = float(price_for_derive / row_pe)
                                 eps_source = 'derived: current_price / overview.pe'
 
                         if bvps <= 0:
@@ -1039,8 +1066,8 @@ def api_valuation(symbol):
                                 bvps = to_float(row['bvps'])
                                 if bvps > 0:
                                     bvps_source = 'sqlite.overview.bvps'
-                            if bvps <= 0 and current_price > 0 and row_pb > 0:
-                                bvps = float(current_price / row_pb)
+                            if bvps <= 0 and price_for_derive > 0 and row_pb > 0:
+                                bvps = float(price_for_derive / row_pb)
                                 bvps_source = 'derived: current_price / overview.pb'
                     conn.close()
             except Exception as exc:
@@ -1260,6 +1287,10 @@ def api_valuation(symbol):
                 'industry_pb_sample_size': len(peer_pb_values),
             },
             'export': {
+                'market': {
+                    'current_price': float(current_price),
+                    'current_price_source': current_price_source,
+                },
                 'comparables': {
                     'industry': industry,
                     'pe_ttm': {
