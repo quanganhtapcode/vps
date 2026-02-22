@@ -5,7 +5,7 @@ import IndexCard from '@/components/IndexCard';
 import PEChart from '@/components/PEChart';
 import NewsSection from '@/components/NewsSection';
 
-import { GoldPrice, Lottery, MarketPulse } from '@/components/Sidebar';
+import { CryptoPrices, GoldPrice, Lottery, MarketPulse } from '@/components/Sidebar';
 import {
     fetchAllIndices,
     fetchNews,
@@ -309,6 +309,9 @@ export default function OverviewClient({
                         foreignSells={foreignSells}
                         isLoading={moversLoading || foreignLoading}
                     />
+
+                    {/* Crypto Prices (OKX WebSocket) */}
+                    <CryptoPrices />
 
                     {/* Gold Prices */}
                     <GoldPrice

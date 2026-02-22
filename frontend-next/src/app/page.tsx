@@ -1,13 +1,10 @@
 import { Suspense } from 'react';
 import OverviewClient from './OverviewClient';
 import {
-  fetchAllIndices,
-  fetchPEChart,
-  INDEX_MAP,
-  MarketIndexData,
   NewsItem,
   TopMoverItem,
   GoldPriceItem,
+  PEChartData,
 } from '@/lib/api';
 
 export const revalidate = 30;
@@ -28,68 +25,9 @@ interface IndexData {
   totalValue: number | undefined;
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  try {
-    return await Promise.race<T | null>([
-      promise,
-      new Promise<null>((resolve) => {
-        timer = setTimeout(() => resolve(null), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
-
 export default async function OverviewPage() {
-  const [indicesResult, peResult] = await Promise.allSettled([
-    withTimeout(fetchAllIndices(), 2000),
-    withTimeout(fetchPEChart(), 2000),
-  ]);
-
-  // 2. Process Indices Data
+  // Render immediately with prebuilt frames; client will fetch and fill data.
   let initialIndices: IndexData[] = [];
-
-  if (indicesResult.status === 'fulfilled' && indicesResult.value) {
-    const marketData = indicesResult.value;
-
-    const chartPromises = Object.entries(INDEX_MAP).map(async ([indexId, info]) => {
-      const data = marketData[indexId] as MarketIndexData | undefined;
-      if (!data) return null;
-
-      const currentIndex = data.CurrentIndex;
-      const prevIndex = data.PrevIndex;
-      const change = currentIndex - prevIndex;
-      const percent = prevIndex > 0 ? (change / prevIndex) * 100 : 0;
-
-      const chartData = [prevIndex, currentIndex].filter((v) => typeof v === 'number');
-
-      return {
-        id: info.id,
-        name: info.name,
-        value: currentIndex,
-        change,
-        percentChange: percent,
-        chartData,
-        advances: data.Advances,
-        declines: data.Declines,
-        noChanges: data.NoChanges,
-        ceilings: data.Ceilings,
-        floors: data.Floors,
-        totalShares: data.Volume,
-        totalValue: data.Value,
-      };
-    });
-
-    const chartsResults = await Promise.all(chartPromises);
-    initialIndices = chartsResults.filter((r): r is IndexData => r !== null);
-  } else if (indicesResult.status === 'rejected') {
-    console.error('Error fetching indices:', indicesResult.reason);
-  }
 
   // Defer non-critical sections to client-side fetching for faster first paint
   const initialNews: NewsItem[] = [];
@@ -99,7 +37,7 @@ export default async function OverviewPage() {
   const initialForeignSells: TopMoverItem[] = [];
   const initialGoldPrices: GoldPriceItem[] = [];
   const initialGoldUpdated: undefined = undefined;
-  const initialPEData = peResult.status === 'fulfilled' && peResult.value ? peResult.value : [];
+  const initialPEData: PEChartData[] = [];
 
   return (
     <Suspense fallback={<div className="p-8 text-center text-tremor-content">Loading market data...</div>}>
