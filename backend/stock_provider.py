@@ -284,6 +284,11 @@ class StockDataProvider:
                 data = dict(row)
                 data['success'] = True
                 data['data_period'] = period
+                # Consistent metadata keys with Live API shape
+                data.setdefault('data_source', 'SQLite')
+                if not data.get('sector'):
+                    # DB uses `industry` in most places; frontend expects `sector`
+                    data['sector'] = data.get('industry')
 
                 # Ensure name is present (join with companies if needed, but overview has some info)
 
@@ -307,40 +312,139 @@ class StockDataProvider:
                 has_ratio_wide = cursor.fetchone() is not None
 
                 if has_ratio_wide:
-                    cursor.execute(
-                        """
-                        SELECT nim, casa_ratio, npl_ratio, loan_to_deposit, cof, cir, debt_equity
-                                                FROM ratio_wide
-                        WHERE symbol = ?
-                          AND period_type = 'quarter'
-                        ORDER BY year DESC, quarter DESC
-                        LIMIT 1
-                        """,
-                        (symbol,),
-                    )
-                    bank_row = cursor.fetchone()
+                    # NOTE: ratio_wide schema differs between DB builds. Only select columns that exist
+                    # to avoid failing the entire DB path (which would incorrectly fall back to VCI_Live).
+                    cursor.execute("PRAGMA table_info(ratio_wide)")
+                    ratio_wide_cols = {r[1] for r in cursor.fetchall()}
 
-                    if bank_row:
-                        if bank_row['nim'] is not None:
-                            nim_value = float(bank_row['nim'])
-                            # KBS quarterly NIM may be non-annualized (~0.5-1.0), annualize for UI consistency
-                            if bank_row['cof'] is not None and 0 < nim_value < 2:
-                                nim_value = nim_value * 4
-                            data['nim'] = round(nim_value, 2)
-                        if bank_row['casa_ratio'] is not None:
-                            data['casa'] = bank_row['casa_ratio']
-                        if bank_row['npl_ratio'] is not None:
-                            data['npl_ratio'] = bank_row['npl_ratio']
-                        if bank_row['loan_to_deposit'] is not None:
-                            data['ldr'] = bank_row['loan_to_deposit']
-                        if bank_row['cof'] is not None:
-                            data['cof'] = bank_row['cof']
-                        if bank_row['cir'] is not None:
-                            data['cir'] = bank_row['cir']
-                        if bank_row['debt_equity'] is not None and (
-                            data.get('debt_to_equity') is None or data.get('debt_to_equity') == 0
-                        ):
-                            data['debt_to_equity'] = bank_row['debt_equity']
+                    desired_cols = [
+                        'nim',
+                        'casa_ratio',
+                        'npl_ratio',
+                        'loan_to_deposit',
+                        'cof',
+                        'cir',
+                        'debt_equity',
+                    ]
+                    available_cols = [c for c in desired_cols if c in ratio_wide_cols]
+                    if available_cols:
+                        cursor.execute(
+                            f"""
+                            SELECT {', '.join(available_cols)}
+                            FROM ratio_wide
+                            WHERE symbol = ?
+                              AND period_type = 'quarter'
+                            ORDER BY year DESC, quarter DESC
+                            LIMIT 1
+                            """,
+                            (symbol,),
+                        )
+                        bank_row = cursor.fetchone()
+
+                        if bank_row:
+                            bank_keys = set(bank_row.keys())
+                            if 'nim' in bank_keys and bank_row['nim'] is not None:
+                                nim_value = float(bank_row['nim'])
+                                # KBS quarterly NIM may be non-annualized (~0.5-1.0), annualize for UI consistency
+                                if 'cof' in bank_keys and bank_row['cof'] is not None and 0 < nim_value < 2:
+                                    nim_value = nim_value * 4
+                                data['nim'] = round(nim_value, 2)
+                            if 'casa_ratio' in bank_keys and bank_row['casa_ratio'] is not None:
+                                data['casa'] = bank_row['casa_ratio']
+                            if 'npl_ratio' in bank_keys and bank_row['npl_ratio'] is not None:
+                                data['npl_ratio'] = bank_row['npl_ratio']
+                            if 'loan_to_deposit' in bank_keys and bank_row['loan_to_deposit'] is not None:
+                                data['ldr'] = bank_row['loan_to_deposit']
+                            if 'cof' in bank_keys and bank_row['cof'] is not None:
+                                data['cof'] = bank_row['cof']
+                            if 'cir' in bank_keys and bank_row['cir'] is not None:
+                                data['cir'] = bank_row['cir']
+                            if (
+                                'debt_equity' in bank_keys
+                                and bank_row['debt_equity'] is not None
+                                and (data.get('debt_to_equity') is None or data.get('debt_to_equity') == 0)
+                            ):
+                                data['debt_to_equity'] = bank_row['debt_equity']
+
+                    # Populate chart series expected by /stock/<symbol> using ratio_wide
+                    # (so we don't need VCI_Live for series, and avoid empty arrays)
+                    cursor.execute("PRAGMA table_info(ratio_wide)")
+                    ratio_wide_cols_for_series = {r[1] for r in cursor.fetchall()}
+
+                    series_map = {
+                        'roe': 'roe_data',
+                        'roa': 'roa_data',
+                        'pe': 'pe_ratio_data',
+                        'pb': 'pb_ratio_data',
+                        'ps': 'ps_ratio_data',
+                        'current_ratio': 'current_ratio_data',
+                        'quick_ratio': 'quick_ratio_data',
+                        'debt_equity': 'debt_to_equity_data',
+                        'nim': 'nim_data',
+                    }
+
+                    # Ensure keys exist even if no rows found
+                    data.setdefault('years', [])
+                    data.setdefault('revenue_data', [])
+                    data.setdefault('profit_data', [])
+                    for out_key in series_map.values():
+                        data.setdefault(out_key, [])
+                    data.setdefault('casa_data', [])
+                    data.setdefault('npl_data', [])
+
+                    # Pick period_type based on request, but fail-open if only one exists
+                    desired_period_type = 'year' if period == 'year' else 'quarter'
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM ratio_wide WHERE symbol = ? AND period_type = ?",
+                        (symbol, desired_period_type),
+                    )
+                    count_rows = cursor.fetchone()[0]
+                    period_type = desired_period_type
+                    if count_rows == 0 and desired_period_type == 'year':
+                        period_type = 'quarter'
+
+                    metric_cols = [c for c in series_map.keys() if c in ratio_wide_cols_for_series]
+                    if metric_cols:
+                        cursor.execute(
+                            f"""
+                            SELECT year, quarter, period_label, {', '.join(metric_cols)}
+                            FROM ratio_wide
+                            WHERE symbol = ?
+                              AND period_type = ?
+                            ORDER BY year ASC, quarter ASC
+                            """,
+                            (symbol, period_type),
+                        )
+                        rows = cursor.fetchall() or []
+                        if rows:
+                            rows = rows[-12:]
+
+                            years = []
+                            series = {out_key: [] for out_key in series_map.values()}
+
+                            for r in rows:
+                                label = r['period_label']
+                                if not label:
+                                    y = r['year']
+                                    q = r['quarter']
+                                    label = f"{y} Q{q}" if q and int(q) > 0 else str(y)
+                                years.append(str(label))
+
+                                for col, out_key in series_map.items():
+                                    if col not in metric_cols:
+                                        continue
+                                    v = r[col]
+                                    if v is None:
+                                        series[out_key].append(0)
+                                    else:
+                                        try:
+                                            series[out_key].append(float(v))
+                                        except Exception:
+                                            series[out_key].append(0)
+
+                            data['years'] = years
+                            for out_key, vals in series.items():
+                                data[out_key] = vals
 
                 # Fallback for key metrics from summary snapshot
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ratio_snap'")
@@ -1899,10 +2003,10 @@ class StockDataProvider:
         symbol = symbol.upper()
         now = datetime.now()
         
-        # 0. Check short-term cache (2 seconds)
+        # 0. Check short-term cache (30 seconds)
         if symbol in self._price_cache:
             data, timestamp = self._price_cache[symbol]
-            if (now - timestamp).total_seconds() < 2:
+            if (now - timestamp).total_seconds() < 15:
                 logger.debug(f"✓ Returning CACHED price for {symbol}")
                 return data
 

@@ -231,15 +231,17 @@ export default function OverviewClient({
         }
     }, [initialForeignBuys, initialForeignSells, loadForeign]);
 
-    // Auto refresh indices every 15 seconds
+    // Auto refresh indices every 10 seconds
     useEffect(() => {
-        // Load immediately on mount to avoid waiting for the first interval tick
-        loadIndices();
+        // If SSR didn't provide indices, load immediately after hydration.
+        if (initialIndices.length === 0) {
+            loadIndices();
+        }
         const interval = setInterval(() => {
             loadIndices();
         }, 10000);
         return () => clearInterval(interval);
-    }, [loadIndices]);
+    }, [loadIndices, initialIndices.length]);
 
     // Auto refresh gold every 60 seconds
     useEffect(() => {
