@@ -22,6 +22,7 @@ export const API = {
     FOREIGN_FLOW: `${API_BASE}/market/foreign-flow`,
     GOLD: `${API_BASE}/market/gold`,
     LOTTERY: `${API_BASE}/market/lottery`,
+    STANDOUTS: `${API_BASE}/market/standouts`,
 
     // Stock Data (VCI Source via vnstock)
     STOCK: (symbol: string) => `${API_BASE}/stock/${symbol}`,
@@ -61,10 +62,10 @@ async function fetchAPI<T>(url: string, options?: RequestInit): Promise<T> {
         const resolvedUrl =
             isServer && url.startsWith('/')
                 ? new URL(
-                      url,
-                      process.env.NEXT_PUBLIC_SITE_URL ||
-                          (process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'),
-                  ).toString()
+                    url,
+                    process.env.NEXT_PUBLIC_SITE_URL ||
+                    (process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'),
+                ).toString()
                 : url;
 
         const response = await fetch(resolvedUrl, {
@@ -94,6 +95,11 @@ export interface MarketIndexData {
     PrevIndex: number;
     Volume?: number;
     Value?: number;
+    Advances?: number;
+    Declines?: number;
+    NoChanges?: number;
+    Ceilings?: number;
+    Floors?: number;
 }
 
 export interface VciIndexItem {
@@ -219,6 +225,11 @@ export async function fetchAllIndices(): Promise<Record<string, MarketIndexData>
             PrevIndex: Number(it.refPrice) || 0,
             Volume: Number(it.totalShares) || 0,
             Value: Number(it.totalValue) || 0,
+            Advances: Number(it.totalStockIncrease) || 0,
+            Declines: Number(it.totalStockDecline) || 0,
+            NoChanges: Number(it.totalStockNoChange) || 0,
+            Ceilings: Number(it.totalStockCeiling) || 0,
+            Floors: Number(it.totalStockFloor) || 0,
         };
     }
     return result;
@@ -239,7 +250,6 @@ export async function fetchNews(page: number = 1, size: number = 100): Promise<N
         Data?: NewsItem[];
         data?: NewsItem[];
         news?: NewsItem[];
-        data?: NewsItem[];
     }
     const response = await fetchAPI<NewsResponse | NewsItem[]>(
         `${API.NEWS}?page=${page}&size=${size}`
@@ -257,6 +267,8 @@ export async function fetchNews(page: number = 1, size: number = 100): Promise<N
 export async function fetchTopMovers(type: 'UP' | 'DOWN', centerID: string = 'HOSE'): Promise<TopMoverItem[]> {
     interface TopMoversResponse {
         Data?: TopMoverItem[];
+        data?: TopMoverItem[];
+        news?: TopMoverItem[];
     }
     const response = await fetchAPI<TopMoversResponse>(
         `${API.TOP_MOVERS}?centerID=${centerID}&type=${type}`

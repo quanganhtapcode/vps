@@ -164,7 +164,10 @@ def init_database_v3(conn):
 
             nim REAL,
             cof REAL,
+            casa_ratio REAL,
             loan_to_deposit REAL,
+            npl_ratio REAL,
+            loan_loss_reserve REAL,
             cir REAL,
 
             fetched_at TEXT,
@@ -337,12 +340,28 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
         ('Chỉ tiêu thanh khoản', 'COF (%)'),
         default=None,
     )
+    casa_ratio = get_ratio_value(
+        df_row,
+        ('Liquidity Ratios', 'CASA (%)'),
+        ('Chỉ tiêu thanh khoản', 'CASA (%)'),
+        ('Profitability Ratios', 'CASA (%)'),
+        ('Chỉ tiêu khả năng sinh lợi', 'CASA (%)'),
+        default=None,
+    )
     loan_to_deposit = get_ratio_value(
         df_row,
         ('Liquidity Ratios', 'LDR (%)'),
         ('Chỉ tiêu thanh khoản', 'LDR (%)'),
         ('Liquidity Ratios', 'Loan to Deposit (%)'),
         ('Chỉ tiêu thanh khoản', 'Loan to Deposit (%)'),
+        default=None,
+    )
+    npl_ratio = get_ratio_value(
+        df_row,
+        ('Asset Quality Ratios', 'NPL (%)'),
+        ('Chỉ tiêu chất lượng tài sản', 'NPL (%)'),
+        ('Profitability Ratios', 'NPL (%)'),
+        ('Chỉ tiêu khả năng sinh lợi', 'NPL (%)'),
         default=None,
     )
     cir = get_ratio_value(
@@ -381,7 +400,7 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
                 current_ratio, quick_ratio, cash_ratio, interest_coverage,
                 financial_leverage, debt_equity, fixed_asset_to_equity, owners_equity_charter_capital,
                 asset_turnover, inventory_turnover,
-                nim, cof, loan_to_deposit, cir,
+                nim, cof, casa_ratio, loan_to_deposit, npl_ratio, cir,
                 fetched_at
             ) VALUES (
                 ?, ?, ?, ?, ?,
@@ -390,7 +409,7 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?,
-                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
                 CURRENT_TIMESTAMP
             )
             ON CONFLICT(symbol, period_type, year, quarter)
@@ -423,7 +442,9 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
                 inventory_turnover = COALESCE(excluded.inventory_turnover, ratio_wide.inventory_turnover),
                 nim = COALESCE(excluded.nim, ratio_wide.nim),
                 cof = COALESCE(excluded.cof, ratio_wide.cof),
+                casa_ratio = COALESCE(excluded.casa_ratio, ratio_wide.casa_ratio),
                 loan_to_deposit = COALESCE(excluded.loan_to_deposit, ratio_wide.loan_to_deposit),
+                npl_ratio = COALESCE(excluded.npl_ratio, ratio_wide.npl_ratio),
                 cir = COALESCE(excluded.cir, ratio_wide.cir),
                 fetched_at = excluded.fetched_at
             ''',
@@ -466,7 +487,9 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
 
                 nim,
                 cof,
+                casa_ratio,
                 loan_to_deposit,
+                npl_ratio,
                 cir,
             ),
         )
