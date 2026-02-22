@@ -169,6 +169,66 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
         if (pbValuesText) csvRows.push(['PB values used (sample; max 100)', pbValuesText]);
         csvRows.push([]);
 
+        // DCF Steps
+        const fcfe = calc?.dcf_fcfe;
+        if (fcfe?.details) {
+            csvRows.push(['DCF FCFE CALCULATION']);
+            csvRows.push(['Field', 'Value']);
+            csvRows.push(['Base Cashflow (EPS)', fcfe.details.base_cashflow_per_share]);
+            csvRows.push(['Annual Growth (%)', (fcfe.details.annual_growth * 100).toFixed(2)]);
+            csvRows.push(['Discount Rate (Required Return) (%)', (fcfe.details.discount_rate * 100).toFixed(2)]);
+            csvRows.push(['Terminal Growth (%)', (fcfe.details.terminal_growth * 100).toFixed(2)]);
+            csvRows.push(['Years Projected', fcfe.details.years]);
+            if (fcfe.details.cashflows && Array.isArray(fcfe.details.cashflows)) {
+                fcfe.details.cashflows.forEach((cf: any) => {
+                    csvRows.push([`Year ${cf.t} Cashflow`, cf.cashflow.toFixed(2)]);
+                    csvRows.push([`Year ${cf.t} Present Value`, cf.pv.toFixed(2)]);
+                });
+            }
+            csvRows.push(['PV Sum', fcfe.details.pv_sum?.toFixed(2) || '']);
+            csvRows.push(['Terminal Value (TV)', fcfe.details.terminal_value?.toFixed(2) || '']);
+            csvRows.push(['Terminal Value Discounted', fcfe.details.terminal_value_discounted?.toFixed(2) || '']);
+            csvRows.push(['FCFE Result', fcfe.details.result?.toFixed(2) || '']);
+            if (fcfe.details.notes && fcfe.details.notes.length > 0) {
+                csvRows.push(['Notes', fcfe.details.notes.join('; ')]);
+            }
+            csvRows.push([]);
+        }
+
+        const fcff = calc?.dcf_fcff;
+        if (fcff?.details) {
+            csvRows.push(['DCF FCFF CALCULATION']);
+            csvRows.push(['Field', 'Value']);
+            csvRows.push(['Base Cashflow (EPS)', fcff.details.base_cashflow_per_share]);
+            csvRows.push(['Annual Growth (%)', (fcff.details.annual_growth * 100).toFixed(2)]);
+            csvRows.push(['Discount Rate (WACC) (%)', (fcff.details.discount_rate * 100).toFixed(2)]);
+            csvRows.push(['Terminal Growth (%)', (fcff.details.terminal_growth * 100).toFixed(2)]);
+            csvRows.push(['Years Projected', fcff.details.years]);
+            if (fcff.details.cashflows && Array.isArray(fcff.details.cashflows)) {
+                fcff.details.cashflows.forEach((cf: any) => {
+                    csvRows.push([`Year ${cf.t} Cashflow`, cf.cashflow.toFixed(2)]);
+                    csvRows.push([`Year ${cf.t} Present Value`, cf.pv.toFixed(2)]);
+                });
+            }
+            csvRows.push(['PV Sum', fcff.details.pv_sum?.toFixed(2) || '']);
+            csvRows.push(['Terminal Value (TV)', fcff.details.terminal_value?.toFixed(2) || '']);
+            csvRows.push(['Terminal Value Discounted', fcff.details.terminal_value_discounted?.toFixed(2) || '']);
+            csvRows.push(['FCFF Result', fcff.details.result?.toFixed(2) || '']);
+            if (fcff.details.notes && fcff.details.notes.length > 0) {
+                csvRows.push(['Notes', fcff.details.notes.join('; ')]);
+            }
+            csvRows.push([]);
+        }
+
+        // Graham Step
+        csvRows.push(['GRAHAM FORMULA CALCULATION']);
+        csvRows.push(['Field', 'Value']);
+        csvRows.push(['EPS', epsTtm]);
+        csvRows.push(['BVPS', bvps]);
+        csvRows.push(['Formula', 'SQRT(22.5 * EPS * BVPS)']);
+        csvRows.push(['Graham Result', result?.valuations?.graham?.toFixed(2) || '']);
+        csvRows.push([]);
+
         // Models
         csvRows.push(['VALUATION METHOD', 'Weight (%)', 'Value (CUR)', 'Upside (%)']);
         Object.keys(models).forEach(key => {

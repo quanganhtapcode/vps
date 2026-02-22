@@ -1640,12 +1640,12 @@ class StockDataProvider:
             
             # Sub-tasks
             # These are properties or methods in vnstock
-            def get_ratio_summary(): return stock.company.ratio_summary
+            def get_ratio_summary(): return stock.company.ratio_summary()
             def get_ratio_period(): return stock.finance.ratio(period, lang='en', dropna=True)
             def get_income(): return stock.finance.income_statement(period, lang='en', dropna=True)
             def get_balance(): return stock.finance.balance_sheet(period, lang='en', dropna=True)
             def get_cashflow(): return stock.finance.cash_flow(period, lang='en', dropna=True)
-            def get_overview(): return stock.company.overview
+            def get_overview(): return stock.company.overview()
 
             task_list = [
                 ("ratio_summary", get_ratio_summary),
