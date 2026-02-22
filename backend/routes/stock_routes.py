@@ -979,6 +979,32 @@ def api_valuation(symbol):
             if total_equity > 0 and shares_outstanding > 0:
                 bvps = total_equity / shares_outstanding
 
+        # Fallback to SQLite overview for EPS/BVPS (provider can miss these for some symbols)
+        if eps <= 0 or bvps <= 0:
+            try:
+                import sqlite3
+
+                db_path = getattr(provider, 'db_path', None)
+                if db_path:
+                    conn = sqlite3.connect(db_path)
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.cursor()
+                    cur.execute(
+                        "SELECT eps_ttm, bvps, eps FROM overview WHERE symbol = ?",
+                        (clean_symbol,),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        if eps <= 0:
+                            eps = to_float(row['eps_ttm'])
+                            if eps <= 0:
+                                eps = to_float(row['eps'])
+                        if bvps <= 0:
+                            bvps = to_float(row['bvps'])
+                    conn.close()
+            except Exception as exc:
+                logger.warning(f"SQLite EPS/BVPS fallback failed for {clean_symbol}: {exc}")
+
         def median(values: list[float]) -> float | None:
             vals = [float(v) for v in values if v is not None]
             if not vals:
