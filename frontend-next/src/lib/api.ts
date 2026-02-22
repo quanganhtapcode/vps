@@ -14,18 +14,12 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // API Endpoints
 export const API = {
-    // Market Data (CafeF Proxy)
+    // Market Data
     PE_CHART: `${API_BASE}/market/pe-chart`,
-    REALTIME: `${API_BASE}/market/realtime`,
-    INDICES: `${API_BASE}/market/indices`,
-    REALTIME_CHART: `${API_BASE}/market/realtime-chart`,
-    REALTIME_MARKET: `${API_BASE}/market/realtime-market`,
     VCI_INDICES: `${API_BASE}/market/vci-indices`,
-    REPORTS: `${API_BASE}/market/reports`,
     NEWS: `${API_BASE}/market/news`,
     TOP_MOVERS: `${API_BASE}/market/top-movers`,
     FOREIGN_FLOW: `${API_BASE}/market/foreign-flow`,
-    STANDOUTS: `${API_BASE}/market/standouts`,
     GOLD: `${API_BASE}/market/gold`,
     LOTTERY: `${API_BASE}/market/lottery`,
 
@@ -63,7 +57,17 @@ export const INDEX_MAP: Record<string, { id: string; name: string; vciSymbol: st
  */
 async function fetchAPI<T>(url: string, options?: RequestInit): Promise<T> {
     try {
-        const response = await fetch(url, {
+        const isServer = typeof window === 'undefined';
+        const resolvedUrl =
+            isServer && url.startsWith('/')
+                ? new URL(
+                      url,
+                      process.env.NEXT_PUBLIC_SITE_URL ||
+                          (process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'),
+                  ).toString()
+                : url;
+
+        const response = await fetch(resolvedUrl, {
             ...options,
             headers: {
                 'Content-Type': 'application/json',
@@ -82,6 +86,7 @@ async function fetchAPI<T>(url: string, options?: RequestInit): Promise<T> {
     }
 }
 
+
 // ============ Market Data Types ============
 
 export interface MarketIndexData {
@@ -91,10 +96,25 @@ export interface MarketIndexData {
     Value?: number;
 }
 
-export interface ChartPoint {
-    Data: number;
-    Time?: string;
+export interface VciIndexItem {
+    symbol: string;
+    price: number;
+    refPrice: number;
+    change?: number;
+    changePercent?: number;
+    time?: string;
+    sendingTime?: string;
+    totalShares?: number;
+    totalValue?: number;
+    totalStockIncrease?: number;
+    totalStockDecline?: number;
+    totalStockNoChange?: number;
+    totalStockCeiling?: number;
+    totalStockFloor?: number;
 }
+
+
+
 
 export interface NewsItem {
     Title?: string;
@@ -176,11 +196,34 @@ export interface VciIndexData {
  * Fetch all indices data with realtime prices
  */
 export async function fetchAllIndices(): Promise<Record<string, MarketIndexData>> {
-    const response = await fetchAPI<Record<string, MarketIndexData>>(
-        `${API.REALTIME_MARKET}?indices=1;2;9;11`
-    );
-    return response;
+    // Single call: VCI indices already includes VNINDEX/HNX/UPCOM/VN30
+    const items = await fetchAPI<VciIndexItem[]>(API.VCI_INDICES);
+    const bySymbol = new Map<string, VciIndexItem>();
+    for (const it of items || []) {
+        if (it?.symbol) bySymbol.set(String(it.symbol).toUpperCase(), it);
+    }
+
+    const symbolMap: Record<string, string> = {
+        '1': 'VNINDEX',
+        '2': 'HNXINDEX',
+        '9': 'HNXUPCOMINDEX',
+        '11': 'VN30',
+    };
+
+    const result: Record<string, MarketIndexData> = {};
+    for (const [indexId, vciSymbol] of Object.entries(symbolMap)) {
+        const it = bySymbol.get(vciSymbol);
+        if (!it) continue;
+        result[indexId] = {
+            CurrentIndex: Number(it.price) || 0,
+            PrevIndex: Number(it.refPrice) || 0,
+            Volume: Number(it.totalShares) || 0,
+            Value: Number(it.totalValue) || 0,
+        };
+    }
+    return result;
 }
+
 
 export async function fetchVciIndices(): Promise<VciIndexData[]> {
     return await fetchAPI<VciIndexData[]>(API.VCI_INDICES);
@@ -189,12 +232,7 @@ export async function fetchVciIndices(): Promise<VciIndexData[]> {
 /**
  * Fetch sparkline chart data for an index
  */
-export async function fetchIndexChart(indexId: string): Promise<ChartPoint[]> {
-    const response = await fetchAPI<Record<string, ChartPoint[]>>(
-        `${API.REALTIME_CHART}?index=${indexId}`
-    );
-    return response[indexId] || [];
-}
+
 
 export async function fetchNews(page: number = 1, size: number = 100): Promise<NewsItem[]> {
     interface NewsResponse {

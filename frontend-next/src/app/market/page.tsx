@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 import OverviewClient from './OverviewClient';
 import {
   fetchAllIndices,
-  fetchIndexChart,
   fetchNews,
   fetchTopMovers,
   fetchForeignFlow,
@@ -69,13 +68,7 @@ export default async function OverviewPage() {
       const change = currentIndex - prevIndex;
       const percent = prevIndex > 0 ? (change / prevIndex) * 100 : 0;
 
-      let chartData: number[] = [];
-      try {
-        const chartPoints = await fetchIndexChart(indexId);
-        chartData = chartPoints.map(p => p.Data);
-      } catch (e) {
-        console.error(`Error fetching chart for ${info.name}:`, e);
-      }
+      const chartData: number[] = [];
 
       return {
         id: info.id,

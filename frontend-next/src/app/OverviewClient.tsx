@@ -8,7 +8,6 @@ import NewsSection from '@/components/NewsSection';
 import { GoldPrice, Lottery, MarketPulse } from '@/components/Sidebar';
 import {
     fetchAllIndices,
-    fetchIndexChart,
     fetchNews,
     fetchTopMovers,
     fetchForeignFlow,
@@ -109,17 +108,7 @@ export default function OverviewClient({
                 const change = currentIndex - prevIndex;
                 const percent = prevIndex > 0 ? (change / prevIndex) * 100 : 0;
 
-                // Fetch chart data
-                let chartData: number[] = [];
-                try {
-                    const chartPoints = await fetchIndexChart(indexId);
-                    const numeric = chartPoints
-                        .map(p => Number(String(p.Data).replace(/[^0-9.-]/g, '')))
-                        .filter(v => !Number.isNaN(v));
-                    chartData = numeric.length >= 2 ? numeric : [prevIndex, currentIndex].filter(v => typeof v === 'number');
-                } catch (e) {
-                    console.error(`Error fetching chart for ${info.name}:`, e);
-                }
+                const chartData: number[] = [];
 
                 return {
                     id: info.id,
