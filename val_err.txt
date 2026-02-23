@@ -1,0 +1,50 @@
+Feb 23 22:21:32 lightnode gunicorn[160847]:     raise HaltServer(reason, self.WORKER_BOOT_ERROR)
+Feb 23 22:21:32 lightnode gunicorn[160847]: gunicorn.errors.HaltServer: <HaltServer 'Worker failed to boot.' 3>
+Feb 23 22:21:32 lightnode systemd[1]: valuation.service: Main process exited, code=exited, status=1/FAILURE
+Feb 23 22:21:32 lightnode systemd[1]: valuation.service: Failed with result 'exit-code'.
+Feb 23 22:21:32 lightnode systemd[1]: valuation.service: Consumed 3.347s CPU time.
+Feb 23 22:21:33 lightnode systemd[1]: valuation.service: Scheduled restart job, restart counter is at 657.
+Feb 23 22:21:33 lightnode systemd[1]: Stopped Stock Valuation Backend Service.
+Feb 23 22:21:33 lightnode systemd[1]: valuation.service: Consumed 3.347s CPU time.
+Feb 23 22:21:33 lightnode systemd[1]: Started Stock Valuation Backend Service.
+Feb 23 22:21:34 lightnode gunicorn[160859]: cannot import name 'GoldService' from 'backend.services' (/var/www/valuation/backend/services/__init__.py)
+Feb 23 22:21:34 lightnode gunicorn[160860]: cannot import name 'GoldService' from 'backend.services' (/var/www/valuation/backend/services/__init__.py)
+Feb 23 22:21:34 lightnode gunicorn[160864]: cannot import name 'GoldService' from 'backend.services' (/var/www/valuation/backend/services/__init__.py)
+Feb 23 22:21:34 lightnode gunicorn[160862]: cannot import name 'GoldService' from 'backend.services' (/var/www/valuation/backend/services/__init__.py)
+Feb 23 22:21:34 lightnode gunicorn[160863]: cannot import name 'GoldService' from 'backend.services' (/var/www/valuation/backend/services/__init__.py)
+Feb 23 22:21:34 lightnode gunicorn[160858]: Traceback (most recent call last):
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/lib/python3.10/site-packages/gunicorn/arbiter.py", line 225, in run
+Feb 23 22:21:34 lightnode gunicorn[160858]:     handler()
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/lib/python3.10/site-packages/gunicorn/arbiter.py", line 250, in handle_chld
+Feb 23 22:21:34 lightnode gunicorn[160858]:     self.reap_workers()
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/lib/python3.10/site-packages/gunicorn/arbiter.py", line 614, in reap_workers
+Feb 23 22:21:34 lightnode gunicorn[160858]:     raise HaltServer(reason, self.WORKER_BOOT_ERROR)
+Feb 23 22:21:34 lightnode gunicorn[160858]: gunicorn.errors.HaltServer: <HaltServer 'Worker failed to boot.' 3>
+Feb 23 22:21:34 lightnode gunicorn[160858]: During handling of the above exception, another exception occurred:
+Feb 23 22:21:34 lightnode gunicorn[160858]: Traceback (most recent call last):
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/bin/gunicorn", line 8, in <module>
+Feb 23 22:21:34 lightnode gunicorn[160858]:     sys.exit(run())
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/lib/python3.10/site-packages/gunicorn/app/wsgiapp.py", line 66, in run
+Feb 23 22:21:34 lightnode gunicorn[160858]:     WSGIApplication("%(prog)s [OPTIONS] [APP_MODULE]", prog=prog).run()
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/lib/python3.10/site-packages/gunicorn/app/base.py", line 235, in run
+Feb 23 22:21:34 lightnode gunicorn[160858]:     super().run()
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/lib/python3.10/site-packages/gunicorn/app/base.py", line 71, in run
+Feb 23 22:21:34 lightnode gunicorn[160858]:     Arbiter(self).run()
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/lib/python3.10/site-packages/gunicorn/arbiter.py", line 233, in run
+Feb 23 22:21:34 lightnode gunicorn[160858]:     self.halt(reason=inst.reason, exit_status=inst.exit_status)
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/lib/python3.10/site-packages/gunicorn/arbiter.py", line 354, in halt
+Feb 23 22:21:34 lightnode gunicorn[160858]:     self.stop()
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/lib/python3.10/site-packages/gunicorn/arbiter.py", line 434, in stop
+Feb 23 22:21:34 lightnode gunicorn[160858]:     self.reap_workers()
+Feb 23 22:21:34 lightnode gunicorn[160858]:   File "/var/www/valuation/.venv/lib/python3.10/site-packages/gunicorn/arbiter.py", line 614, in reap_workers
+Feb 23 22:21:34 lightnode gunicorn[160858]:     raise HaltServer(reason, self.WORKER_BOOT_ERROR)
+Feb 23 22:21:34 lightnode gunicorn[160858]: gunicorn.errors.HaltServer: <HaltServer 'Worker failed to boot.' 3>
+Feb 23 22:21:34 lightnode systemd[1]: valuation.service: Main process exited, code=exited, status=1/FAILURE
+Feb 23 22:21:34 lightnode systemd[1]: valuation.service: Failed with result 'exit-code'.
+Feb 23 22:21:34 lightnode systemd[1]: valuation.service: Consumed 3.505s CPU time.
+Feb 23 22:21:35 lightnode systemd[1]: valuation.service: Scheduled restart job, restart counter is at 658.
+Feb 23 22:21:35 lightnode systemd[1]: Stopped Stock Valuation Backend Service.
+Feb 23 22:21:35 lightnode systemd[1]: valuation.service: Consumed 3.505s CPU time.
+Feb 23 22:21:35 lightnode systemd[1]: valuation.service: Start request repeated too quickly.
+Feb 23 22:21:35 lightnode systemd[1]: valuation.service: Failed with result 'exit-code'.
+Feb 23 22:21:35 lightnode systemd[1]: Failed to start Stock Valuation Backend Service.
