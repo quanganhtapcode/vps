@@ -1,0 +1,33 @@
+
+===== SYMBOL: FPT =====
+Table income_statement: Found 1 rows. Year: 2025, Quarter: 4
+     net_profit  net_profit_parent_company   eps
+0  2.988149e+12               2.502704e+12  None
+Table balance_sheet: Found 1 rows. Year: 2025, Quarter: 4
+   equity_total  total_assets  cash_and_equivalents
+0  4.375147e+13  8.808962e+13          1.054018e+13
+Table cash_flow_statement: Found 1 rows. Year: 2025, Quarter: 4
+   depreciation_fixed_assets  increase_decrease_receivables  increase_decrease_inventory  purchase_purchase_fixed_assets
+0               7.993572e+11                  -1.378491e+12                -1.164656e+11                   -1.025175e+12
+
+===== SYMBOL: VCB =====
+Table income_statement: Found 1 rows. Year: 2025, Quarter: 4
+     net_profit  net_profit_parent_company   eps
+0  8.633783e+12               8.629542e+12  None
+Table balance_sheet: Found 1 rows. Year: 2025, Quarter: 4
+   equity_total  total_assets  cash_and_equivalents
+0  2.275359e+14  2.441929e+15          1.554277e+13
+Table cash_flow_statement: Found 1 rows. Year: 2025, Quarter: 4
+  depreciation_fixed_assets increase_decrease_receivables increase_decrease_inventory  purchase_purchase_fixed_assets
+0                      None                          None                        None                   -6.079100e+11
+
+===== SYMBOL: ACB =====
+Table income_statement: Found 1 rows. Year: 2025, Quarter: 4
+     net_profit  net_profit_parent_company   eps
+0  2.784685e+12               2.784685e+12  None
+Table balance_sheet: Found 1 rows. Year: 2025, Quarter: 4
+   equity_total  total_assets  cash_and_equivalents
+0  9.451972e+13  1.025850e+15          8.624548e+12
+Table cash_flow_statement: Found 1 rows. Year: 2025, Quarter: 4
+  depreciation_fixed_assets increase_decrease_receivables increase_decrease_inventory  purchase_purchase_fixed_assets
+0                      None                          None                        None                   -3.231050e+11
