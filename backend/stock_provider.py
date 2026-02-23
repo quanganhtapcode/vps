@@ -275,13 +275,40 @@ class StockDataProvider:
             cursor = conn.cursor()
 
             # Query overview table which has pre-calculated metrics
-            cursor.execute("SELECT * FROM overview WHERE symbol = ?", (symbol,))
-            row = cursor.fetchone()
+            from backend.db_path import resolve_vci_screening_db_path
+            screening_db_path = resolve_vci_screening_db_path()
+            try:
+                cursor.execute(f"ATTACH DATABASE '{screening_db_path}' AS screening")
+                cursor.execute("""
+                    SELECT o.*, 
+                           s.ttmPe as live_pe, 
+                           s.ttmPb as live_pb, 
+                           s.ttmRoe as live_roe, 
+                           s.netMargin as live_net_margin, 
+                           s.npatmiGrowthYoyQm1 as live_profit_growth
+                    FROM overview o 
+                    LEFT JOIN screening.screening_data s ON o.symbol = s.ticker
+                    WHERE o.symbol = ?
+                """, (symbol,))
+                row = cursor.fetchone()
+                cursor.execute("DETACH DATABASE screening")
+            except Exception as e:
+                logger.warning(f"Could not attach screening DB in _get_data_from_db: {e}")
+                cursor.execute("SELECT * FROM overview WHERE symbol = ?", (symbol,))
+                row = cursor.fetchone()
 
             data = {}
             if row:
                 # Convert row to dict
                 data = dict(row)
+                
+                # Override with live metrics from screening DB if available
+                if data.get('live_pe') is not None: data['pe'] = data['live_pe']
+                if data.get('live_pb') is not None: data['pb'] = data['live_pb']
+                if data.get('live_roe') is not None: data['roe'] = data['live_roe']
+                if data.get('live_net_margin') is not None: data['net_profit_margin'] = data['live_net_margin']
+                if data.get('live_profit_growth') is not None: data['profit_growth'] = data['live_profit_growth']
+                
                 data['success'] = True
                 data['data_period'] = period
                 # Consistent metadata keys with Live API shape
