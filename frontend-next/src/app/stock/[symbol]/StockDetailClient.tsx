@@ -650,6 +650,7 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
                     <ValuationTab
                         symbol={symbol}
                         currentPrice={priceData?.price || 0}
+                        stockData={rawOverviewData}
                         initialData={null}
                         isBank={stockInfo?.sector === 'Ngân hàng' || ['VCB', 'BID', 'CTG', 'VPB', 'MBB', 'TCB', 'ACB', 'HDB', 'VIB', 'STB', 'TPB', 'MSB', 'LPB', 'SHB', 'OCB', 'VBB', 'BAB', 'BVB', 'EIB', 'KLB', 'SGB', 'PGB', 'NVB', 'VAB'].includes(symbol)}
                     />

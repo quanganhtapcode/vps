@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { calculateValuation } from '@/lib/stockApi';
 import { Card, Title, Text, Metric, Button, Badge, Grid, Col, TextInput, Callout } from '@tremor/react';
-import { RiRefreshLine, RiStackLine, RiMoneyDollarCircleLine, RiBuildingLine, RiBarChartLine, RiBookOpenLine, RiScales3Line, RiErrorWarningFill } from '@remixicon/react';
+import { RiRefreshLine, RiStackLine, RiMoneyDollarCircleLine, RiBuildingLine, RiBarChartLine, RiBookOpenLine, RiScales3Line, RiErrorWarningFill, RiFileZipLine } from '@remixicon/react';
+import { ReportGenerator } from '@/lib/reportGenerator';
 
 function classNames(...classes: Array<string | false | undefined | null>) {
     return classes.filter(Boolean).join(' ');
@@ -14,9 +15,10 @@ interface ValuationTabProps {
     currentPrice: number;
     initialData?: any;
     isBank?: boolean;
+    stockData?: any; // Added for thorough reporting
 }
 
-const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initialData, isBank }) => {
+const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initialData, isBank, stockData }) => {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(initialData || null);
     const [manualPrice, setManualPrice] = useState<number>(currentPrice || 0);
@@ -277,6 +279,27 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleThoroughExport = async () => {
+        if (!result) return;
+
+        try {
+            const generator = new ReportGenerator();
+            const modelWeights = {
+                fcfe: models.fcfe.enabled ? models.fcfe.weight : 0,
+                fcff: models.fcff.enabled ? models.fcff.weight : 0,
+                justified_pe: models.justified_pe.enabled ? models.justified_pe.weight : 0,
+                justified_pb: models.justified_pb.enabled ? models.justified_pb.weight : 0,
+                graham: models.graham.enabled ? models.graham.weight : 0,
+            };
+
+            await generator.exportReport(stockData || result.metrics || result, result, assumptions, modelWeights, symbol);
+        } catch (error) {
+            console.error('Export error:', error);
+            alert('Lỗi xuất báo cáo: ' + (error as any).message);
+        }
     };
 
     const handleCalculate = async () => {
@@ -365,8 +388,11 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                     <Button variant="secondary" onClick={handleReset} icon={RiRefreshLine} className="flex-1 sm:flex-none">
                         Reset
                     </Button>
-                    <Button variant="secondary" onClick={handleExport} icon={RiBookOpenLine} className="flex-1 sm:flex-none">
-                        Export CSV
+                    <Button variant="secondary" onClick={handleExport} icon={RiBarChartLine} className="flex-1 sm:flex-none">
+                        Basic CSV
+                    </Button>
+                    <Button variant="secondary" onClick={handleThoroughExport} icon={RiFileZipLine} className="flex-1 sm:flex-none">
+                        Full Report
                     </Button>
                     <Button onClick={handleCalculate} loading={loading} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 border-none text-white font-semibold">
                         Analyze

@@ -140,6 +140,11 @@ def main() -> int:
                 pause_between_batches=60
             )
 
+            # INDUSTRY DATA (Needed for Valuation Peer Analysis)
+            logger.info("--- Phase 3: Industry Taxonomy ---")
+            db.update_industries()
+            db.update_stock_industries()
+
     except Exception as e:
         logger.error(f"Failed to run integrated update: {e}")
         # Continue to other steps even if update fails
