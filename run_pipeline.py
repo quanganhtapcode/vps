@@ -95,33 +95,61 @@ def ensure_symbols_file(symbols_file: str):
 
 def main() -> int:
     logger.info("="*60)
-    logger.info("🚀 STOCK DATA MAINTENANCE PIPELINE")
+    logger.info("🚀 STOCK DATA MAINTENANCE PIPELINE (V4 - INTEGRATED)")
     logger.info("="*60)
 
-    # 1. Fetch Fresh Data (Update the list file or pass symbols)
-    # We use a default list or symbols.txt
-    symbols_file = ensure_symbols_file(os.path.join(BASE_DIR, 'symbols.txt'))
-    if symbols_file:
-        # fetch_stock_data.py lives in project root (not scripts/)
-        fetch_delay = os.getenv('FETCH_DELAY_SECONDS', '').strip()
-        fetch_cmd = [os.path.join(BASE_DIR, 'fetch_stock_data.py'), '--file', symbols_file, '--db', DB_PATH]
-        if fetch_delay:
-            fetch_cmd.extend(['--delay', fetch_delay])
-        if not run_command(fetch_cmd, "Fetching Financial Data (V3)"):
-            logger.error("Stopping pipeline because fetch step failed.")
-            return 1
-    else:
-        logger.error("Symbols file not found and could not be generated.")
-        return 1
+    # 1. Programmatic Update using db_updater (Optimized)
+    # This uses the smart skip logic: if data is < 30 days old, it skips the stock.
+    # Total runtime is ~18h for 1700 stocks if ALL need update, but ~5 mins if all are fresh.
+    try:
+        # Add db_updater to path
+        sys.path.insert(0, os.path.join(BASE_DIR, 'db_updater'))
+        from stock_database import StockDatabase
+        
+        # Use absolute path to DB from resolve_stocks_db_path()
+        with StockDatabase(DB_PATH) as db:
+            # Get all listed stocks
+            stocks_df = db.get_listed_stocks()
+            if stocks_df.empty:
+                logger.error("No listed stocks found in database.")
+                return 1
+            
+            symbols = stocks_df['ticker'].tolist()
+            logger.info(f"Checking updates for {len(symbols)} listed stocks...")
 
-    # 2. Sync Overview from normalized ratio tables
+            # Run smart update for BOTH quarterly and yearly data
+            updater = db.financial_updater
+            
+            # QUARTERLY DATA (Higher priority, usually updates more often)
+            logger.info("--- Phase 1: Quarterly Reports ---")
+            updater.update_multiple_companies_smart(
+                symbols=symbols,
+                period='quarter',
+                force_update=False,
+                batch_size=10,            # Slightly more aggressive but still safe
+                pause_between_batches=60  # Reduced pause since skip logic handles most stocks quickly
+            )
+            
+            # YEARLY DATA
+            logger.info("--- Phase 2: Yearly Reports ---")
+            updater.update_multiple_companies_smart(
+                symbols=symbols,
+                period='year',
+                force_update=False,
+                batch_size=10,
+                pause_between_batches=60
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to run integrated update: {e}")
+        # Continue to other steps even if update fails
+
+    # 2. Sync Overview
     sync_cmd = [os.path.join(SCRIPTS_DIR, 'sync_overview.py')]
     if not run_command(sync_cmd, "Syncing Overview"):
-        logger.error("Stopping pipeline because sync step failed.")
-        return 1
+        logger.warning("Sync step skipped or failed (legacy tables might be missing).")
 
     # 3. Update Peer Data
-    # Note: local path might differ, adjust if needed
     peer_script = os.path.join(AUTOMATION_DIR, 'update_peers.py')
     if os.path.exists(peer_script):
         if not run_command([peer_script], "Updating Sector Peers"):
@@ -132,7 +160,6 @@ def main() -> int:
     if not os.path.exists(BACKUPS_DIR):
         os.makedirs(BACKUPS_DIR)
     
-    # Move loose db backups
     import glob
     for f in glob.glob(os.path.join(BASE_DIR, "stocks.db.backup_*")):
         try:
