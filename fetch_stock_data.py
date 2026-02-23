@@ -379,119 +379,186 @@ def save_ratio_data_v3(conn, symbol: str, period_type: str, year: int, quarter: 
     else:
         period_label = str(year)
 
-    # Insert into ratio_wide (single source of truth)
-    # Only write a row when we have at least some meaningful metrics.
-    if any([
-        has_value(core_data['roe']),
-        has_value(core_data['roa']),
-        has_value(core_data['pe']),
-        has_value(core_data['pb']),
-        has_value(core_data['eps']),
-        has_value(ext_data['ps']),
-        has_value(ext_data['current_ratio']),
-        has_value(nim),
-    ]):
+    # Insert into ratio_wide (single source of truth for legacy schema)
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ratio_wide'")
+    if cursor.fetchone():
+        # Only write a row when we have at least some meaningful metrics.
+        if any([
+            has_value(core_data['roe']),
+            has_value(core_data['roa']),
+            has_value(core_data['pe']),
+            has_value(core_data['pb']),
+            has_value(core_data['eps']),
+            has_value(ext_data['ps']),
+            has_value(ext_data['current_ratio']),
+            has_value(nim),
+        ]):
+            cursor.execute(
+                '''
+                INSERT INTO ratio_wide (
+                    symbol, period_type, year, quarter, period_label,
+                    pe, pb, ps, p_cash_flow, ev_ebitda, market_cap, outstanding_share, eps, bvps,
+                    roe, roa, roic, net_profit_margin, gross_profit_margin, ebit_margin,
+                    current_ratio, quick_ratio, cash_ratio, interest_coverage,
+                    financial_leverage, debt_equity, fixed_asset_to_equity, owners_equity_charter_capital,
+                    asset_turnover, inventory_turnover,
+                    nim, cof, casa_ratio, loan_to_deposit, npl_ratio, cir,
+                    fetched_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?,
+                    ?, ?, ?, ?, ?, ?,
+                    CURRENT_TIMESTAMP
+                )
+                ON CONFLICT(symbol, period_type, year, quarter)
+                DO UPDATE SET
+                    period_label = excluded.period_label,
+                    pe = COALESCE(excluded.pe, ratio_wide.pe),
+                    pb = COALESCE(excluded.pb, ratio_wide.pb),
+                    ps = COALESCE(excluded.ps, ratio_wide.ps),
+                    p_cash_flow = COALESCE(excluded.p_cash_flow, ratio_wide.p_cash_flow),
+                    ev_ebitda = COALESCE(excluded.ev_ebitda, ratio_wide.ev_ebitda),
+                    market_cap = COALESCE(excluded.market_cap, ratio_wide.market_cap),
+                    outstanding_share = COALESCE(excluded.outstanding_share, ratio_wide.outstanding_share),
+                    eps = COALESCE(excluded.eps, ratio_wide.eps),
+                    bvps = COALESCE(excluded.bvps, ratio_wide.bvps),
+                    roe = COALESCE(excluded.roe, ratio_wide.roe),
+                    roa = COALESCE(excluded.roa, ratio_wide.roa),
+                    roic = COALESCE(excluded.roic, ratio_wide.roic),
+                    net_profit_margin = COALESCE(excluded.net_profit_margin, ratio_wide.net_profit_margin),
+                    gross_profit_margin = COALESCE(excluded.gross_profit_margin, ratio_wide.gross_profit_margin),
+                    ebit_margin = COALESCE(excluded.ebit_margin, ratio_wide.ebit_margin),
+                    current_ratio = COALESCE(excluded.current_ratio, ratio_wide.current_ratio),
+                    quick_ratio = COALESCE(excluded.quick_ratio, ratio_wide.quick_ratio),
+                    cash_ratio = COALESCE(excluded.cash_ratio, ratio_wide.cash_ratio),
+                    interest_coverage = COALESCE(excluded.interest_coverage, ratio_wide.interest_coverage),
+                    financial_leverage = COALESCE(excluded.financial_leverage, ratio_wide.financial_leverage),
+                    debt_equity = COALESCE(excluded.debt_equity, ratio_wide.debt_equity),
+                    fixed_asset_to_equity = COALESCE(excluded.fixed_asset_to_equity, ratio_wide.fixed_asset_to_equity),
+                    owners_equity_charter_capital = COALESCE(excluded.owners_equity_charter_capital, ratio_wide.owners_equity_charter_capital),
+                    asset_turnover = COALESCE(excluded.asset_turnover, ratio_wide.asset_turnover),
+                    inventory_turnover = COALESCE(excluded.inventory_turnover, ratio_wide.inventory_turnover),
+                    nim = COALESCE(excluded.nim, ratio_wide.nim),
+                    cof = COALESCE(excluded.cof, ratio_wide.cof),
+                    casa_ratio = COALESCE(excluded.casa_ratio, ratio_wide.casa_ratio),
+                    loan_to_deposit = COALESCE(excluded.loan_to_deposit, ratio_wide.loan_to_deposit),
+                    npl_ratio = COALESCE(excluded.npl_ratio, ratio_wide.npl_ratio),
+                    cir = COALESCE(excluded.cir, ratio_wide.cir),
+                    fetched_at = excluded.fetched_at
+                ''',
+                (
+                    symbol.upper(),
+                    period_type,
+                    int(year),
+                    int(quarter) if quarter is not None else None,
+                    period_label,
+    
+                    core_data['pe'],
+                    core_data['pb'],
+                    ext_data['ps'],
+                    ext_data['p_cashflow'],
+                    ext_data['ev_ebitda'],
+                    core_data['market_cap'],
+                    core_data['outstanding_shares'],
+                    core_data['eps'],
+                    core_data['bvps'],
+    
+                    core_data['roe'],
+                    core_data['roa'],
+                    core_data['roic'],
+                    core_data['net_profit_margin'],
+                    ext_data['gross_profit_margin'],
+                    ext_data['operating_profit_margin'],
+    
+                    ext_data['current_ratio'],
+                    ext_data['quick_ratio'],
+                    ext_data['cash_ratio'],
+                    ext_data['interest_coverage'],
+    
+                    core_data['financial_leverage'],
+                    ext_data['debt_equity'],
+                    ext_data['fixed_asset_to_equity'],
+                    core_data['equity_to_charter_capital'],
+    
+                    ext_data['asset_turnover'],
+                    ext_data['inventory_turnover'],
+    
+                    nim,
+                    cof,
+                    casa_ratio,
+                    loan_to_deposit,
+                    npl_ratio,
+                    cir,
+                ),
+            )
+
+    # Insert into financial_ratios (New Vietnam_stocks.db schema)
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='financial_ratios'")
+    if cursor.fetchone():
         cursor.execute(
             '''
-            INSERT INTO ratio_wide (
-                symbol, period_type, year, quarter, period_label,
-                pe, pb, ps, p_cash_flow, ev_ebitda, market_cap, outstanding_share, eps, bvps,
-                roe, roa, roic, net_profit_margin, gross_profit_margin, ebit_margin,
-                current_ratio, quick_ratio, cash_ratio, interest_coverage,
-                financial_leverage, debt_equity, fixed_asset_to_equity, owners_equity_charter_capital,
-                asset_turnover, inventory_turnover,
-                nim, cof, casa_ratio, loan_to_deposit, npl_ratio, cir,
-                fetched_at
+            INSERT INTO financial_ratios (
+                symbol, period, year, quarter,
+                price_to_earnings, price_to_book, price_to_sales, price_to_cash_flow, ev_to_ebitda,
+                market_cap_billions, shares_outstanding_millions, eps_vnd, bvps_vnd,
+                roe, roa, roic, net_profit_margin, gross_margin, ebit_margin,
+                current_ratio, quick_ratio, cash_ratio, interest_coverage_ratio,
+                financial_leverage, debt_to_equity, fixed_assets_to_equity, equity_to_charter_capital,
+                asset_turnover, inventory_turnover, nim,
+                source, updated_at
             ) VALUES (
+                ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?,
-                ?, ?, ?, ?, ?, ?,
-                CURRENT_TIMESTAMP
+                ?, ?, ?,
+                'vnstock_fetch', CURRENT_TIMESTAMP
             )
-            ON CONFLICT(symbol, period_type, year, quarter)
+            ON CONFLICT(symbol, period, year, quarter)
             DO UPDATE SET
-                period_label = excluded.period_label,
-                pe = COALESCE(excluded.pe, ratio_wide.pe),
-                pb = COALESCE(excluded.pb, ratio_wide.pb),
-                ps = COALESCE(excluded.ps, ratio_wide.ps),
-                p_cash_flow = COALESCE(excluded.p_cash_flow, ratio_wide.p_cash_flow),
-                ev_ebitda = COALESCE(excluded.ev_ebitda, ratio_wide.ev_ebitda),
-                market_cap = COALESCE(excluded.market_cap, ratio_wide.market_cap),
-                outstanding_share = COALESCE(excluded.outstanding_share, ratio_wide.outstanding_share),
-                eps = COALESCE(excluded.eps, ratio_wide.eps),
-                bvps = COALESCE(excluded.bvps, ratio_wide.bvps),
-                roe = COALESCE(excluded.roe, ratio_wide.roe),
-                roa = COALESCE(excluded.roa, ratio_wide.roa),
-                roic = COALESCE(excluded.roic, ratio_wide.roic),
-                net_profit_margin = COALESCE(excluded.net_profit_margin, ratio_wide.net_profit_margin),
-                gross_profit_margin = COALESCE(excluded.gross_profit_margin, ratio_wide.gross_profit_margin),
-                ebit_margin = COALESCE(excluded.ebit_margin, ratio_wide.ebit_margin),
-                current_ratio = COALESCE(excluded.current_ratio, ratio_wide.current_ratio),
-                quick_ratio = COALESCE(excluded.quick_ratio, ratio_wide.quick_ratio),
-                cash_ratio = COALESCE(excluded.cash_ratio, ratio_wide.cash_ratio),
-                interest_coverage = COALESCE(excluded.interest_coverage, ratio_wide.interest_coverage),
-                financial_leverage = COALESCE(excluded.financial_leverage, ratio_wide.financial_leverage),
-                debt_equity = COALESCE(excluded.debt_equity, ratio_wide.debt_equity),
-                fixed_asset_to_equity = COALESCE(excluded.fixed_asset_to_equity, ratio_wide.fixed_asset_to_equity),
-                owners_equity_charter_capital = COALESCE(excluded.owners_equity_charter_capital, ratio_wide.owners_equity_charter_capital),
-                asset_turnover = COALESCE(excluded.asset_turnover, ratio_wide.asset_turnover),
-                inventory_turnover = COALESCE(excluded.inventory_turnover, ratio_wide.inventory_turnover),
-                nim = COALESCE(excluded.nim, ratio_wide.nim),
-                cof = COALESCE(excluded.cof, ratio_wide.cof),
-                casa_ratio = COALESCE(excluded.casa_ratio, ratio_wide.casa_ratio),
-                loan_to_deposit = COALESCE(excluded.loan_to_deposit, ratio_wide.loan_to_deposit),
-                npl_ratio = COALESCE(excluded.npl_ratio, ratio_wide.npl_ratio),
-                cir = COALESCE(excluded.cir, ratio_wide.cir),
-                fetched_at = excluded.fetched_at
+                price_to_earnings = COALESCE(excluded.price_to_earnings, financial_ratios.price_to_earnings),
+                price_to_book = COALESCE(excluded.price_to_book, financial_ratios.price_to_book),
+                price_to_sales = COALESCE(excluded.price_to_sales, financial_ratios.price_to_sales),
+                price_to_cash_flow = COALESCE(excluded.price_to_cash_flow, financial_ratios.price_to_cash_flow),
+                ev_to_ebitda = COALESCE(excluded.ev_to_ebitda, financial_ratios.ev_to_ebitda),
+                market_cap_billions = COALESCE(excluded.market_cap_billions, financial_ratios.market_cap_billions),
+                shares_outstanding_millions = COALESCE(excluded.shares_outstanding_millions, financial_ratios.shares_outstanding_millions),
+                eps_vnd = COALESCE(excluded.eps_vnd, financial_ratios.eps_vnd),
+                bvps_vnd = COALESCE(excluded.bvps_vnd, financial_ratios.bvps_vnd),
+                roe = COALESCE(excluded.roe, financial_ratios.roe),
+                roa = COALESCE(excluded.roa, financial_ratios.roa),
+                roic = COALESCE(excluded.roic, financial_ratios.roic),
+                net_profit_margin = COALESCE(excluded.net_profit_margin, financial_ratios.net_profit_margin),
+                gross_margin = COALESCE(excluded.gross_margin, financial_ratios.gross_margin),
+                ebit_margin = COALESCE(excluded.ebit_margin, financial_ratios.ebit_margin),
+                current_ratio = COALESCE(excluded.current_ratio, financial_ratios.current_ratio),
+                quick_ratio = COALESCE(excluded.quick_ratio, financial_ratios.quick_ratio),
+                cash_ratio = COALESCE(excluded.cash_ratio, financial_ratios.cash_ratio),
+                interest_coverage_ratio = COALESCE(excluded.interest_coverage_ratio, financial_ratios.interest_coverage_ratio),
+                financial_leverage = COALESCE(excluded.financial_leverage, financial_leverage),
+                debt_to_equity = COALESCE(excluded.debt_to_equity, financial_ratios.debt_to_equity),
+                fixed_assets_to_equity = COALESCE(excluded.fixed_assets_to_equity, financial_ratios.fixed_assets_to_equity),
+                equity_to_charter_capital = COALESCE(excluded.equity_to_charter_capital, financial_ratios.equity_to_charter_capital),
+                asset_turnover = COALESCE(excluded.asset_turnover, financial_ratios.asset_turnover),
+                inventory_turnover = COALESCE(excluded.inventory_turnover, financial_ratios.inventory_turnover),
+                nim = COALESCE(excluded.nim, financial_ratios.nim),
+                updated_at = excluded.updated_at
             ''',
             (
-                symbol.upper(),
-                period_type,
-                int(year),
-                int(quarter) if quarter is not None else None,
-                period_label,
-
-                core_data['pe'],
-                core_data['pb'],
-                ext_data['ps'],
-                ext_data['p_cashflow'],
-                ext_data['ev_ebitda'],
-                core_data['market_cap'],
-                core_data['outstanding_shares'],
-                core_data['eps'],
-                core_data['bvps'],
-
-                core_data['roe'],
-                core_data['roa'],
-                core_data['roic'],
-                core_data['net_profit_margin'],
-                ext_data['gross_profit_margin'],
-                ext_data['operating_profit_margin'],
-
-                ext_data['current_ratio'],
-                ext_data['quick_ratio'],
-                ext_data['cash_ratio'],
-                ext_data['interest_coverage'],
-
-                core_data['financial_leverage'],
-                ext_data['debt_equity'],
-                ext_data['fixed_asset_to_equity'],
-                core_data['equity_to_charter_capital'],
-
-                ext_data['asset_turnover'],
-                ext_data['inventory_turnover'],
-
-                nim,
-                cof,
-                casa_ratio,
-                loan_to_deposit,
-                npl_ratio,
-                cir,
-            ),
+                symbol.upper(), period_type, int(year), int(quarter) if quarter is not None else None,
+                core_data['pe'], core_data['pb'], ext_data['ps'], ext_data['p_cashflow'], ext_data['ev_ebitda'],
+                core_data['market_cap'], core_data['outstanding_shares'], core_data['eps'], core_data['bvps'],
+                core_data['roe'], core_data['roa'], core_data['roic'], core_data['net_profit_margin'], ext_data['gross_profit_margin'], ext_data['operating_profit_margin'],
+                ext_data['current_ratio'], ext_data['quick_ratio'], ext_data['cash_ratio'], ext_data['interest_coverage'],
+                core_data['financial_leverage'], ext_data['debt_equity'], ext_data['fixed_asset_to_equity'], core_data['equity_to_charter_capital'],
+                ext_data['asset_turnover'], ext_data['inventory_turnover'], nim
+            )
         )
 
 
