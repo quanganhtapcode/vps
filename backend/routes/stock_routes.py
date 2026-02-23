@@ -764,27 +764,11 @@ def api_revenue_profit(symbol):
         if not db_path or not os.path.exists(db_path):
             return jsonify({"periods": [], "error": "Database not found"})
 
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='fin_stmt'")
-        has_financial_statements = cursor.fetchone() is not None
-
         rows = []
-        if has_financial_statements:
-            cursor.execute(
-                """
-                SELECT year, quarter, data
-                                FROM fin_stmt
-                WHERE symbol = ?
-                  AND report_type = 'income'
-                  AND period_type = ?
-                ORDER BY year DESC, quarter DESC
-                LIMIT 24
-                """,
-                (symbol, period),
-            )
-            rows = cursor.fetchall()
-        conn.close()
+        stmt_data = provider.db.get_financial_statement(symbol, 'income', period)
+        if stmt_data:
+            for stmt in stmt_data:
+                rows.append((stmt['year'], stmt['quarter'], json.dumps(stmt['data']) if isinstance(stmt['data'], dict) else stmt['data']))
 
         revenue_key_hints = [
             'revenue',
