@@ -191,17 +191,14 @@ export function Navbar() {
     // Focus handling
     useEffect(() => {
         if (searchOpen) {
-            // Check if mobile input is available first (priority if we are on mobile)
-            if (mobileInputRef.current) {
-                // Slight delay to ensure visibility / animation start
-                setTimeout(() => {
-                    mobileInputRef.current?.focus();
-                }, 100);
-            } else if (desktopInputRef.current) {
-                setTimeout(() => {
-                    desktopInputRef.current?.focus();
-                }, 50);
-            }
+            setTimeout(() => {
+                const isDesktop = window.innerWidth >= 768;
+                if (isDesktop && desktopInputRef.current) {
+                    desktopInputRef.current.focus();
+                } else if (!isDesktop && mobileInputRef.current) {
+                    mobileInputRef.current.focus();
+                }
+            }, 50);
         }
     }, [searchOpen]);
 
