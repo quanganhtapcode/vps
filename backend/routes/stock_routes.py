@@ -771,12 +771,15 @@ def api_revenue_profit(symbol):
                 rows.append((stmt['year'], stmt['quarter'], json.dumps(stmt['data']) if isinstance(stmt['data'], dict) else stmt['data']))
 
         revenue_key_hints = [
+            'net_revenue',
             'revenue',
             'doanh thu',
             'net sales',
             'sales',
         ]
         net_profit_key_hints = [
+            'net_profit_parent_company',
+            'net_profit',
             'attribute to parent company',
             'net profit',
             'net income',
@@ -796,6 +799,17 @@ def api_revenue_profit(symbol):
 
         def _pick_metric(data_dict, hints, reject_tokens=None):
             reject_tokens = reject_tokens or []
+            
+            # 1. Try exact matches from hints in order
+            for hint in hints:
+                for key, value in data_dict.items():
+                    key_lower = str(key).lower()
+                    if key_lower == hint:
+                        val = _safe_float(value)
+                        if val is not None:
+                            return val
+
+            # 2. Substring matches using hints
             for key, value in data_dict.items():
                 key_lower = str(key).lower()
                 if any(token in key_lower for token in reject_tokens):
