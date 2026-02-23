@@ -569,18 +569,25 @@ class StockDataProvider:
                 conn.close()
                 return []
             
+            from backend.db_path import resolve_vci_screening_db_path
+            screening_db_path = resolve_vci_screening_db_path()
+            cursor.execute(f"ATTACH DATABASE '{screening_db_path}' AS screening")
+            
             # 2. Get top 10 stocks in same industry by market cap
             # Exclude current symbol
             cursor.execute("""
-                SELECT s.symbol, c.name, s.industry, s.current_price, s.pe, s.pb, s.roe, s.roa, s.market_cap, s.net_profit_margin, s.profit_growth
+                SELECT s.symbol, c.name, s.industry, s.current_price, s.pe, s.pb, s.roe, s.roa, s.market_cap, s.net_profit_margin, 
+                       COALESCE(sd.npatmiGrowthYoyQm1, s.profit_growth) as profit_growth
                 FROM overview s
                 LEFT JOIN company c ON s.symbol = c.symbol
+                LEFT JOIN screening.screening_data sd ON sd.ticker = s.symbol
                 WHERE s.industry = ? AND s.symbol != ?
                 ORDER BY s.market_cap DESC
                 LIMIT 10
             """, (industry, symbol))
             
             peers = [dict(r) for r in cursor.fetchall()]
+            cursor.execute("DETACH DATABASE screening")
             conn.close()
             
             # Normalize keys to camelCase for frontend

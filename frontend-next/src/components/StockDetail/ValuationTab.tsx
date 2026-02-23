@@ -22,6 +22,10 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
     const [manualPrice, setManualPrice] = useState<number>(currentPrice || 0);
     const [userEditedPrice, setUserEditedPrice] = useState<boolean>(false);
 
+    // Sorting state for peers
+    const [sortKey, setSortKey] = useState<'pe' | 'pb' | 'symbol' | null>(null);
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
     // Initial Assumptions
     const defaultAssumptions = {
         revenueGrowth: 8,
@@ -547,27 +551,77 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
                             <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10 shadow-sm">
                                 <tr>
-                                    <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Mã Cổ Phiếu</th>
-                                    <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">P/E</th>
-                                    <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">P/B</th>
+                                    <th
+                                        className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                        onClick={() => {
+                                            if (sortKey === 'symbol') {
+                                                setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                                            } else {
+                                                setSortKey('symbol');
+                                                setSortOrder('asc');
+                                            }
+                                        }}
+                                    >
+                                        Mã Cổ Phiếu {sortKey === 'symbol' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                        onClick={() => {
+                                            if (sortKey === 'pe') {
+                                                setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                                            } else {
+                                                setSortKey('pe');
+                                                setSortOrder('asc');
+                                            }
+                                        }}
+                                    >
+                                        P/E {sortKey === 'pe' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                        onClick={() => {
+                                            if (sortKey === 'pb') {
+                                                setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                                            } else {
+                                                setSortKey('pb');
+                                                setSortOrder('asc');
+                                            }
+                                        }}
+                                    >
+                                        P/B {sortKey === 'pb' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
-                                {result.export.comparables.peers_detailed.map((peer: any) => (
-                                    <tr key={peer.symbol} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                                        <td className="px-4 py-2.5 font-medium text-blue-600 dark:text-blue-400">
-                                            <a href={`/stock/${peer.symbol}`} target="_blank" rel="noopener noreferrer">
-                                                {peer.symbol}
-                                            </a>
-                                        </td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-gray-700 dark:text-gray-300">
-                                            {peer.pe ? peer.pe.toFixed(2) : '-'}
-                                        </td>
-                                        <td className="px-4 py-2.5 text-right font-mono text-gray-700 dark:text-gray-300">
-                                            {peer.pb ? peer.pb.toFixed(2) : '-'}
-                                        </td>
-                                    </tr>
-                                ))}
+                                {(() => {
+                                    let peers = [...result.export.comparables.peers_detailed];
+                                    if (sortKey) {
+                                        peers.sort((a, b) => {
+                                            let aVal = a[sortKey];
+                                            let bVal = b[sortKey];
+                                            if (aVal == null) aVal = sortOrder === 'asc' ? Infinity : -Infinity;
+                                            if (bVal == null) bVal = sortOrder === 'asc' ? Infinity : -Infinity;
+                                            if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+                                            if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+                                            return 0;
+                                        });
+                                    }
+                                    return peers.map((peer: any) => (
+                                        <tr key={peer.symbol} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                            <td className="px-4 py-2.5 font-medium text-blue-600 dark:text-blue-400">
+                                                <a href={`/stock/${peer.symbol}`} target="_blank" rel="noopener noreferrer">
+                                                    {peer.symbol}
+                                                </a>
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right font-mono text-gray-700 dark:text-gray-300">
+                                                {peer.pe ? peer.pe.toFixed(2) : '-'}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right font-mono text-gray-700 dark:text-gray-300">
+                                                {peer.pb ? peer.pb.toFixed(2) : '-'}
+                                            </td>
+                                        </tr>
+                                    ));
+                                })()}
                             </tbody>
                         </table>
                     </div>
