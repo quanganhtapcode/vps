@@ -8,8 +8,9 @@ Hệ thống đã được thiết lập để tự động cập nhật dữ li
 - **Luồng xử lý**:
     1. **Kiểm tra thông minh (Smart Update)**: Script sẽ so sánh dữ liệu trong database. Nếu dữ liệu của một mã cổ phiếu đã được cập nhật trong vòng **30 ngày** qua, nó sẽ **tự động Skip** để tiết kiệm API quota và thời gian.
     2. **Cập nhật BCTC**: Nếu dữ liệu cũ hơn 30 ngày hoặc thiếu kỳ mới, nó sẽ gọi VCI API để tải Bảng cân đối, Kết quả kinh doanh, Lưu chuyển tiền tệ và Chỉ số tài chính.
-    3. **Đồng bộ hóa**: Tự động đồng bộ sang bảng `overview` để đảm bảo hiển thị trên UI chính xác.
-    4. **Dọn dẹp**: Tự động dọn dẹp các tệp backup dư thừa.
+    3. **Phân loại Ngành**: Cập nhật bảng `stock_industry` để phục vụ tính năng so sánh định giá theo ngành (Sector Peers Analysis).
+    4. **Đồng bộ hóa**: Tự động đồng bộ sang bảng `overview` để đảm bảo hiển thị trên UI chính xác.
+    5. **Dọn dẹp**: Tự động dọn dẹp các tệp backup dư thừa.
 
 ### 2. Cách kiểm tra trạng thái
 Bạn có thể kiểm tra xem hệ thống có đang chạy hay không bằng các lệnh sau trên VPS:
