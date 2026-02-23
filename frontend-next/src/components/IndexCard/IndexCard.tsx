@@ -2,7 +2,7 @@
 
 import { Card } from '@tremor/react';
 import { cx } from '@/lib/utils';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RiHistoryLine } from '@remixicon/react';
 import IndexHistoryModal from './IndexHistoryModal';
 
@@ -56,6 +56,33 @@ export default React.memo(function IndexCard({
     const isUp = change >= 0;
     const changeType = isUp ? 'positive' : 'negative';
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [marketStatus, setMarketStatus] = useState({ text: 'Đang tải...', color: 'text-tremor-content-subtle', dotColor: 'text-tremor-content-subtle', animate: false });
+
+    useEffect(() => {
+        const updateStatus = () => {
+            const now = new Date();
+            const vnTimeString = now.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" });
+            const vnTime = new Date(vnTimeString);
+            const day = vnTime.getDay();
+            const hours = vnTime.getHours();
+            const minutes = vnTime.getMinutes();
+            const timeNum = hours * 100 + minutes;
+
+            if (day >= 1 && day <= 5) {
+                if (timeNum >= 845 && timeNum <= 900) { setMarketStatus({ text: 'ATO', color: 'text-amber-500 font-medium', dotColor: 'text-amber-500', animate: true }); return; }
+                if (timeNum > 900 && timeNum < 1130) { setMarketStatus({ text: 'Đang giao dịch', color: 'text-emerald-500 font-medium', dotColor: 'text-emerald-500', animate: true }); return; }
+                if (timeNum >= 1130 && timeNum <= 1300) { setMarketStatus({ text: 'Nghỉ trưa', color: 'text-amber-500 font-medium', dotColor: 'text-amber-500', animate: false }); return; }
+                if (timeNum > 1300 && timeNum < 1430) { setMarketStatus({ text: 'Đang giao dịch', color: 'text-emerald-500 font-medium', dotColor: 'text-emerald-500', animate: true }); return; }
+                if (timeNum >= 1430 && timeNum <= 1445) { setMarketStatus({ text: 'ATC', color: 'text-violet-500 font-medium', dotColor: 'text-violet-500', animate: true }); return; }
+                if (timeNum > 1445 && timeNum <= 1500) { setMarketStatus({ text: 'Đóng cửa (TT)', color: 'text-tremor-content-subtle', dotColor: 'text-tremor-content-subtle', animate: false }); return; }
+            }
+            setMarketStatus({ text: 'Đóng cửa', color: 'text-tremor-content-subtle', dotColor: 'text-tremor-content-subtle', animate: false });
+        };
+
+        updateStatus();
+        const interval = setInterval(updateStatus, 60000);
+        return () => clearInterval(interval);
+    }, []);
 
     if (isLoading) {
         return (
@@ -106,10 +133,10 @@ export default React.memo(function IndexCard({
                     </dd>
                 </div>
 
-                {/* Subtitle: Đóng cửa + change */}
+                {/* Subtitle: Market Status + change */}
                 <div className="mt-0.5 flex items-center justify-between">
-                    <span className="text-[10px] text-tremor-content-subtle dark:text-dark-tremor-content-subtle">
-                        ● Đóng cửa
+                    <span className={cx("text-[10px] md:text-xs flex items-center gap-1", marketStatus.color)}>
+                        <span className={cx("text-[8px] md:text-[10px]", marketStatus.dotColor, marketStatus.animate && "animate-pulse")}>●</span> {marketStatus.text}
                     </span>
                     <dd className={cx(
                         'text-[11px] md:text-xs font-medium',
