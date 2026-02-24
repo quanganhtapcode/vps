@@ -1,0 +1,43 @@
+import sqlite3
+import pandas as pd
+import numpy as np
+
+db_path = "vietnam_stocks.db"
+
+def test_repo_query(symbol, limit=15):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    
+    # Get industry
+    industry = conn.execute("SELECT icb_name4 FROM stock_industry WHERE ticker = ? LIMIT 1", (symbol,)).fetchone()[0]
+    print(f"Industry: {industry}")
+    
+    # The exact query from FinancialRepository.py
+    query = """
+        SELECT 
+            fr.symbol, 
+            fr.price_to_earnings as pe_ratio, 
+            fr.price_to_book as pb_ratio,
+            fr.market_cap_billions as market_cap
+        FROM financial_ratios fr
+        JOIN stock_industry si ON fr.symbol = si.ticker
+        WHERE si.icb_name4 = ? AND (fr.quarter = 0 OR fr.quarter = 5 OR fr.quarter IS NULL)
+        GROUP BY fr.symbol
+        ORDER BY fr.year DESC, fr.market_cap_billions DESC
+        LIMIT ?
+    """
+    rows = conn.execute(query, (industry, limit)).fetchall()
+    peers = [dict(r) for r in rows]
+    
+    print("\nPeers returned by query:")
+    for p in peers:
+        print(f"Symbol: {p['symbol']}, PE: {p['pe_ratio']}, Market Cap: {p['market_cap']}")
+        
+    pe_values = [p['pe_ratio'] for p in peers if p.get('pe_ratio') and p['pe_ratio'] > 0]
+    print(f"\nPE values: {pe_values}")
+    if pe_values:
+        print(f"Median PE: {np.median(pe_values)}")
+    
+    conn.close()
+
+test_repo_query('VCB')

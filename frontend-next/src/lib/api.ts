@@ -100,6 +100,7 @@ export interface MarketIndexData {
     NoChanges?: number;
     Ceilings?: number;
     Floors?: number;
+    chartData?: number[];
 }
 
 export interface VciIndexItem {
@@ -117,6 +118,7 @@ export interface VciIndexItem {
     totalStockNoChange?: number;
     totalStockCeiling?: number;
     totalStockFloor?: number;
+    chartData?: number[];
 }
 
 
@@ -196,6 +198,7 @@ export interface VciIndexData {
     estimatedChange: number;
     estimatedFsp: number;
     sendingTime: string;
+    chartData?: number[];
 }
 
 /**
@@ -230,6 +233,7 @@ export async function fetchAllIndices(): Promise<Record<string, MarketIndexData>
             NoChanges: Number(it.totalStockNoChange) || 0,
             Ceilings: Number(it.totalStockCeiling) || 0,
             Floors: Number(it.totalStockFloor) || 0,
+            chartData: it.chartData || [],
         };
     }
     return result;

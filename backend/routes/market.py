@@ -340,6 +340,17 @@ def api_market_vci_indices():
     start = time.perf_counter()
     try:
         data = VCIClient.get_market_indices()
+        history = VCIClient.get_indices_history()
+        
+        # Merge history into data items for sparklines
+        if isinstance(data, list):
+            for it in data:
+                sym = it.get('symbol')
+                if sym in history:
+                    it['chartData'] = history[sym]
+                else:
+                    it['chartData'] = []
+
         response = jsonify(data)
         response.headers['Cache-Control'] = 'no-store'
         dur_ms = (time.perf_counter() - start) * 1000.0

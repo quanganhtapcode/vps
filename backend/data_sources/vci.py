@@ -34,6 +34,8 @@ class VCIClient:
     # Cache for market indices - refreshed every 1s in background
     _indices_cache: List[Dict] = []
     _indices_last_update: float = 0
+    _indices_history: Dict[str, List[float]] = {} # symbol -> [p1, p2, p3... p30]
+    _HISTORY_SIZE = 30
     
     # Background refresh state
     _refresh_thread_started = False
@@ -67,6 +69,18 @@ class VCIClient:
                     if data:
                         cls._indices_cache = data
                         cls._indices_last_update = time.time()
+                        
+                        # Update history for sparklines
+                        for item in data:
+                            sym = item.get('symbol')
+                            val = item.get('price')
+                            if sym and val is not None:
+                                if sym not in cls._indices_history:
+                                    cls._indices_history[sym] = []
+                                history = cls._indices_history[sym]
+                                history.append(float(val))
+                                if len(history) > cls._HISTORY_SIZE:
+                                    cls._indices_history[sym] = history[-cls._HISTORY_SIZE:]
             except Exception as e:
                 logger.error(f"[VCI] Indices background refresh error: {e}")
             time.sleep(3)
@@ -97,6 +111,11 @@ class VCIClient:
         """Return market indices from RAM (no network call, updated in background)"""
         cls.ensure_indices_refresh()
         return cls._indices_cache
+
+    @classmethod
+    def get_indices_history(cls) -> Dict[str, List[float]]:
+        """Return historical points for sparklines from RAM"""
+        return cls._indices_history
 
     @classmethod
     def ensure_background_refresh(cls):

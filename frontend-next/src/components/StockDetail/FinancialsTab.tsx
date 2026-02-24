@@ -115,13 +115,13 @@ export default function FinancialsTab({
         setLoading(true);
         Promise.all([
             fetch(`/api/historical-chart-data/${symbol}?period=${period}`, { signal }).then(r => r.json()),
-            (!overviewData ? fetch(`/api/stock/${symbol}`, { signal }).then(r => r.json()) : Promise.resolve({ success: true, data: overviewData }))
+            fetch(`/api/stock/${symbol}?period=${period}`, { signal }).then(r => r.json())
         ])
             .then(([chartRes, stockRes]) => {
                 if (signal.aborted) return;
 
                 if (chartRes.success) setChartData(chartRes.data);
-                if (stockRes.success || stockRes.data) {
+                if (stockRes && (stockRes.success !== false)) {
                     setOverviewData(stockRes.data || stockRes);
                 }
             })
@@ -137,7 +137,7 @@ export default function FinancialsTab({
             });
 
         return () => controller.abort();
-    }, [symbol, period, isParentLoading, initialChartData]);
+    }, [symbol, period]);
 
     // Helpers restored
     const getVal = (data: (number | null)[] | undefined): number | null => {
@@ -262,23 +262,41 @@ export default function FinancialsTab({
     return (
         <div className="w-full text-tremor-content-strong dark:text-dark-tremor-content-strong" style={{ boxSizing: 'border-box', minHeight: '600px' }}>
             {/* Period toggle — renders instantly, isolated from parent state */}
-            <div className="mb-4 flex items-center gap-2">
-                {(['quarter', 'year'] as const).map((p) => (
-                    <button
-                        key={p}
-                        type="button"
-                        onClick={() => handlePeriodChange(p)}
-                        className={[
-                            'px-4 py-1.5 rounded-tremor-small text-sm font-medium border transition-colors',
-                            period === p
-                                ? 'bg-tremor-brand text-white border-tremor-brand dark:bg-dark-tremor-brand dark:border-dark-tremor-brand'
-                                : 'bg-white text-tremor-content-strong border-tremor-border hover:bg-tremor-background-muted dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong dark:border-dark-tremor-border',
-                        ].join(' ')}
-                    >
-                        {p === 'quarter' ? 'Quarter' : 'Year'}
-                        {isPending && period === p && <span className="ml-1 opacity-60 text-xs">...</span>}
-                    </button>
-                ))}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                    {(['quarter', 'year'] as const).map((p) => (
+                        <button
+                            key={p}
+                            type="button"
+                            onClick={() => handlePeriodChange(p)}
+                            className={[
+                                'px-4 py-1.5 rounded-tremor-small text-sm font-medium border transition-colors',
+                                period === p
+                                    ? 'bg-tremor-brand text-white border-tremor-brand dark:bg-dark-tremor-brand dark:border-dark-tremor-brand'
+                                    : 'bg-white text-tremor-content-strong border-tremor-border hover:bg-tremor-background-muted dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong dark:border-dark-tremor-border',
+                            ].join(' ')}
+                        >
+                            {p === 'quarter' ? 'Quarter' : 'Year'}
+                            {isPending && period === p && <span className="ml-1 opacity-60 text-xs">...</span>}
+                        </button>
+                    ))}
+                </div>
+
+                {overviewData && (
+                    <div className="px-3 py-1 bg-tremor-background-muted dark:bg-dark-tremor-background-muted rounded-full border border-tremor-border dark:border-dark-tremor-border text-xs font-medium text-tremor-content-emphasis dark:text-dark-tremor-content-emphasis shadow-sm">
+                        <span className="opacity-70 mr-1.5">Latest Data:</span>
+                        <span className="text-tremor-brand dark:text-dark-tremor-brand font-bold">
+                            {overviewData.latest_year ? (
+                                <>
+                                    {overviewData.latest_quarter && overviewData.latest_quarter > 0 ? `Q${overviewData.latest_quarter} ` : ''}
+                                    {overviewData.latest_year}
+                                </>
+                            ) : (
+                                'Recently Updated'
+                            )}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {(loading || !readyToRender) ? (

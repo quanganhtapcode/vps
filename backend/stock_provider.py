@@ -323,11 +323,17 @@ class StockDataProvider:
                 else:
                     data['overview'] = {'description': "No description available."}
                 
-                # 2. Latest Financial Ratios
-                cursor.execute(f"SELECT * FROM financial_ratios WHERE symbol=? ORDER BY year DESC, quarter DESC LIMIT 1", (symbol,))
+                # 2. Latest Financial Ratios - Filtered by period (Year/Quarter)
+                if period == 'year':
+                    cursor.execute("SELECT * FROM financial_ratios WHERE symbol=? AND (quarter IS NULL OR quarter = 0) ORDER BY year DESC LIMIT 1", (symbol,))
+                else:
+                    cursor.execute("SELECT * FROM financial_ratios WHERE symbol=? AND quarter > 0 ORDER BY year DESC, quarter DESC LIMIT 1", (symbol,))
+                
                 ratios = cursor.fetchone()
                 if ratios:
                     data['success'] = True
+                    data['latest_year'] = ratios['year']
+                    data['latest_quarter'] = ratios['quarter']
                     data['pe'] = ratios['price_to_earnings']
                     data['pb'] = ratios['price_to_book']
                     data['ps'] = ratios['price_to_sales']
@@ -1921,7 +1927,20 @@ class StockDataProvider:
 
             # B. Process period-specific ratios (More accurate for the requested period)
             if results.get("ratio_period") is not None and not results["ratio_period"].empty:
-                rp = results["ratio_period"].iloc[0]
+                rp_df = results["ratio_period"]
+                rp = rp_df.iloc[0]
+
+                # Extract year/quarter from live data if possible
+                year_col = next((c for c in rp_df.columns if "yearReport" in (str(c[1]) if isinstance(c, tuple) else str(c))), None)
+                quarter_col = next((c for c in rp_df.columns if "lengthReport" in (str(c[1]) if isinstance(c, tuple) else str(c))), None)
+                
+                if year_col:
+                    y_val = rp[year_col]
+                    if pd.notna(y_val): financial_data['latest_year'] = int(y_val)
+                if quarter_col:
+                    q_val = rp[quarter_col]
+                    if pd.notna(q_val): financial_data['latest_quarter'] = int(q_val)
+
                 # Extract all MultiIndex or flat keys
                 extract_keys = {
                     'P/E': 'pe', 'P/B': 'pb', 'P/S': 'ps', 

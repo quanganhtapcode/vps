@@ -475,6 +475,7 @@ def fetch_pages_to_sqlite(
 	backoff_base_s: float,
 	workers: int,
 	sleep_between_pages_s: float,
+	incremental: bool = False,
 ) -> None:
 	if end_page < start_page:
 		raise ValueError("end_page must be >= start_page")
