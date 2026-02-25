@@ -13,6 +13,7 @@ import time
 import sqlite3
 import os
 from backend.data_sources.vci import VCIClient
+from backend.db_path import resolve_vci_screening_db_path
 from backend.services.news_service import NewsService
 from backend.services.vci_news_sqlite import default_news_db_path, is_fresh, query_market_news
 from backend.services.vci_standouts_sqlite import default_standouts_db_path, is_fresh as is_standouts_fresh, read_ticker_info
@@ -48,8 +49,7 @@ def _find_vci_index_item(vci_symbol: str) -> dict | None:
     return None
 
 def _get_screener_db():
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    return os.path.join(base_dir, "fetch_sqlite", "vci_screening.sqlite")
+    return resolve_vci_screening_db_path()
 
 
 # Create blueprint
@@ -349,26 +349,6 @@ def api_market_vci_indices():
     except Exception as e:
         logger.error(f"VCI indices proxy error: {e}")
         return jsonify([])
-@market_bp.route('/index-history')
-def api_market_index_history():
-    """Get historical index data from SQLite files"""
-    index = request.args.get("index", "VNINDEX")
-    try:
-        days = int(request.args.get("days", "30"))
-    except ValueError:
-        days = 30
-
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    db_path = resolve_index_db_path(base_dir=base_dir, index=index)
-    if not db_path:
-        return jsonify({"error": "Index not found"}), 404
-
-    try:
-        data = read_index_history(db_path=db_path, days=days)
-        return jsonify(data)
-    except Exception as e:
-        logger.error(f"Error reading {index} history: {e}")
-        return jsonify({"error": str(e)}), 500
 
 
 # ===================== LOTTERY =====================

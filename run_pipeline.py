@@ -37,6 +37,71 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def run_db_updater_fetch(symbols_file: str) -> bool:
+    """Fetch/update financial reports via db_updater pipeline.
+
+    This replaces legacy root fetch_stock_data.py usage and keeps a single
+    source of truth for data-loading logic.
+    """
+    try:
+        if BASE_DIR not in sys.path:
+            sys.path.insert(0, BASE_DIR)
+
+        from db_updater.scripts.cli.update_financial_reports import update_multiple_stocks
+
+        with open(symbols_file, 'r', encoding='utf-8') as f:
+            symbols = [line.strip().upper() for line in f if line.strip()]
+
+        if not symbols:
+            logger.error("No symbols found in symbols file.")
+            return False
+
+        period = os.getenv('FETCH_PERIOD', 'year').strip().lower() or 'year'
+        if period not in ('year', 'quarter'):
+            logger.warning(f"Invalid FETCH_PERIOD={period}, falling back to 'year'.")
+            period = 'year'
+
+        delay_raw = os.getenv('FETCH_DELAY_SECONDS', '30').strip()
+        try:
+            delay_seconds = max(1, int(float(delay_raw)))
+        except Exception:
+            delay_seconds = 30
+
+        # Force db_updater to operate on the same DB chosen by backend resolver.
+        os.environ['VSW_DB_PATH'] = DB_PATH
+        os.environ['VIETNAM_STOCK_DB_PATH'] = DB_PATH
+
+        logger.info(
+            f">>> Starting: Fetching Financial Data via db_updater "
+            f"(symbols={len(symbols)}, period={period}, delay={delay_seconds}s, db={DB_PATH})"
+        )
+        results = update_multiple_stocks(
+            symbols=symbols,
+            period=period,
+            delay_between_stocks=delay_seconds,
+        )
+
+        success_count = 0
+        total_records = 0
+        for symbol, payload in (results or {}).items():
+            if not payload:
+                continue
+            symbol_total = sum(int(v or 0) for v in payload.values())
+            total_records += symbol_total
+            if symbol_total > 0:
+                success_count += 1
+
+        logger.info(
+            f"✅ Finished: db_updater fetch "
+            f"(success_symbols={success_count}/{len(symbols)}, total_records={total_records})"
+        )
+        return True
+    except Exception as e:
+        logger.error("❌ Failed: Fetching Financial Data via db_updater")
+        logger.error(f"Error: {e}")
+        return False
+
 def run_command(cmd, description):
     logger.info(f">>> Starting: {description}")
     try:
@@ -95,66 +160,28 @@ def ensure_symbols_file(symbols_file: str):
 
 def main() -> int:
     logger.info("="*60)
-    logger.info("🚀 STOCK DATA MAINTENANCE PIPELINE (V4 - INTEGRATED)")
+    logger.info("🚀 STOCK DATA MAINTENANCE PIPELINE")
     logger.info("="*60)
 
-    # 1. Programmatic Update using db_updater (Optimized)
-    # This uses the smart skip logic: if data is < 30 days old, it skips the stock.
-    # Total runtime is ~18h for 1700 stocks if ALL need update, but ~5 mins if all are fresh.
-    try:
-        # Add db_updater to path
-        sys.path.insert(0, os.path.join(BASE_DIR, 'db_updater'))
-        from stock_database import StockDatabase
-        
-        # Use absolute path to DB from resolve_stocks_db_path()
-        with StockDatabase(DB_PATH) as db:
-            # Get all listed stocks
-            stocks_df = db.get_listed_stocks()
-            if stocks_df.empty:
-                logger.error("No listed stocks found in database.")
-                return 1
-            
-            symbols = stocks_df['ticker'].tolist()
-            logger.info(f"Checking updates for {len(symbols)} listed stocks...")
+    # 1. Fetch Fresh Data (Update the list file or pass symbols)
+    # We use a default list or symbols.txt
+    symbols_file = ensure_symbols_file(os.path.join(BASE_DIR, 'symbols.txt'))
+    if symbols_file:
+        if not run_db_updater_fetch(symbols_file):
+            logger.error("Stopping pipeline because fetch step failed.")
+            return 1
+    else:
+        logger.error("Symbols file not found and could not be generated.")
+        return 1
 
-            # Run smart update for BOTH quarterly and yearly data
-            updater = db.financial_updater
-            
-            # QUARTERLY DATA (Higher priority, usually updates more often)
-            logger.info("--- Phase 1: Quarterly Reports ---")
-            updater.update_multiple_companies_smart(
-                symbols=symbols,
-                period='quarter',
-                force_update=False,
-                batch_size=10,            # Slightly more aggressive but still safe
-                pause_between_batches=60  # Reduced pause since skip logic handles most stocks quickly
-            )
-            
-            # YEARLY DATA
-            logger.info("--- Phase 2: Yearly Reports ---")
-            updater.update_multiple_companies_smart(
-                symbols=symbols,
-                period='year',
-                force_update=False,
-                batch_size=10,
-                pause_between_batches=60
-            )
-
-            # INDUSTRY DATA (Needed for Valuation Peer Analysis)
-            logger.info("--- Phase 3: Industry Taxonomy ---")
-            db.update_industries()
-            db.update_stock_industries()
-
-    except Exception as e:
-        logger.error(f"Failed to run integrated update: {e}")
-        # Continue to other steps even if update fails
-
-    # 2. Sync Overview
+    # 2. Sync Overview from normalized ratio tables
     sync_cmd = [os.path.join(SCRIPTS_DIR, 'sync_overview.py')]
     if not run_command(sync_cmd, "Syncing Overview"):
-        logger.warning("Sync step skipped or failed (legacy tables might be missing).")
+        logger.error("Stopping pipeline because sync step failed.")
+        return 1
 
     # 3. Update Peer Data
+    # Note: local path might differ, adjust if needed
     peer_script = os.path.join(AUTOMATION_DIR, 'update_peers.py')
     if os.path.exists(peer_script):
         if not run_command([peer_script], "Updating Sector Peers"):
@@ -165,6 +192,7 @@ def main() -> int:
     if not os.path.exists(BACKUPS_DIR):
         os.makedirs(BACKUPS_DIR)
     
+    # Move loose db backups
     import glob
     for f in glob.glob(os.path.join(BASE_DIR, "stocks.db.backup_*")):
         try:

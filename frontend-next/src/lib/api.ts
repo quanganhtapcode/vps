@@ -43,11 +43,11 @@ export const API = {
 } as const;
 
 // Index mapping from CafeF
-export const INDEX_MAP: Record<string, { id: string; name: string }> = {
-    '1': { id: 'vnindex', name: 'VN-Index' },
-    '2': { id: 'hnx', name: 'HNX-Index' },
-    '9': { id: 'upcom', name: 'UPCOM' },
-    '11': { id: 'vn30', name: 'VN30' },
+export const INDEX_MAP: Record<string, { id: string; name: string; vciSymbol: string }> = {
+    '1': { id: 'vnindex', name: 'VN-Index', vciSymbol: 'VNINDEX' },
+    '2': { id: 'hnx', name: 'HNX-Index', vciSymbol: 'HNXIndex' },
+    '9': { id: 'upcom', name: 'UPCOM', vciSymbol: 'HNXUpcomIndex' },
+    '11': { id: 'vn30', name: 'VN30', vciSymbol: 'VN30' },
 };
 
 // ============ API Fetching Functions ============
