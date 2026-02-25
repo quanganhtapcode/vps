@@ -273,6 +273,7 @@ export function subscribeIndicesStream(options: {
  */
 export async function fetchNews(page: number = 1, size: number = 100): Promise<NewsItem[]> {
     interface NewsResponse {
+        data?: NewsItem[];
         Data?: NewsItem[];
     }
     const response = await fetchAPI<NewsResponse | NewsItem[]>(
@@ -282,7 +283,7 @@ export async function fetchNews(page: number = 1, size: number = 100): Promise<N
     if (Array.isArray(response)) {
         return response;
     }
-    return response.Data || [];
+    return response.data || response.Data || [];
 }
 
 /**

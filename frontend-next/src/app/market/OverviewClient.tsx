@@ -181,11 +181,6 @@ export default function OverviewClient({
             fallbackTimer = null;
         };
 
-        // If SSR didn't provide indices, load immediately after hydration.
-        if (initialIndices.length === 0) {
-            loadIndices();
-        }
-
         const unsubscribe = subscribeIndicesStream({
             onData: (marketData) => {
                 mapMarketDataToIndices(marketData);
