@@ -4,11 +4,6 @@ import { useState, useCallback } from 'react';
 import {
     Card,
 } from '@tremor/react';
-import {
-    RiArrowDownLine,
-    RiArrowRightLine,
-    RiArrowUpLine,
-} from '@remixicon/react';
 import Link from 'next/link';
 import { TopMoverItem } from '@/lib/api';
 import { siteConfig } from '@/app/siteConfig';
@@ -22,6 +17,38 @@ interface MarketPulseProps {
 }
 
 const LOGO_BASE_URL = '/logos/';
+
+type Direction = 'up' | 'unchanged' | 'down';
+
+function vietcapArrowUrls(direction: Direction): { light: string; dark: string } {
+    const base = 'https://trading.vietcap.com.vn/vietcap-priceboard/images';
+    if (direction === 'up') {
+        return {
+            light: `${base}/light/arrow-top-right.svg`,
+            dark: `${base}/dark/arrow-top-right.svg`,
+        };
+    }
+    if (direction === 'down') {
+        return {
+            light: `${base}/light/arrow-bottom-left.svg`,
+            dark: `${base}/dark/arrow-bottom-left.svg`,
+        };
+    }
+    return {
+        light: `${base}/light/unchanged.svg`,
+        dark: `${base}/dark/unchanged.svg`,
+    };
+}
+
+function TrendIcon({ direction, alt }: { direction: Direction; alt: string }) {
+    const icon = vietcapArrowUrls(direction);
+    return (
+        <span className="inline-flex items-center">
+            <img src={icon.light} alt={alt} className="block dark:hidden size-3.5" loading="lazy" decoding="async" />
+            <img src={icon.dark} alt={alt} className="hidden dark:block size-3.5" loading="lazy" decoding="async" />
+        </span>
+    );
+}
 
 export default function MarketPulse({
     gainers,
@@ -196,17 +223,17 @@ function MarketList({
 
                                                 {isUp ? (
                                                     <span className="inline-flex items-center gap-x-0.5 rounded-tremor-small bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-600/10 dark:bg-emerald-400/20 dark:text-emerald-500 dark:ring-emerald-400/20 tabular-nums">
-                                                        <RiArrowUpLine className="-ml-0.5 size-3.5" aria-hidden={true} />
+                                                        <TrendIcon direction="up" alt="Tăng" />
                                                         {item.ChangePricePercent.toFixed(2)}%
                                                     </span>
                                                 ) : isDown ? (
                                                     <span className="inline-flex items-center gap-x-0.5 rounded-tremor-small bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800 ring-1 ring-inset ring-red-600/10 dark:bg-red-400/20 dark:text-red-500 dark:ring-red-400/20 tabular-nums">
-                                                        <RiArrowDownLine className="-ml-0.5 size-3.5" aria-hidden={true} />
+                                                        <TrendIcon direction="down" alt="Giảm" />
                                                         {Math.abs(item.ChangePricePercent).toFixed(2)}%
                                                     </span>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-x-0.5 rounded-tremor-small bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 ring-1 ring-inset ring-gray-600/10 dark:bg-gray-500/30 dark:text-gray-300 dark:ring-gray-400/20 tabular-nums">
-                                                        <RiArrowRightLine className="-ml-0.5 size-3.5" aria-hidden={true} />
+                                                        <TrendIcon direction="unchanged" alt="Đứng giá" />
                                                         0.00%
                                                     </span>
                                                 )}
@@ -216,7 +243,7 @@ function MarketList({
                                                 <div className={`text-sm font-semibold ${subTab === 0 ? 'text-emerald-600' : 'text-red-500'} tabular-nums`}>
                                                     {subTab === 0 ? '+' : '-'}{valueFormatted}
                                                 </div>
-                                                <div className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
+                                                <div className="text-[10px] font-medium text-gray-400">
                                                     VND
                                                 </div>
                                             </>
@@ -227,12 +254,17 @@ function MarketList({
                         })}
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center justify-center h-32 text-gray-600 dark:text-gray-400">
+                    <div className="flex flex-col items-center justify-center h-32 text-gray-400">
                         <span className="text-xs">No data available</span>
                     </div>
                 )}
             </div>
 
+            <div className="p-3 border-t border-tremor-border dark:border-dark-tremor-border">
+                <Link href="/market" className="block w-full py-2 text-center text-xs font-medium text-tremor-brand hover:text-tremor-brand-emphasis transition-colors">
+                    View all market data →
+                </Link>
+            </div>
         </div>
     );
 }

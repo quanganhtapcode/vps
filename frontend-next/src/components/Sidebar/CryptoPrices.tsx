@@ -26,6 +26,38 @@ const INSTRUMENTS: { instId: string; label: string }[] = [
     { instId: 'XRP-USDT', label: 'XRP' },
 ];
 
+type Direction = 'up' | 'unchanged' | 'down';
+
+function vietcapArrowUrls(direction: Direction): { light: string; dark: string } {
+    const base = 'https://trading.vietcap.com.vn/vietcap-priceboard/images';
+    if (direction === 'up') {
+        return {
+            light: `${base}/light/arrow-top-right.svg`,
+            dark: `${base}/dark/arrow-top-right.svg`,
+        };
+    }
+    if (direction === 'down') {
+        return {
+            light: `${base}/light/arrow-bottom-left.svg`,
+            dark: `${base}/dark/arrow-bottom-left.svg`,
+        };
+    }
+    return {
+        light: `${base}/light/unchanged.svg`,
+        dark: `${base}/dark/unchanged.svg`,
+    };
+}
+
+function TrendIcon({ direction, alt }: { direction: Direction; alt: string }) {
+    const icon = vietcapArrowUrls(direction);
+    return (
+        <span className="inline-flex items-center mr-0.5">
+            <img src={icon.light} alt={alt} className="block dark:hidden size-3" loading="lazy" decoding="async" />
+            <img src={icon.dark} alt={alt} className="hidden dark:block size-3" loading="lazy" decoding="async" />
+        </span>
+    );
+}
+
 function toNumber(value: unknown): number | null {
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
@@ -159,6 +191,7 @@ export default function CryptoPrices() {
                         const last = st?.last;
                         const pct = st?.changePct24h;
                         const isUp = (pct ?? 0) >= 0;
+                        const isDown = (pct ?? 0) < 0;
                         return (
                             <div
                                 key={it.instId}
@@ -182,11 +215,25 @@ export default function CryptoPrices() {
                                     </span>
                                     <span
                                         className={
-                                            'text-[11px] font-bold tabular-nums ' +
-                                            (pct == null ? 'text-gray-500 dark:text-gray-400' : isUp ? 'text-emerald-600' : 'text-rose-500')
+                                            'inline-flex items-center text-[11px] font-bold tabular-nums ' +
+                                            (pct == null
+                                                ? 'text-gray-500 dark:text-gray-400'
+                                                : isUp
+                                                  ? 'text-emerald-600'
+                                                  : 'text-rose-500')
                                         }
                                     >
-                                        {pct == null ? '' : `${isUp ? '+' : ''}${pct.toFixed(2)}%`}
+                                        {pct == null ? (
+                                            ''
+                                        ) : (
+                                            <>
+                                                <TrendIcon
+                                                    direction={isDown ? 'down' : pct === 0 ? 'unchanged' : 'up'}
+                                                    alt={isDown ? 'Giảm' : pct === 0 ? 'Đứng giá' : 'Tăng'}
+                                                />
+                                                {`${isUp ? '+' : ''}${pct.toFixed(2)}%`}
+                                            </>
+                                        )}
                                     </span>
                                 </div>
                             </div>

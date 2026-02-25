@@ -10,10 +10,14 @@ import re
 from backend.extensions import get_provider
 from backend.utils import validate_stock_symbol
 from backend.db_path import resolve_stocks_db_path
+from backend.routes.stock.financial_dashboard import register as register_financial_dashboard_routes
 from vnstock import Vnstock, Quote, Company
 
 stock_bp = Blueprint('stock', __name__)
 logger = logging.getLogger(__name__)
+
+# Register modular extra routes onto the active monolithic blueprint
+register_financial_dashboard_routes(stock_bp)
 
 # ===================== IN-MEMORY CACHE =====================
 import time as _time

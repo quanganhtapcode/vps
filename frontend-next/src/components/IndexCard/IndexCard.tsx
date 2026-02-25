@@ -23,6 +23,38 @@ interface IndexCardProps {
     isLoading?: boolean;
 }
 
+type BreadthDirection = 'up' | 'unchanged' | 'down';
+
+function breadthIconUrls(direction: BreadthDirection): { light: string; dark: string } {
+    const base = 'https://trading.vietcap.com.vn/vietcap-priceboard/images';
+    if (direction === 'up') {
+        return {
+            light: `${base}/light/arrow-top-right.svg`,
+            dark: `${base}/dark/arrow-top-right.svg`,
+        };
+    }
+    if (direction === 'down') {
+        return {
+            light: `${base}/light/arrow-bottom-left.svg`,
+            dark: `${base}/dark/arrow-bottom-left.svg`,
+        };
+    }
+    return {
+        light: `${base}/light/unchanged.svg`,
+        dark: `${base}/dark/unchanged.svg`,
+    };
+}
+
+function BreadthIcon({ direction, alt }: { direction: BreadthDirection; alt: string }) {
+    const icon = breadthIconUrls(direction);
+    return (
+        <span className="inline-flex items-center mr-1">
+            <img src={icon.light} alt={alt} className="block dark:hidden w-3 h-3" loading="lazy" decoding="async" />
+            <img src={icon.dark} alt={alt} className="hidden dark:block w-3 h-3" loading="lazy" decoding="async" />
+        </span>
+    );
+}
+
 function formatShares(n: number): string {
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + ' Tr';
     if (n >= 1_000) return (n / 1_000).toFixed(0) + ' N';
@@ -160,14 +192,17 @@ export default React.memo(function IndexCard({
                     {/* Breadth: Tăng(Trần) ◾ Đứng ↙ Giảm(Sàn) */}
                     <div className="mt-1 flex items-center text-[11px] font-bold gap-3">
                         <div className="flex items-center text-emerald-500">
-                            ↗ {advances}
+                            <BreadthIcon direction="up" alt="Tăng" />
+                            {advances}
                             <span className="text-violet-500 ml-0.5">({ceilings})</span>
                         </div>
                         <div className="flex items-center text-amber-500">
-                            ◾ {noChanges}
+                            <BreadthIcon direction="unchanged" alt="Đứng giá" />
+                            {noChanges}
                         </div>
                         <div className="flex items-center text-red-500">
-                            ↙ {declines}
+                            <BreadthIcon direction="down" alt="Giảm" />
+                            {declines}
                             <span className="text-cyan-500 ml-0.5">({floors})</span>
                         </div>
                     </div>

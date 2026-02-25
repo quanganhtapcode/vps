@@ -7,16 +7,59 @@ import { LineChart, type CustomTooltipProps as TremorCustomTooltipProps } from '
 import {
     ResponsiveContainer,
     ComposedChart,
+    BarChart,
     Bar,
+    Cell,
     Line,
     XAxis,
     YAxis,
     CartesianGrid,
     Tooltip as RechartsTooltip,
     Legend,
+    ReferenceLine,
 } from 'recharts';
 import { cx } from '@/lib/utils';
-import RevenueProfitChart from './RevenueProfitChart';
+
+type FinancialDashboardSeries = {
+    period: string;
+    year: number;
+    quarter: number;
+    revenue: number | null;
+    net_profit: number | null;
+    net_margin: number | null;
+    total_debt: number | null;
+    total_equity: number | null;
+    debt_to_equity_pct: number | null;
+};
+
+type FinancialDashboardWaterfall = {
+    period: string;
+    revenue: number | null;
+    cogs: number | null;
+    gross_profit: number | null;
+    selling_admin_expense: number | null;
+    operating_profit: number | null;
+    other_income_expense: number | null;
+    profit_before_tax: number | null;
+    tax: number | null;
+    net_profit: number | null;
+};
+
+type FinancialDashboardPosition = {
+    period: string;
+    current_assets: number | null;
+    non_current_assets: number | null;
+    current_liabilities: number | null;
+    non_current_liabilities: number | null;
+    total_assets: number | null;
+    total_liabilities: number | null;
+};
+
+type FinancialDashboardData = {
+    series: FinancialDashboardSeries[];
+    waterfall: FinancialDashboardWaterfall | null;
+    position: FinancialDashboardPosition | null;
+};
 
 interface FinancialsTabProps {
     symbol: string;
@@ -75,6 +118,7 @@ export default function FinancialsTab({
     const effectivePeriod: 'quarter' | 'year' = period ?? 'quarter';
     const [chartData, setChartData] = useState<HistoricalChartData | null>(initialChartData || null);
     const [overviewData, setOverviewData] = useState<any>(initialOverviewData || null);
+    const [dashboardData, setDashboardData] = useState<FinancialDashboardData | null>(null);
     const [loading, setLoading] = useState<boolean>(!initialChartData && !isParentLoading);
 
     const bankSymbols = ['VCB', 'BID', 'CTG', 'TCB', 'MBB', 'ACB', 'VPB', 'HDB', 'SHB', 'STB', 'TPB', 'LPB', 'MSB', 'OCB', 'EIB', 'ABB', 'NAB', 'PGB', 'VAB', 'VIB', 'SSB', 'BAB', 'KLB'];
@@ -105,16 +149,27 @@ export default function FinancialsTab({
         }
 
         setLoading(true);
-        Promise.all([
+        Promise.allSettled([
             fetch(`/api/historical-chart-data/${symbol}?period=${effectivePeriod}`, { signal }).then(r => r.json()),
-            fetch(`/api/stock/${symbol}?period=${effectivePeriod}`, { signal }).then(r => r.json())
+            fetch(`/api/stock/${symbol}?period=${effectivePeriod}`, { signal }).then(r => r.json()),
+            fetch(`/api/stock/${symbol}/financial-dashboard?period=${effectivePeriod}&limit=8`, { signal }).then(r => r.json())
         ])
-            .then(([chartRes, stockRes]) => {
+            .then((results) => {
                 if (signal.aborted) return;
 
-                if (chartRes.success) setChartData(chartRes.data);
-                if (stockRes.success || stockRes.data) {
+                const [chartResult, stockResult, dashboardResult] = results;
+                const chartRes = chartResult.status === 'fulfilled' ? chartResult.value : null;
+                const stockRes = stockResult.status === 'fulfilled' ? stockResult.value : null;
+                const dashRes = dashboardResult.status === 'fulfilled' ? dashboardResult.value : null;
+
+                if (chartRes?.success) setChartData(chartRes.data);
+                if (stockRes?.success || stockRes?.data) {
                     setOverviewData(stockRes.data || stockRes);
+                }
+                if (dashRes?.success && dashRes?.data) {
+                    setDashboardData(dashRes.data);
+                } else {
+                    setDashboardData(null);
                 }
             })
             .catch(err => {
@@ -222,6 +277,52 @@ export default function FinancialsTab({
             ? [{ year: 'Latest', NIM: Number(overviewData.nim) }]
             : []);
 
+    const dashboardSeries = dashboardData?.series || [];
+    const hasDashboardSeries = dashboardSeries.length > 0;
+    const performanceSeries = dashboardSeries.map((item) => ({
+        period: item.period,
+        Revenue: item.revenue ?? 0,
+        'Lợi nhuận ròng': item.net_profit ?? 0,
+        'Biên LN ròng': item.net_margin ?? 0,
+    }));
+    const debtEquitySeries = dashboardSeries.map((item) => ({
+        period: item.period,
+        'Nợ vay': item.total_debt ?? 0,
+        'Vốn chủ sở hữu': item.total_equity ?? 0,
+        'Nợ vay/VCSH': item.debt_to_equity_pct ?? 0,
+    }));
+
+    const waterfall = dashboardData?.waterfall;
+    const waterfallSeries = waterfall
+        ? [
+            { name: 'Doanh thu thuần', value: waterfall.revenue ?? 0 },
+            { name: 'Giá vốn hàng bán', value: -Math.abs(waterfall.cogs ?? 0) },
+            { name: 'Lợi nhuận gộp', value: waterfall.gross_profit ?? 0 },
+            { name: 'CP bán hàng & QLDN', value: -Math.abs(waterfall.selling_admin_expense ?? 0) },
+            { name: 'LN hoạt động', value: waterfall.operating_profit ?? 0 },
+            { name: 'LN khác', value: waterfall.other_income_expense ?? 0 },
+            { name: 'LN trước thuế', value: waterfall.profit_before_tax ?? 0 },
+            { name: 'Thuế TNDN', value: -Math.abs(waterfall.tax ?? 0) },
+            { name: 'Lợi nhuận ròng', value: waterfall.net_profit ?? 0 },
+        ]
+        : [];
+
+    const position = dashboardData?.position;
+    const positionSeries = position
+        ? [
+            {
+                group: 'Ngắn hạn',
+                'Tài sản': position.current_assets ?? 0,
+                'Nợ phải trả': position.current_liabilities ?? 0,
+            },
+            {
+                group: 'Dài hạn',
+                'Tài sản': position.non_current_assets ?? 0,
+                'Nợ phải trả': position.non_current_liabilities ?? 0,
+            },
+        ]
+        : [];
+
 
     // Custom Tooltip
     const CustomTooltip = ({ payload, active, label }: TremorCustomTooltipProps) => {
@@ -278,33 +379,6 @@ export default function FinancialsTab({
             </>
         );
     };
-
-    // Common chart styling - Restored for ComposedChart
-    const commonAxisProps = {
-        axisLine: false,
-        tickLine: false,
-        tick: { fill: '#6b7280', fontSize: 11, fontFamily: 'Inter' },
-    };
-
-    const commonTooltipProps = {
-        contentStyle: {
-            backgroundColor: 'rgba(255, 255, 255, 0.98)',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            fontSize: '12px',
-            padding: '8px 12px',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-        },
-        labelStyle: {
-            fontWeight: 600,
-            marginBottom: '4px',
-            color: '#111827',
-            fontFamily: 'Inter',
-        },
-    };
-
-    const commonChartMargin = { top: 5, right: 5, left: -10, bottom: 5 };
-
 
     return (
         <div className="w-full text-tremor-content-strong dark:text-dark-tremor-content-strong" style={{
@@ -416,53 +490,94 @@ export default function FinancialsTab({
                                 </ChartCard>
                             )}
 
-                            {/* Liquidity Ratios Chart (Non-bank) */}
-                            {!isBank && chartData && chartData.current_ratio_data && (
-                                <ChartCard title="Liquidity Ratios">
-                                    <LineChart
-                                        className="h-full w-full"
-                                        style={{ height: '100%', width: '100%' }}
-                                        data={buildSeries((i, label) => ({
-                                            year: label,
-                                            'Current': chartData.current_ratio_data?.[i] ?? 0,
-                                            'Quick': chartData.quick_ratio_data?.[i] ?? 0,
-                                            'Cash': chartData.cash_ratio_data?.[i] ?? 0,
-                                        }))}
-                                        index="year"
-                                        categories={["Current", "Quick", "Cash"]}
-                                        colors={["emerald", "blue", "amber"]}
-                                        valueFormatter={formatNumber}
-                                        yAxisWidth={40}
-                                        customTooltip={CustomTooltip}
-                                        showLegend={true}
-                                        showAnimation={false}
-                                    />
+                            {hasDashboardSeries && (
+                                <ChartCard title="Hiệu suất">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ComposedChart data={performanceSeries}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.2} />
+                                            <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                                            <YAxis yAxisId="left" tickFormatter={(v) => formatNumber(Number(v))} width={60} />
+                                            <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${Number(v).toFixed(2)}%`} width={60} />
+                                            <RechartsTooltip
+                                                formatter={(value: any, name?: string) => {
+                                                    const metricName = name ?? '';
+                                                    return String(metricName).includes('Biên')
+                                                        ? [`${Number(value).toFixed(2)}%`, metricName]
+                                                        : [formatNumber(Number(value)), metricName];
+                                                }}
+                                            />
+                                            <Legend />
+                                            <Bar yAxisId="left" dataKey="Revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                            <Bar yAxisId="left" dataKey="Lợi nhuận ròng" fill="#6ee7b7" radius={[4, 4, 0, 0]} />
+                                            <Line yAxisId="right" type="monotone" dataKey="Biên LN ròng" stroke="#eab308" strokeWidth={2} dot={{ r: 2 }} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
                                 </ChartCard>
                             )}
 
-                            {/* NIM Chart (Bank only) */}
-                            {isBank && nimChartSeries.length > 0 && (
-                                <ChartCard title="NIM (%)">
-                                    <LineChart
-                                        className="h-full w-full"
-                                        style={{ height: '100%', width: '100%' }}
-                                        data={nimChartSeries}
-                                        index="year"
-                                        categories={["NIM"]}
-                                        colors={["cyan"]}
-                                        valueFormatter={formatNumber}
-                                        yAxisWidth={40}
-                                        customTooltip={CustomTooltip}
-                                        showLegend={true}
-                                        showAnimation={false}
-                                    />
+                            {waterfallSeries.length > 0 && (
+                                <ChartCard title={`Kết quả kinh doanh (${waterfall?.period ?? ''})`}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={waterfallSeries}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.2} />
+                                            <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-35} textAnchor="end" height={70} />
+                                            <YAxis tickFormatter={(v) => formatNumber(Number(v))} width={60} />
+                                            <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
+                                            <RechartsTooltip formatter={(value: any) => formatNumber(Number(value))} />
+                                            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                                                {waterfallSeries.map((entry, index) => (
+                                                    <Cell
+                                                        key={`wf-${index}`}
+                                                        fill={entry.value >= 0 ? '#647aa3' : '#d76b93'}
+                                                    />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </ChartCard>
                             )}
 
-                            {/* Revenue & Profit Chart */}
-                            <ChartCard title="Revenue & Profit">
-                                <RevenueProfitChart symbol={symbol} period={effectivePeriod} hideCard={true} />
-                            </ChartCard>
+                            {hasDashboardSeries && (
+                                <ChartCard title="Tài sản và Vốn chủ sở hữu">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ComposedChart data={debtEquitySeries}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.2} />
+                                            <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                                            <YAxis yAxisId="left" tickFormatter={(v) => formatNumber(Number(v))} width={60} />
+                                            <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${Number(v).toFixed(1)}%`} width={60} />
+                                            <RechartsTooltip
+                                                formatter={(value: any, name?: string) => {
+                                                    const metricName = name ?? '';
+                                                    return String(metricName).includes('%') || String(metricName).includes('VCSH')
+                                                        ? [`${Number(value).toFixed(2)}%`, metricName]
+                                                        : [formatNumber(Number(value)), metricName];
+                                                }}
+                                            />
+                                            <Legend />
+                                            <Bar yAxisId="left" dataKey="Nợ vay" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+                                            <Bar yAxisId="left" dataKey="Vốn chủ sở hữu" fill="#6ee7b7" radius={[4, 4, 0, 0]} />
+                                            <Line yAxisId="right" type="monotone" dataKey="Nợ vay/VCSH" stroke="#eab308" strokeWidth={2} dot={{ r: 2 }} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </ChartCard>
+                            )}
+
+                            {positionSeries.length > 0 && (
+                                <ChartCard title={`Vị thế tài chính (${position?.period ?? ''})`}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={positionSeries}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.2} />
+                                            <XAxis dataKey="group" tick={{ fontSize: 12 }} />
+                                            <YAxis tickFormatter={(v) => formatNumber(Number(v))} width={60} />
+                                            <RechartsTooltip formatter={(value: any) => formatNumber(Number(value))} />
+                                            <Legend />
+                                            <Bar dataKey="Tài sản" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="Nợ phải trả" fill="#6ee7b7" radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </ChartCard>
+                            )}
+
                         </div> {/* End Charts Grid */}
                     </div>
                 </div>

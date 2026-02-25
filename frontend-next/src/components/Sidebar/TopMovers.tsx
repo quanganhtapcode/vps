@@ -14,9 +14,6 @@ import {
 import {
     RiFireFill,
     RiBuilding2Line,
-    RiArrowUpLine,
-    RiArrowDownLine,
-    RiArrowRightLine
 } from '@remixicon/react';
 import Link from 'next/link';
 import { TopMoverItem } from '@/lib/api';
@@ -32,6 +29,38 @@ interface TopMoversProps {
 }
 
 const LOGO_BASE_URL = '/logos/';
+
+type Direction = 'up' | 'unchanged' | 'down';
+
+function vietcapArrowUrls(direction: Direction): { light: string; dark: string } {
+    const base = 'https://trading.vietcap.com.vn/vietcap-priceboard/images';
+    if (direction === 'up') {
+        return {
+            light: `${base}/light/arrow-top-right.svg`,
+            dark: `${base}/dark/arrow-top-right.svg`,
+        };
+    }
+    if (direction === 'down') {
+        return {
+            light: `${base}/light/arrow-bottom-left.svg`,
+            dark: `${base}/dark/arrow-bottom-left.svg`,
+        };
+    }
+    return {
+        light: `${base}/light/unchanged.svg`,
+        dark: `${base}/dark/unchanged.svg`,
+    };
+}
+
+function TrendIcon({ direction, alt }: { direction: Direction; alt: string }) {
+    const icon = vietcapArrowUrls(direction);
+    return (
+        <span className="inline-flex items-center">
+            <img src={icon.light} alt={alt} className="block dark:hidden size-3" loading="lazy" decoding="async" />
+            <img src={icon.dark} alt={alt} className="hidden dark:block size-3" loading="lazy" decoding="async" />
+        </span>
+    );
+}
 
 export default function TopMovers({
     gainers,
@@ -118,17 +147,17 @@ export default function TopMovers({
                                                 </div>
                                                 {item.ChangePricePercent > 0 ? (
                                                     <span className="inline-flex items-center gap-x-0.5 rounded-tremor-small bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-400/20 dark:text-emerald-500">
-                                                        <RiArrowUpLine className="-ml-0.5 size-3" aria-hidden={true} />
+                                                        <TrendIcon direction="up" alt="Tăng" />
                                                         {item.ChangePricePercent.toFixed(2)}%
                                                     </span>
                                                 ) : item.ChangePricePercent < 0 ? (
                                                     <span className="inline-flex items-center gap-x-0.5 rounded-tremor-small bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-800 dark:bg-red-400/20 dark:text-red-500">
-                                                        <RiArrowDownLine className="-ml-0.5 size-3" aria-hidden={true} />
+                                                        <TrendIcon direction="down" alt="Giảm" />
                                                         {Math.abs(item.ChangePricePercent).toFixed(2)}%
                                                     </span>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-x-0.5 rounded-tremor-small bg-gray-200/50 px-1.5 py-0.5 text-[10px] font-bold text-gray-700 dark:bg-gray-500/30 dark:text-gray-300">
-                                                        <RiArrowRightLine className="-ml-0.5 size-3" aria-hidden={true} />
+                                                        <TrendIcon direction="unchanged" alt="Đứng giá" />
                                                         0.00%
                                                     </span>
                                                 )}
