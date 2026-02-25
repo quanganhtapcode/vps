@@ -228,7 +228,7 @@ def api_market_index_history():
         return response
 
     try:
-        rows = read_index_history(db_path=db_path, days=days)
+        rows = read_index_history(db_path=db_path, days=days, index=index)
         response = jsonify(rows)
         response.headers['X-Source'] = 'SQLITE'
         response.headers['X-DB'] = os.path.basename(db_path)

@@ -630,8 +630,6 @@ def _resolve_indexes(args: argparse.Namespace) -> list[str]:
 def main() -> int:
 	args = parse_args()
 	indexes = _resolve_indexes(args)
-	if len(indexes) > 1 and args.db:
-		raise SystemExit("--db is only for single-index runs; use --db-dir for multiple indexes")
 
 	for index_code in indexes:
 		if args.db:
