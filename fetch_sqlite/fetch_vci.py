@@ -18,6 +18,7 @@ import random
 import sqlite3
 import re
 import time
+import inspect
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -639,20 +640,25 @@ def main() -> int:
 			db_name = f"{_sanitize_filename(index_code)}.sqlite"
 			db_path = str(args.db_dir).rstrip("\\/") + "/" + db_name
 		print(f"\n=== Fetch {index_code} -> {db_path} ===")
-		fetch_pages_to_sqlite(
-			index_code=str(index_code),
-			start_page=int(args.start_page),
-			end_page=int(args.end_page),
-			size=int(args.size),
-			db_path=db_path,
-			device_id=(str(args.device_id) if args.device_id else None),
-			timeout_s=int(args.timeout),
-			retries=int(args.retries),
-			backoff_base_s=float(args.backoff),
-			workers=int(args.workers),
-			sleep_between_pages_s=float(args.sleep),
-			incremental=bool(args.incremental),
-		)
+		fetch_kwargs: dict[str, Any] = {
+			"index_code": str(index_code),
+			"start_page": int(args.start_page),
+			"end_page": int(args.end_page),
+			"size": int(args.size),
+			"db_path": db_path,
+			"device_id": (str(args.device_id) if args.device_id else None),
+			"timeout_s": int(args.timeout),
+			"retries": int(args.retries),
+			"backoff_base_s": float(args.backoff),
+			"workers": int(args.workers),
+			"sleep_between_pages_s": float(args.sleep),
+		}
+		# Backward-compatible: some deployed variants of fetch_pages_to_sqlite
+		# do not accept `incremental`. Only pass it when supported.
+		if "incremental" in inspect.signature(fetch_pages_to_sqlite).parameters:
+			fetch_kwargs["incremental"] = bool(args.incremental)
+
+		fetch_pages_to_sqlite(**fetch_kwargs)
 	return 0
 
 
