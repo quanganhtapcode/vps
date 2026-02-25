@@ -3,6 +3,15 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'vietcap-documents.s3.ap-southeast-1.amazonaws.com',
+        pathname: '/sentiment/logo/**',
+      },
+    ],
+  },
   async headers() {
     return [
       {

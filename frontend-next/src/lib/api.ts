@@ -22,7 +22,6 @@ export const API = {
     FOREIGN_FLOW: `${API_BASE}/market/foreign-flow`,
     GOLD: `${API_BASE}/market/gold`,
     LOTTERY: `${API_BASE}/market/lottery`,
-    STANDOUTS: `${API_BASE}/market/standouts`,
 
     // Stock Data (VCI Source via vnstock)
     STOCK: (symbol: string) => `${API_BASE}/stock/${symbol}`,
@@ -43,12 +42,12 @@ export const API = {
     HEALTH: `${API_BASE}/health`,
 } as const;
 
-// Index mapping from CafeF to VCI
-export const INDEX_MAP: Record<string, { id: string; name: string; vciSymbol: string }> = {
-    '1': { id: 'vnindex', name: 'VN-Index', vciSymbol: 'VNINDEX' },
-    '2': { id: 'hnx', name: 'HNX-Index', vciSymbol: 'HNXIndex' },
-    '9': { id: 'upcom', name: 'UPCOM', vciSymbol: 'HNXUpcomIndex' },
-    '11': { id: 'vn30', name: 'VN30', vciSymbol: 'VN30' },
+// Index mapping from CafeF
+export const INDEX_MAP: Record<string, { id: string; name: string }> = {
+    '1': { id: 'vnindex', name: 'VN-Index' },
+    '2': { id: 'hnx', name: 'HNX-Index' },
+    '9': { id: 'upcom', name: 'UPCOM' },
+    '11': { id: 'vn30', name: 'VN30' },
 };
 
 // ============ API Fetching Functions ============
@@ -58,14 +57,13 @@ export const INDEX_MAP: Record<string, { id: string; name: string; vciSymbol: st
  */
 async function fetchAPI<T>(url: string, options?: RequestInit): Promise<T> {
     try {
-        const isServer = typeof window === 'undefined';
         const resolvedUrl =
-            isServer && url.startsWith('/')
+            typeof window === 'undefined' && url.startsWith('/')
                 ? new URL(
-                    url,
-                    process.env.NEXT_PUBLIC_SITE_URL ||
-                    (process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'),
-                ).toString()
+                      url,
+                      process.env.NEXT_PUBLIC_SITE_URL ||
+                          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'),
+                  ).toString()
                 : url;
 
         const response = await fetch(resolvedUrl, {
@@ -87,7 +85,6 @@ async function fetchAPI<T>(url: string, options?: RequestInit): Promise<T> {
     }
 }
 
-
 // ============ Market Data Types ============
 
 export interface MarketIndexData {
@@ -100,7 +97,6 @@ export interface MarketIndexData {
     NoChanges?: number;
     Ceilings?: number;
     Floors?: number;
-    chartData?: number[];
 }
 
 export interface VciIndexItem {
@@ -118,14 +114,10 @@ export interface VciIndexItem {
     totalStockNoChange?: number;
     totalStockCeiling?: number;
     totalStockFloor?: number;
-    chartData?: number[];
 }
 
-
-
-
 export interface NewsItem {
-    Title?: string;
+    Title: string;
     Link?: string;
     NewsUrl?: string;
     ImageThumb?: string;
@@ -135,21 +127,6 @@ export interface NewsItem {
     Symbol?: string;
     Price?: number;
     ChangePrice?: number;
-
-    // AI VCI keys
-    title?: string;
-    url?: string;
-    source?: string;
-    Source?: string;
-    publish_date?: string;
-    image_url?: string;
-    sentiment?: string;
-    Sentiment?: string;
-    score?: number;
-    Score?: number;
-    female_audio_duration?: number;
-    male_audio_duration?: number;
-    symbol?: string;
 }
 
 export interface TopMoverItem {
@@ -176,30 +153,16 @@ export interface PEChartData {
     vnindex: number;
 }
 
-// ============ Market Data Fetchers ============
+export type IndicesStreamStatus = 'open' | 'closed' | 'error';
 
-export interface VciIndexData {
-    board: string;
-    change: number;
-    changePercent: number;
-    code: string;
-    messageType: string;
-    price: number;
-    refPrice: number;
-    symbol: string;
-    time: string;
-    totalShares: number;
-    totalStockCeiling: number;
-    totalStockDecline: number;
-    totalStockFloor: number;
-    totalStockIncrease: number;
-    totalStockNoChange: number;
-    totalValue: number;
-    estimatedChange: number;
-    estimatedFsp: number;
-    sendingTime: string;
-    chartData?: number[];
+interface IndicesStreamPayload {
+    type?: string;
+    source?: string;
+    serverTs?: number;
+    data?: Record<string, MarketIndexData>;
 }
+
+// ============ Market Data Fetchers ============
 
 /**
  * Fetch all indices data with realtime prices
@@ -233,27 +196,84 @@ export async function fetchAllIndices(): Promise<Record<string, MarketIndexData>
             NoChanges: Number(it.totalStockNoChange) || 0,
             Ceilings: Number(it.totalStockCeiling) || 0,
             Floors: Number(it.totalStockFloor) || 0,
-            chartData: it.chartData || [],
         };
     }
     return result;
 }
 
+function getIndicesWsUrl(): string {
+    const fromEnv = process.env.NEXT_PUBLIC_BACKEND_WS_URL;
+    if (fromEnv) {
+        return `${fromEnv.replace(/\/$/, '')}/ws/market/indices`;
+    }
 
-export async function fetchVciIndices(): Promise<VciIndexData[]> {
-    return await fetchAPI<VciIndexData[]>(API.VCI_INDICES);
+    const fromApiEnv = process.env.NEXT_PUBLIC_API_URL;
+    if (fromApiEnv && /^https?:\/\//i.test(fromApiEnv)) {
+        try {
+            const parsed = new URL(fromApiEnv);
+            const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${wsProtocol}//${parsed.host}/ws/market/indices`;
+        } catch {
+            // fall through to runtime-based defaults
+        }
+    }
+
+    if (typeof window !== 'undefined') {
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocal) {
+            return 'ws://127.0.0.1:5000/ws/market/indices';
+        }
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${proto}//${window.location.host}/ws/market/indices`;
+    }
+
+    return 'ws://127.0.0.1:5000/ws/market/indices';
+}
+
+export function subscribeIndicesStream(options: {
+    onData: (data: Record<string, MarketIndexData>, source?: string) => void;
+    onStatus?: (status: IndicesStreamStatus) => void;
+}): () => void {
+    const { onData, onStatus } = options;
+    const ws = new WebSocket(getIndicesWsUrl());
+
+    ws.onopen = () => {
+        onStatus?.('open');
+    };
+
+    ws.onerror = () => {
+        onStatus?.('error');
+    };
+
+    ws.onclose = () => {
+        onStatus?.('closed');
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const payload = JSON.parse(String(event.data)) as IndicesStreamPayload;
+            if (payload?.type !== 'indices' || !payload?.data) return;
+            onData(payload.data, payload.source);
+        } catch {
+            // ignore malformed payloads
+        }
+    };
+
+    return () => {
+        try {
+            ws.close();
+        } catch {
+            // noop
+        }
+    };
 }
 
 /**
- * Fetch sparkline chart data for an index
+ * Fetch market news
  */
-
-
 export async function fetchNews(page: number = 1, size: number = 100): Promise<NewsItem[]> {
     interface NewsResponse {
         Data?: NewsItem[];
-        data?: NewsItem[];
-        news?: NewsItem[];
     }
     const response = await fetchAPI<NewsResponse | NewsItem[]>(
         `${API.NEWS}?page=${page}&size=${size}`
@@ -262,7 +282,7 @@ export async function fetchNews(page: number = 1, size: number = 100): Promise<N
     if (Array.isArray(response)) {
         return response;
     }
-    return response.data || response.Data || [];
+    return response.Data || [];
 }
 
 /**
@@ -271,21 +291,11 @@ export async function fetchNews(page: number = 1, size: number = 100): Promise<N
 export async function fetchTopMovers(type: 'UP' | 'DOWN', centerID: string = 'HOSE'): Promise<TopMoverItem[]> {
     interface TopMoversResponse {
         Data?: TopMoverItem[];
-        data?: TopMoverItem[];
-        news?: TopMoverItem[];
     }
     const response = await fetchAPI<TopMoversResponse>(
         `${API.TOP_MOVERS}?centerID=${centerID}&type=${type}`
     );
-    return response.data || response.Data || response.news || [];
-}
-
-/**
- * Fetch standout stocks based on stockStrength
- */
-export async function fetchStandouts(): Promise<any[]> {
-    const response = await fetchAPI<any[]>(API.STANDOUTS);
-    return Array.isArray(response) ? response : [];
+    return response.Data || [];
 }
 
 /**
@@ -383,7 +393,6 @@ export async function fetchLottery(region: 'mb' | 'mn' | 'mt'): Promise<LotteryR
 
 function parseDateInput(input: string | number | Date | undefined | null): Date | null {
     if (input == null) return null;
-
     if (input instanceof Date) {
         return isNaN(input.getTime()) ? null : input;
     }
@@ -396,7 +405,7 @@ function parseDateInput(input: string | number | Date | undefined | null): Date 
     let value = String(input).trim();
     if (!value) return null;
 
-    // CafeF style: /Date(1700000000000)/
+    // CafeF style: \/Date(1700000000000)\/
     if (value.includes('/Date(')) {
         const ms = parseInt(value.match(/\d+/)?.[0] || '0', 10);
         const d = new Date(ms);
@@ -413,7 +422,9 @@ function parseDateInput(input: string | number | Date | undefined | null): Date 
     if (!isNaN(d.getTime())) return d;
 
     // Try dd/mm/yyyy[ hh:mm[:ss]] (common Vietnamese format)
-    const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[\sT](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    const m = value.match(
+        /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[\sT](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+    );
     if (m) {
         const day = parseInt(m[1], 10);
         const month = parseInt(m[2], 10) - 1;
@@ -426,6 +437,34 @@ function parseDateInput(input: string | number | Date | undefined | null): Date 
     }
 
     return null;
+}
+
+/**
+ * Format date from various formats (including CafeF /Date()/ format)
+ */
+export function formatDate(dateStr: string | number | undefined): string {
+    if (!dateStr) return '';
+
+    try {
+        let date: Date;
+
+        if (typeof dateStr === 'string' && dateStr.includes('/Date(')) {
+            const ms = parseInt(dateStr.match(/\d+/)?.[0] || '0');
+            date = new Date(ms);
+        } else {
+            date = new Date(dateStr);
+        }
+
+        return date.toLocaleString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+        });
+    } catch {
+        return '';
+    }
 }
 
 /**
@@ -464,35 +503,6 @@ export function formatRelativeTime(
     }
 
     return rtf.format(diffSeconds, 'second');
-}
-
-
-/**
- * Format date from various formats (including CafeF /Date()/ format)
- */
-export function formatDate(dateStr: string | number | undefined): string {
-    if (!dateStr) return '';
-
-    try {
-        let date: Date;
-
-        if (typeof dateStr === 'string' && dateStr.includes('/Date(')) {
-            const ms = parseInt(dateStr.match(/\d+/)?.[0] || '0');
-            date = new Date(ms);
-        } else {
-            date = new Date(dateStr);
-        }
-
-        return date.toLocaleString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-        });
-    } catch {
-        return '';
-    }
 }
 
 /**

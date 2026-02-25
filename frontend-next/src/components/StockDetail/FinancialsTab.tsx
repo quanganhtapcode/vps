@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useTransition, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { formatNumber } from '@/lib/api';
 import type { HistoricalChartData } from '@/lib/types';
 import { LineChart, type CustomTooltipProps as TremorCustomTooltipProps } from '@tremor/react';
@@ -20,8 +20,8 @@ import RevenueProfitChart from './RevenueProfitChart';
 
 interface FinancialsTabProps {
     symbol: string;
-    // period/setPeriod removed — now internal state to avoid parent re-renders on toggle
-    initialPeriod?: 'quarter' | 'year';
+    period?: 'quarter' | 'year';
+    setPeriod?: (p: 'quarter' | 'year') => void;
     initialChartData?: HistoricalChartData | null;
     initialOverviewData?: any | null;
     isLoading?: boolean;
@@ -66,31 +66,23 @@ const ChartCard = ({ title, children }: { title: string; children: React.ReactNo
 
 export default function FinancialsTab({
     symbol,
-    initialPeriod = 'quarter',
+    period,
+    setPeriod,
     initialChartData,
     initialOverviewData,
     isLoading: isParentLoading = false
 }: FinancialsTabProps) {
-    // Keep period LOCAL — no parent re-render when toggling quarter/year
-    const [period, setPeriodState] = useState<'quarter' | 'year'>(initialPeriod);
-    const [isPending, startTransition] = useTransition();
+    const effectivePeriod: 'quarter' | 'year' = period ?? 'quarter';
     const [chartData, setChartData] = useState<HistoricalChartData | null>(initialChartData || null);
     const [overviewData, setOverviewData] = useState<any>(initialOverviewData || null);
     const [loading, setLoading] = useState<boolean>(!initialChartData && !isParentLoading);
-
-    // Instant visual feedback: update period immediately, defer chart load
-    const handlePeriodChange = useCallback((p: 'quarter' | 'year') => {
-        if (p === period) return;
-        setPeriodState(p); // ← sync: button highlights immediately (<1ms)
-        // chart re-fetch/re-render happens in a non-blocking transition frame
-    }, [period]);
 
     const bankSymbols = ['VCB', 'BID', 'CTG', 'TCB', 'MBB', 'ACB', 'VPB', 'HDB', 'SHB', 'STB', 'TPB', 'LPB', 'MSB', 'OCB', 'EIB', 'ABB', 'NAB', 'PGB', 'VAB', 'VIB', 'SSB', 'BAB', 'KLB'];
     const isBank = bankSymbols.includes(symbol);
 
     useEffect(() => {
-        if (initialChartData && period === 'quarter') setChartData(initialChartData);
-    }, [initialChartData, period]);
+        if (initialChartData && effectivePeriod === 'quarter') setChartData(initialChartData);
+    }, [initialChartData, effectivePeriod]);
 
     useEffect(() => {
         if (initialOverviewData) setOverviewData(initialOverviewData);
@@ -100,7 +92,7 @@ export default function FinancialsTab({
         const controller = new AbortController();
         const signal = controller.signal;
 
-        if (period === 'quarter') {
+        if (effectivePeriod === 'quarter') {
             if (initialChartData) {
                 setLoading(false);
                 setChartData(initialChartData);
@@ -114,14 +106,14 @@ export default function FinancialsTab({
 
         setLoading(true);
         Promise.all([
-            fetch(`/api/historical-chart-data/${symbol}?period=${period}`, { signal }).then(r => r.json()),
-            fetch(`/api/stock/${symbol}?period=${period}`, { signal }).then(r => r.json())
+            fetch(`/api/historical-chart-data/${symbol}?period=${effectivePeriod}`, { signal }).then(r => r.json()),
+            fetch(`/api/stock/${symbol}?period=${effectivePeriod}`, { signal }).then(r => r.json())
         ])
             .then(([chartRes, stockRes]) => {
                 if (signal.aborted) return;
 
                 if (chartRes.success) setChartData(chartRes.data);
-                if (stockRes && (stockRes.success !== false)) {
+                if (stockRes.success || stockRes.data) {
                     setOverviewData(stockRes.data || stockRes);
                 }
             })
@@ -137,18 +129,86 @@ export default function FinancialsTab({
             });
 
         return () => controller.abort();
-    }, [symbol, period]);
+    }, [symbol, effectivePeriod, isParentLoading, initialChartData]);
 
-    // Helpers restored
-    const getVal = (data: (number | null)[] | undefined): number | null => {
-        if (!data || data.length === 0) return null;
-        return data[data.length - 1];
+    const chartYears = chartData?.years || [];
+
+    const parseTimeRank = (label: string, fallbackIndex: number): number => {
+        const value = String(label || '').trim();
+
+        const qFirst = value.match(/Q\s*([1-4]).*?(\d{2,4})/i);
+        if (qFirst) {
+            const quarter = Number(qFirst[1]);
+            const yRaw = Number(qFirst[2]);
+            const year = yRaw < 100 ? 2000 + yRaw : yRaw;
+            return year * 10 + quarter;
+        }
+
+        const yFirst = value.match(/(\d{4}).*?Q\s*([1-4])/i);
+        if (yFirst) {
+            const year = Number(yFirst[1]);
+            const quarter = Number(yFirst[2]);
+            return year * 10 + quarter;
+        }
+
+        const yOnly = value.match(/\d{4}/);
+        if (yOnly) {
+            return Number(yOnly[0]) * 10;
+        }
+
+        return fallbackIndex;
     };
 
-    const nimSeriesFromChart = (chartData?.years?.map((year, i) => ({
-        year: year.toString(),
+    const orderedIndices = chartYears
+        .map((label, i) => ({ i, rank: parseTimeRank(String(label), i), label: String(label) }))
+        .sort((a, b) => a.rank - b.rank);
+
+    const getLatestVal = (data: (number | null)[] | undefined): number | null => {
+        if (!data || data.length === 0) return null;
+        for (let i = orderedIndices.length - 1; i >= 0; i--) {
+            const idx = orderedIndices[i].i;
+            const v = data[idx];
+            if (v !== null && v !== undefined && !Number.isNaN(Number(v))) {
+                return Number(v);
+            }
+        }
+        return null;
+    };
+
+    const buildSeries = (mapPoint: (idx: number, label: string) => Record<string, string | number | null>) => {
+        return orderedIndices.map(({ i, label }) => mapPoint(i, label));
+    };
+
+    const pickOverview = (...keys: string[]): number | null => {
+        if (!overviewData) return null;
+        for (const key of keys) {
+            const value = overviewData?.[key];
+            if (value === null || value === undefined || value === '') continue;
+            const numeric = Number(value);
+            if (!Number.isNaN(numeric)) return numeric;
+        }
+        return null;
+    };
+
+    const computedEvEbitda = (): number | null => {
+        return pickOverview('ev_to_ebitda', 'ev_ebitda', 'evEbitda', 'enterprise_to_ebitda');
+    };
+
+    const getEpsForPeriod = (): number | null => {
+        if (effectivePeriod === 'quarter') {
+            return (
+                pickOverview('eps', 'earnings_per_share', 'basic_eps', 'eps_quarter')
+                ?? pickOverview('eps_ttm')
+            );
+        }
+        return pickOverview('eps_ttm', 'eps', 'earnings_per_share', 'basic_eps');
+    };
+
+    // Helpers restored
+    const nimSeriesFromChart = buildSeries((i, label) => ({
+        year: label,
         NIM: chartData?.nim_data?.[i] ?? null,
-    })) || []).filter((point) => {
+    })).filter((point) => {
         if (point.NIM === null || point.NIM === undefined) return false;
         return Number(point.NIM) !== 0;
     });
@@ -246,60 +306,11 @@ export default function FinancialsTab({
     const commonChartMargin = { top: 5, right: 5, left: -10, bottom: 5 };
 
 
-    // Defer heavy render until after interaction frame — fixes INP & CLS
-    const [readyToRender, setReadyToRender] = React.useState(false);
-    React.useEffect(() => {
-        setReadyToRender(false);
-        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-            const id = window.requestIdleCallback(() => setReadyToRender(true), { timeout: 200 });
-            return () => window.cancelIdleCallback(id);
-        } else {
-            const id = setTimeout(() => setReadyToRender(true), 1);
-            return () => clearTimeout(id);
-        }
-    }, [symbol, period]);
-
     return (
-        <div className="w-full text-tremor-content-strong dark:text-dark-tremor-content-strong" style={{ boxSizing: 'border-box', minHeight: '600px' }}>
-            {/* Period toggle — renders instantly, isolated from parent state */}
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                    {(['quarter', 'year'] as const).map((p) => (
-                        <button
-                            key={p}
-                            type="button"
-                            onClick={() => handlePeriodChange(p)}
-                            className={[
-                                'px-4 py-1.5 rounded-tremor-small text-sm font-medium border transition-colors',
-                                period === p
-                                    ? 'bg-tremor-brand text-white border-tremor-brand dark:bg-dark-tremor-brand dark:border-dark-tremor-brand'
-                                    : 'bg-white text-tremor-content-strong border-tremor-border hover:bg-tremor-background-muted dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong dark:border-dark-tremor-border',
-                            ].join(' ')}
-                        >
-                            {p === 'quarter' ? 'Quarter' : 'Year'}
-                            {isPending && period === p && <span className="ml-1 opacity-60 text-xs">...</span>}
-                        </button>
-                    ))}
-                </div>
-
-                {overviewData && (
-                    <div className="px-3 py-1 bg-tremor-background-muted dark:bg-dark-tremor-background-muted rounded-full border border-tremor-border dark:border-dark-tremor-border text-xs font-medium text-tremor-content-emphasis dark:text-dark-tremor-content-emphasis shadow-sm">
-                        <span className="opacity-70 mr-1.5">Latest Data:</span>
-                        <span className="text-tremor-brand dark:text-dark-tremor-brand font-bold">
-                            {overviewData.latest_year ? (
-                                <>
-                                    {overviewData.latest_quarter && overviewData.latest_quarter > 0 ? `Q${overviewData.latest_quarter} ` : ''}
-                                    {overviewData.latest_year}
-                                </>
-                            ) : (
-                                'Recently Updated'
-                            )}
-                        </span>
-                    </div>
-                )}
-            </div>
-
-            {(loading || !readyToRender) ? (
+        <div className="w-full text-tremor-content-strong dark:text-dark-tremor-content-strong" style={{
+            boxSizing: 'border-box',
+        }}>
+            {loading ? (
                 <div style={{ textAlign: 'center', padding: '60px 0', color: '#9ca3af' }}>
                     <div className="spinner" style={{ margin: '0 auto', marginBottom: '12px' }} />
                     <span style={{ fontSize: '12px' }}>Loading data...</span>
@@ -313,29 +324,32 @@ export default function FinancialsTab({
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {/* Valuation Metrics */}
                             <MetricCard title="Valuation">
-                                <MetricRow label="EPS" value={overviewData?.eps_ttm || overviewData?.eps} />
-                                <MetricRow label="P/E" value={overviewData?.pe} />
-                                <MetricRow label="P/B" value={overviewData?.pb} />
-                                <MetricRow label="P/S" value={overviewData?.ps} />
-                                <MetricRow label="EV/EBITDA" value={overviewData?.ev_ebitda} />
+                                <MetricRow label="EPS" value={getEpsForPeriod()} />
+                                <MetricRow label="P/E" value={chartData?.pe_ratio_data ? getLatestVal(chartData.pe_ratio_data) : pickOverview('pe', 'pe_ratio', 'PE')} />
+                                <MetricRow label="P/B" value={chartData?.pb_ratio_data ? getLatestVal(chartData.pb_ratio_data) : pickOverview('pb', 'pb_ratio', 'PB')} />
+                                <MetricRow label="P/S" value={pickOverview('ps', 'p_s', 'price_to_sales')} />
+                                <MetricRow label="P/CF" value={pickOverview('p_cash_flow', 'pcf_ratio', 'price_to_cash_flow')} />
+                                <MetricRow label="EV/EBITDA" value={computedEvEbitda()} />
                             </MetricCard>
 
                             {/* Profitability Metrics */}
                             <MetricCard title="Profitability">
-                                <MetricRow label="ROE" value={chartData?.roe_data ? getVal(chartData.roe_data) : overviewData?.roe} unit=" %" />
-                                <MetricRow label="ROA" value={chartData?.roa_data ? getVal(chartData.roa_data) : overviewData?.roa} unit=" %" />
-                                <MetricRow label="ROIC" value={overviewData?.roic} unit=" %" />
-                                <MetricRow label="Gross Margin" value={overviewData?.gross_margin} unit=" %" />
-                                <MetricRow label="Net Margin" value={overviewData?.net_profit_margin} unit=" %" />
+                                <MetricRow label="ROE" value={chartData?.roe_data ? getLatestVal(chartData.roe_data) : pickOverview('roe', 'ROE')} unit=" %" />
+                                <MetricRow label="ROA" value={chartData?.roa_data ? getLatestVal(chartData.roa_data) : pickOverview('roa', 'ROA')} unit=" %" />
+                                <MetricRow label="ROIC" value={pickOverview('roic')} unit=" %" />
+                                <MetricRow label="Gross Margin" value={pickOverview('gross_margin', 'grossProfitMargin')} unit=" %" />
+                                <MetricRow label="Net Margin" value={pickOverview('net_profit_margin', 'netProfitMargin')} unit=" %" />
                             </MetricCard>
 
                             {/* Financial Strength (Non-bank) */}
                             {!isBank && (
                                 <MetricCard title="Financial Health">
-                                    <MetricRow label="Current Ratio" value={chartData?.current_ratio_data ? getVal(chartData.current_ratio_data) : overviewData?.current_ratio} />
-                                    <MetricRow label="Quick Ratio" value={chartData?.quick_ratio_data ? getVal(chartData.quick_ratio_data) : overviewData?.quick_ratio} />
-                                    <MetricRow label="Cash Ratio" value={chartData?.cash_ratio_data ? getVal(chartData.cash_ratio_data) : overviewData?.cash_ratio} />
-                                    <MetricRow label="D/E Ratio" value={overviewData?.debt_to_equity} />
+                                    <MetricRow label="Current Ratio" value={chartData?.current_ratio_data ? getLatestVal(chartData.current_ratio_data) : pickOverview('current_ratio', 'currentRatio')} />
+                                    <MetricRow label="Quick Ratio" value={chartData?.quick_ratio_data ? getLatestVal(chartData.quick_ratio_data) : pickOverview('quick_ratio', 'quickRatio')} />
+                                    <MetricRow label="Cash Ratio" value={chartData?.cash_ratio_data ? getLatestVal(chartData.cash_ratio_data) : pickOverview('cash_ratio', 'cashRatio')} />
+                                    <MetricRow label="D/E Ratio" value={pickOverview('debt_to_equity', 'debtToEquity', 'de')} />
+                                    <MetricRow label="Interest Coverage" value={pickOverview('interest_coverage', 'interest_coverage_ratio')} />
+                                    <MetricRow label="Asset Turnover" value={pickOverview('asset_turnover')} />
                                 </MetricCard>
                             )}
 
@@ -357,13 +371,13 @@ export default function FinancialsTab({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                             {/* ROE & ROA Chart */}
-                            {chartData && chartData.years && chartData.years.length > 0 && (
+                            {chartData && orderedIndices.length > 0 && (
                                 <ChartCard title="ROE & ROA (%)">
                                     <LineChart
                                         className="h-full w-full"
                                         style={{ height: '100%', width: '100%' }}
-                                        data={chartData.years.map((year, i) => ({
-                                            year: year.toString(),
+                                        data={buildSeries((i, label) => ({
+                                            year: label,
                                             ROE: chartData.roe_data?.[i] ?? 0,
                                             ROA: chartData.roa_data?.[i] ?? 0,
                                         }))}
@@ -380,13 +394,13 @@ export default function FinancialsTab({
                             )}
 
                             {/* PE & PB Chart */}
-                            {chartData && chartData.years && chartData.years.length > 0 && (
+                            {chartData && orderedIndices.length > 0 && (
                                 <ChartCard title="P/E & P/B">
                                     <LineChart
                                         className="h-full w-full"
                                         style={{ height: '100%', width: '100%' }}
-                                        data={chartData.years.map((year, i) => ({
-                                            year: year.toString(),
+                                        data={buildSeries((i, label) => ({
+                                            year: label,
                                             'P/E': chartData.pe_ratio_data?.[i] ?? 0,
                                             'P/B': chartData.pb_ratio_data?.[i] ?? 0,
                                         }))}
@@ -408,8 +422,8 @@ export default function FinancialsTab({
                                     <LineChart
                                         className="h-full w-full"
                                         style={{ height: '100%', width: '100%' }}
-                                        data={chartData.years.map((year, i) => ({
-                                            year: year.toString(),
+                                        data={buildSeries((i, label) => ({
+                                            year: label,
                                             'Current': chartData.current_ratio_data?.[i] ?? 0,
                                             'Quick': chartData.quick_ratio_data?.[i] ?? 0,
                                             'Cash': chartData.cash_ratio_data?.[i] ?? 0,
@@ -447,7 +461,7 @@ export default function FinancialsTab({
 
                             {/* Revenue & Profit Chart */}
                             <ChartCard title="Revenue & Profit">
-                                <RevenueProfitChart symbol={symbol} period={period} hideCard={true} />
+                                <RevenueProfitChart symbol={symbol} period={effectivePeriod} hideCard={true} />
                             </ChartCard>
                         </div> {/* End Charts Grid */}
                     </div>

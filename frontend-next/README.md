@@ -34,3 +34,16 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Production env (API + WebSocket)
+
+When deploying this frontend to the official domain, set:
+
+- `NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api`
+- `NEXT_PUBLIC_BACKEND_WS_URL=wss://api.yourdomain.com`
+
+Notes:
+
+- The app uses `NEXT_PUBLIC_BACKEND_WS_URL/ws/market/indices` for realtime index stream.
+- If `NEXT_PUBLIC_BACKEND_WS_URL` is not set, it tries to derive from `NEXT_PUBLIC_API_URL` when absolute.
+- Ensure reverse proxy (Nginx/Cloudflare) supports WebSocket upgrade for `/ws/market/indices`.

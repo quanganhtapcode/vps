@@ -108,7 +108,7 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
     const [error, setError] = useState<string | null>(null);
     const [isDescExpanded, setIsDescExpanded] = useState(false);
     const [activeTab, setActiveTab] = useState<'overview' | 'financials' | 'valuation' | 'priceHistory' | 'analysis'>('overview');
-    const [financialPeriod] = useState<'quarter' | 'year'>('quarter'); // kept for legacy ref
+    const [financialPeriod, setFinancialPeriod] = useState<'quarter' | 'year'>('quarter');
     const [rawOverviewData, setRawOverviewData] = useState<any>(null); // For FinancialsTab
     const [prefetchedChartData, setPrefetchedChartData] = useState<any>(null); // Shared between FinancialsTab & AnalysisTab
     const [isHistoryLoading, setIsHistoryLoading] = useState(true);
@@ -612,9 +612,37 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
                 {/* Financials Tab - always mounted */}
                 <div className={activeTab === 'financials' ? 'block' : 'hidden'}>
                     <div className="mb-4 flex items-center justify-between gap-4">
-                        <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
-                            Financial Reports
-                        </h3>
+                        <div className="flex items-center gap-3">
+                            <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
+                                Financial Reports
+                            </h3>
+                            <div className="inline-flex items-center rounded-lg border border-tremor-border dark:border-dark-tremor-border p-1 bg-white dark:bg-dark-tremor-background">
+                                <button
+                                    type="button"
+                                    onClick={() => setFinancialPeriod('quarter')}
+                                    className={classNames(
+                                        'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+                                        financialPeriod === 'quarter'
+                                            ? 'bg-tremor-brand text-white'
+                                            : 'text-tremor-content hover:bg-tremor-background-muted dark:text-dark-tremor-content dark:hover:bg-dark-tremor-background-muted'
+                                    )}
+                                >
+                                    Quarter
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFinancialPeriod('year')}
+                                    className={classNames(
+                                        'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+                                        financialPeriod === 'year'
+                                            ? 'bg-tremor-brand text-white'
+                                            : 'text-tremor-content hover:bg-tremor-background-muted dark:text-dark-tremor-content dark:hover:bg-dark-tremor-background-muted'
+                                    )}
+                                >
+                                    Year
+                                </button>
+                            </div>
+                        </div>
                         <button
                             type="button"
                             onClick={handleDownloadExcel}
@@ -631,6 +659,8 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
                     </div>
                     <FinancialsTab
                         symbol={symbol}
+                        period={financialPeriod}
+                        setPeriod={setFinancialPeriod}
                         initialChartData={prefetchedChartData}
                         initialOverviewData={rawOverviewData}
                         isLoading={isHistoryLoading}

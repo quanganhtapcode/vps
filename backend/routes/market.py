@@ -340,26 +340,37 @@ def api_market_vci_indices():
     start = time.perf_counter()
     try:
         data = VCIClient.get_market_indices()
-        history = VCIClient.get_indices_history()
-        
-        # Merge history into data items for sparklines
-        if isinstance(data, list):
-            for it in data:
-                sym = it.get('symbol')
-                if sym in history:
-                    it['chartData'] = history[sym]
-                else:
-                    it['chartData'] = []
-
         response = jsonify(data)
         response.headers['Cache-Control'] = 'no-store'
         dur_ms = (time.perf_counter() - start) * 1000.0
         response.headers['Server-Timing'] = f"vci_indices;dur={dur_ms:.2f}"
-        response.headers['X-Source'] = 'VCI_RAM'
+        response.headers['X-Source'] = f"VCI_RAM_{VCIClient.get_indices_source()}"
         return response
     except Exception as e:
         logger.error(f"VCI indices proxy error: {e}")
         return jsonify([])
+@market_bp.route('/index-history')
+def api_market_index_history():
+    """Get historical index data from SQLite files"""
+    index = request.args.get("index", "VNINDEX")
+    try:
+        days = int(request.args.get("days", "30"))
+    except ValueError:
+        days = 30
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    db_path = resolve_index_db_path(base_dir=base_dir, index=index)
+    if not db_path:
+        return jsonify({"error": "Index not found"}), 404
+
+    try:
+        data = read_index_history(db_path=db_path, days=days)
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Error reading {index} history: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 # ===================== LOTTERY =====================
 
 @market_bp.route('/lottery', methods=['GET'])

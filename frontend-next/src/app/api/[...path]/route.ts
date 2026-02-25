@@ -12,6 +12,7 @@ export async function GET(
     try {
         const { path } = await params;
         const apiPath = path.join('/');
+        const isRealtimeIndices = apiPath === 'market/vci-indices';
 
         // Get query string from the request URL
         const { searchParams } = new URL(request.url);
@@ -46,26 +47,25 @@ export async function GET(
             );
         }
 
-        const contentType = response.headers.get('content-type') || '';
+        const data = await response.json();
 
-        if (contentType.includes('application/json')) {
-            const data = await response.json();
-            return NextResponse.json(data, {
-                headers: {
-                    'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
-                    'X-Proxy-Backend': BACKEND_API,
-                },
-            });
-        } else {
-            // Forward non-JSON responses (like files/streams/redirects) directly
-            const headers = new Headers(response.headers);
-            headers.set('X-Proxy-Backend', BACKEND_API);
-            return new NextResponse(response.body, {
-                status: response.status,
-                statusText: response.statusText,
-                headers,
-            });
-        }
+        const backendSource = response.headers.get('x-source');
+        const backendTiming = response.headers.get('server-timing');
+        const backendDb = response.headers.get('x-db');
+        const backendCache = response.headers.get('x-cache');
+
+        return NextResponse.json(data, {
+            headers: {
+                'Cache-Control': isRealtimeIndices
+                    ? 'no-store, no-cache, must-revalidate'
+                    : 'public, s-maxage=30, stale-while-revalidate=60',
+                'X-Proxy-Backend': BACKEND_API,
+                ...(backendSource ? { 'X-Source': backendSource } : {}),
+                ...(backendTiming ? { 'Server-Timing': backendTiming } : {}),
+                ...(backendDb ? { 'X-DB': backendDb } : {}),
+                ...(backendCache ? { 'X-Cache': backendCache } : {}),
+            },
+        });
     } catch (error) {
         console.error('API Proxy Error:', error);
         return NextResponse.json(
@@ -111,20 +111,8 @@ export async function POST(
             );
         }
 
-        const contentType = response.headers.get('content-type') || '';
-
-        if (contentType.includes('application/json')) {
-            const data = await response.json();
-            return NextResponse.json(data);
-        } else {
-            // Forward non-JSON responses (files, etc) directly
-            const headers = new Headers(response.headers);
-            return new NextResponse(response.body, {
-                status: response.status,
-                statusText: response.statusText,
-                headers,
-            });
-        }
+        const data = await response.json();
+        return NextResponse.json(data);
     } catch (error) {
         console.error('API Proxy POST Error:', error);
         return NextResponse.json(

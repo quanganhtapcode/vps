@@ -8,6 +8,7 @@ import NewsSection from '@/components/NewsSection';
 import { CryptoPrices, GoldPrice, Lottery, MarketPulse } from '@/components/Sidebar';
 import {
     fetchAllIndices,
+    subscribeIndicesStream,
     fetchNews,
     fetchTopMovers,
     fetchForeignFlow,
@@ -106,13 +107,9 @@ export default function OverviewClient({
         setIsMounted(true);
     }, []);
 
-    // Load indices data (Client-side Refresh)
-    const loadIndices = useCallback(async () => {
-        try {
-            // Don't set loading to true for background refresh to avoid flickering
-            const marketData = await fetchAllIndices();
-
-            const indexDataPromises = Object.entries(INDEX_MAP).map(async ([indexId, info]) => {
+    const mapMarketDataToIndices = useCallback((marketData: Record<string, MarketIndexData>) => {
+        const results = Object.entries(INDEX_MAP)
+            .map(([indexId, info]) => {
                 const data = marketData[indexId] as MarketIndexData | undefined;
                 if (!data) return null;
 
@@ -121,15 +118,13 @@ export default function OverviewClient({
                 const change = currentIndex - prevIndex;
                 const percent = prevIndex > 0 ? (change / prevIndex) * 100 : 0;
 
-                const chartData: number[] = [];
-
                 return {
                     id: info.id,
                     name: info.name,
                     value: currentIndex,
                     change,
                     percentChange: percent,
-                    chartData,
+                    chartData: [] as number[],
                     advances: data.Advances,
                     declines: data.Declines,
                     noChanges: data.NoChanges,
@@ -138,15 +133,23 @@ export default function OverviewClient({
                     totalShares: data.Volume,
                     totalValue: data.Value,
                 };
-            });
+            })
+            .filter((r): r is IndexData => r !== null);
 
-            const results = await Promise.all(indexDataPromises);
-            setIndices(results.filter((r): r is IndexData => r !== null));
-            setLastUpdate(new Date());
+        setIndices(results);
+        setLastUpdate(new Date());
+    }, []);
+
+    // Load indices data (Client-side Refresh)
+    const loadIndices = useCallback(async () => {
+        try {
+            // Don't set loading to true for background refresh to avoid flickering
+            const marketData = await fetchAllIndices();
+            mapMarketDataToIndices(marketData);
         } catch (error) {
             console.error('Error loading indices:', error);
         }
-    }, []);
+    }, [mapMarketDataToIndices]);
 
     // Load gold prices (Client-side Refresh)
     const loadGold = useCallback(async () => {
@@ -231,17 +234,47 @@ export default function OverviewClient({
         }
     }, [initialForeignBuys, initialForeignSells, loadForeign]);
 
-    // Auto refresh indices every 10 seconds
+    // Realtime indices via internal websocket; fallback polling only when WS is down
     useEffect(() => {
+        let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+
+        const startFallback = () => {
+            if (fallbackTimer) return;
+            fallbackTimer = setInterval(() => {
+                loadIndices();
+            }, 5000);
+        };
+
+        const stopFallback = () => {
+            if (!fallbackTimer) return;
+            clearInterval(fallbackTimer);
+            fallbackTimer = null;
+        };
+
         // If SSR didn't provide indices, load immediately after hydration.
         if (initialIndices.length === 0) {
             loadIndices();
         }
-        const interval = setInterval(() => {
-            loadIndices();
-        }, 10000);
-        return () => clearInterval(interval);
-    }, [loadIndices, initialIndices.length]);
+
+        const unsubscribe = subscribeIndicesStream({
+            onData: (marketData) => {
+                mapMarketDataToIndices(marketData);
+                stopFallback();
+            },
+            onStatus: (status) => {
+                if (status === 'open') {
+                    stopFallback();
+                    return;
+                }
+                startFallback();
+            },
+        });
+
+        return () => {
+            unsubscribe();
+            stopFallback();
+        };
+    }, [loadIndices, initialIndices.length, mapMarketDataToIndices]);
 
     // Auto refresh gold every 60 seconds
     useEffect(() => {
