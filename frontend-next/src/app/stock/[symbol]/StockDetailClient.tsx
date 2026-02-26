@@ -589,10 +589,9 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
                 </div>
             </div>
 
-            {/* Main Content - ALL tabs pre-mounted, CSS-only show/hide for <5ms INP */}
+            {/* Main Content - render only active tab to reduce heavy hidden component work */}
             <div className={styles.mainContentFull}>
-                {/* Overview Tab */}
-                <div className={activeTab === 'overview' ? styles.mainContent : 'hidden'} style={activeTab === 'overview' ? { marginTop: 0 } : {}}>
+                {activeTab === 'overview' && (
                     <OverviewTab
                         symbol={symbol}
                         stockInfo={stockInfo}
@@ -607,10 +606,10 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
                         historicalData={historicalData}
                         isLoading={isChartLoading}
                     />
-                </div>
+                )}
 
-                {/* Financials Tab - always mounted */}
-                <div className={activeTab === 'financials' ? 'block' : 'hidden'}>
+                {activeTab === 'financials' && (
+                    <>
                     <div className="mb-4 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
                             <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
@@ -665,18 +664,17 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
                         initialOverviewData={rawOverviewData}
                         isLoading={isHistoryLoading}
                     />
-                </div>
+                    </>
+                )}
 
-                {/* Price History Tab - always mounted */}
-                <div className={activeTab === 'priceHistory' ? 'block' : 'hidden'}>
+                {activeTab === 'priceHistory' && (
                     <PriceHistoryTab
                         symbol={symbol}
                         initialData={fullHistoryData.length > 0 ? fullHistoryData : undefined}
                     />
-                </div>
+                )}
 
-                {/* Valuation Tab - always mounted */}
-                <div className={activeTab === 'valuation' ? 'block' : 'hidden'}>
+                {activeTab === 'valuation' && (
                     <ValuationTab
                         symbol={symbol}
                         currentPrice={priceData?.price || 0}
@@ -684,10 +682,10 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
                         initialData={null}
                         isBank={stockInfo?.sector === 'Ngân hàng' || ['VCB', 'BID', 'CTG', 'VPB', 'MBB', 'TCB', 'ACB', 'HDB', 'VIB', 'STB', 'TPB', 'MSB', 'LPB', 'SHB', 'OCB', 'VBB', 'BAB', 'BVB', 'EIB', 'KLB', 'SGB', 'PGB', 'NVB', 'VAB'].includes(symbol)}
                     />
-                </div>
+                )}
 
-                {/* Analysis Tab - always mounted */}
-                <div className={activeTab === 'analysis' ? 'space-y-4' : 'hidden'}>
+                {activeTab === 'analysis' && (
+                    <div className="space-y-4">
                     <div className="flex items-center justify-between gap-4">
                         <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
                             Analysis
@@ -700,7 +698,8 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
                         initialHistory={prefetchedChartData}
                         isLoading={isHistoryLoading}
                     />
-                </div>
+                    </div>
+                )}
             </div>
         </div>
     );
