@@ -93,6 +93,23 @@ const ChartCard = ({ title, children }: { title: string; children: React.ReactNo
     </div>
 );
 
+const formatCompactNumber = (value: number | null | undefined): string => {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
+    const numeric = Number(value);
+    const abs = Math.abs(numeric);
+
+    if (abs >= 1_000_000_000_000) return `${(numeric / 1_000_000_000_000).toFixed(1)}T`;
+    if (abs >= 1_000_000_000) return `${(numeric / 1_000_000_000).toFixed(1)}B`;
+    if (abs >= 1_000_000) return `${(numeric / 1_000_000).toFixed(1)}M`;
+    if (abs >= 1_000) return `${(numeric / 1_000).toFixed(1)}K`;
+    return formatNumber(numeric);
+};
+
+const formatPercentNumber = (value: number | null | undefined): string => {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
+    return `${Number(value).toFixed(1)}%`;
+};
+
 export default function FinancialsTab({
     symbol,
     period,
@@ -278,7 +295,7 @@ export default function FinancialsTab({
 
     const performanceSeries = dashboardSeries.map((item) => ({
         period: item.period,
-        Revenue: toNumOrNull(item.revenue),
+        'Doanh thu': toNumOrNull(item.revenue),
         'Lợi nhuận ròng': toNumOrNull(item.net_profit),
     }));
 
@@ -323,7 +340,7 @@ export default function FinancialsTab({
                 <div className="w-56 rounded-md border border-gray-500/10 bg-blue-500 px-4 py-1.5 text-sm shadow-md dark:border-gray-400/20 dark:bg-gray-900 z-[100]">
                     <p className="flex items-center justify-between">
                         <span className="text-gray-50 dark:text-gray-50">
-                            Period
+                            Kỳ
                         </span>
                         <span className="font-medium text-gray-50 dark:text-gray-50">{label ?? ''}</span>
                     </p>
@@ -356,8 +373,8 @@ export default function FinancialsTab({
                                         {typeof item.value === 'number'
                                             ? (['ROE', 'ROA', 'NIM', 'Net Margin (%)'].includes(String(item.name)) || String(item.name).includes('%') || item.unit === '%')
                                                 ? `${item.value}%`
-                                                : ['Revenue', 'Profit'].includes(String(item.name))
-                                                    ? `${formatNumber(item.value)}B`
+                                                : ['Doanh thu', 'Lợi nhuận ròng'].includes(String(item.name))
+                                                    ? formatCompactNumber(Number(item.value))
                                                     : formatNumber(item.value)
                                             : item.value}
                                     </span>
@@ -487,10 +504,10 @@ export default function FinancialsTab({
                                         style={{ height: '100%', width: '100%' }}
                                         data={performanceSeries}
                                         index="period"
-                                        categories={["Revenue", "Lợi nhuận ròng"]}
+                                        categories={["Doanh thu", "Lợi nhuận ròng"]}
                                         colors={["blue", "emerald"]}
-                                        valueFormatter={formatNumber}
-                                        yAxisWidth={56}
+                                        valueFormatter={formatCompactNumber}
+                                        yAxisWidth={84}
                                         customTooltip={CustomTooltip}
                                         showLegend={true}
                                         showAnimation={false}
@@ -507,8 +524,8 @@ export default function FinancialsTab({
                                         index="period"
                                         categories={["Biên LN ròng (%)", "Nợ vay/VCSH (%)"]}
                                         colors={["amber", "violet"]}
-                                        valueFormatter={formatNumber}
-                                        yAxisWidth={56}
+                                        valueFormatter={formatPercentNumber}
+                                        yAxisWidth={84}
                                         customTooltip={CustomTooltip}
                                         showLegend={true}
                                         showAnimation={false}
@@ -525,8 +542,8 @@ export default function FinancialsTab({
                                         index="period"
                                         categories={["Nợ vay", "Vốn chủ sở hữu"]}
                                         colors={["sky", "emerald"]}
-                                        valueFormatter={formatNumber}
-                                        yAxisWidth={56}
+                                        valueFormatter={formatCompactNumber}
+                                        yAxisWidth={84}
                                         customTooltip={CustomTooltip}
                                         showLegend={true}
                                         showAnimation={false}
@@ -543,8 +560,8 @@ export default function FinancialsTab({
                                         index="period"
                                         categories={["Tăng trưởng DT (%)", "Tăng trưởng LN (%)"]}
                                         colors={["cyan", "rose"]}
-                                        valueFormatter={formatNumber}
-                                        yAxisWidth={56}
+                                        valueFormatter={formatPercentNumber}
+                                        yAxisWidth={84}
                                         customTooltip={CustomTooltip}
                                         showLegend={true}
                                         showAnimation={false}
