@@ -270,47 +270,48 @@ export default function FinancialsTab({
 
     const dashboardSeries = dashboardData?.series || [];
     const hasDashboardSeries = dashboardSeries.length > 0;
+    const toNumOrNull = (value: number | null | undefined): number | null => {
+        if (value === null || value === undefined) return null;
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : null;
+    };
+
     const performanceSeries = dashboardSeries.map((item) => ({
         period: item.period,
-        Revenue: item.revenue ?? 0,
-        'Lợi nhuận ròng': item.net_profit ?? 0,
+        Revenue: toNumOrNull(item.revenue),
+        'Lợi nhuận ròng': toNumOrNull(item.net_profit),
     }));
+
+    const marginLeverageSeries = dashboardSeries.map((item) => ({
+        period: item.period,
+        'Biên LN ròng (%)': toNumOrNull(item.net_margin),
+        'Nợ vay/VCSH (%)': toNumOrNull(item.debt_to_equity_pct),
+    }));
+
     const debtEquitySeries = dashboardSeries.map((item) => ({
         period: item.period,
-        'Nợ vay': item.total_debt ?? 0,
-        'Vốn chủ sở hữu': item.total_equity ?? 0,
+        'Nợ vay': toNumOrNull(item.total_debt),
+        'Vốn chủ sở hữu': toNumOrNull(item.total_equity),
     }));
 
-    const waterfall = dashboardData?.waterfall;
-    const waterfallSeries = waterfall
-        ? [
-            { name: 'Doanh thu thuần', 'Giá trị': waterfall.revenue ?? 0 },
-            { name: 'Giá vốn hàng bán', 'Giá trị': -Math.abs(waterfall.cogs ?? 0) },
-            { name: 'Lợi nhuận gộp', 'Giá trị': waterfall.gross_profit ?? 0 },
-            { name: 'CP bán hàng & QLDN', 'Giá trị': -Math.abs(waterfall.selling_admin_expense ?? 0) },
-            { name: 'LN hoạt động', 'Giá trị': waterfall.operating_profit ?? 0 },
-            { name: 'LN khác', 'Giá trị': waterfall.other_income_expense ?? 0 },
-            { name: 'LN trước thuế', 'Giá trị': waterfall.profit_before_tax ?? 0 },
-            { name: 'Thuế TNDN', 'Giá trị': -Math.abs(waterfall.tax ?? 0) },
-            { name: 'Lợi nhuận ròng', 'Giá trị': waterfall.net_profit ?? 0 },
-        ]
-        : [];
+    const growthPercent = (current: number | null, previous: number | null): number | null => {
+        if (current === null || previous === null || previous === 0) return null;
+        return ((current - previous) / Math.abs(previous)) * 100;
+    };
 
-    const position = dashboardData?.position;
-    const positionSeries = position
-        ? [
-            {
-                group: 'Ngắn hạn',
-                'Tài sản': position.current_assets ?? 0,
-                'Nợ phải trả': position.current_liabilities ?? 0,
-            },
-            {
-                group: 'Dài hạn',
-                'Tài sản': position.non_current_assets ?? 0,
-                'Nợ phải trả': position.non_current_liabilities ?? 0,
-            },
-        ]
-        : [];
+    const growthSeries = dashboardSeries.map((item, index) => {
+        const prev = index > 0 ? dashboardSeries[index - 1] : null;
+        const revNow = toNumOrNull(item.revenue);
+        const revPrev = prev ? toNumOrNull(prev.revenue) : null;
+        const profitNow = toNumOrNull(item.net_profit);
+        const profitPrev = prev ? toNumOrNull(prev.net_profit) : null;
+
+        return {
+            period: item.period,
+            'Tăng trưởng DT (%)': growthPercent(revNow, revPrev),
+            'Tăng trưởng LN (%)': growthPercent(profitNow, profitPrev),
+        };
+    });
 
 
     // Custom Tooltip
@@ -497,15 +498,15 @@ export default function FinancialsTab({
                                 </ChartCard>
                             )}
 
-                            {waterfallSeries.length > 0 && (
-                                <ChartCard title={`Kết quả kinh doanh (${waterfall?.period ?? ''})`}>
+                            {hasDashboardSeries && (
+                                <ChartCard title="Biên lợi nhuận & Đòn bẩy (%)">
                                     <LineChart
                                         className="h-full w-full"
                                         style={{ height: '100%', width: '100%' }}
-                                        data={waterfallSeries}
-                                        index="name"
-                                        categories={["Giá trị"]}
-                                        colors={["rose"]}
+                                        data={marginLeverageSeries}
+                                        index="period"
+                                        categories={["Biên LN ròng (%)", "Nợ vay/VCSH (%)"]}
+                                        colors={["amber", "violet"]}
                                         valueFormatter={formatNumber}
                                         yAxisWidth={56}
                                         customTooltip={CustomTooltip}
@@ -533,15 +534,15 @@ export default function FinancialsTab({
                                 </ChartCard>
                             )}
 
-                            {positionSeries.length > 0 && (
-                                <ChartCard title={`Vị thế tài chính (${position?.period ?? ''})`}>
+                            {hasDashboardSeries && (
+                                <ChartCard title="Tăng trưởng theo kỳ (%)">
                                     <LineChart
                                         className="h-full w-full"
                                         style={{ height: '100%', width: '100%' }}
-                                        data={positionSeries}
-                                        index="group"
-                                        categories={["Tài sản", "Nợ phải trả"]}
-                                        colors={["sky", "emerald"]}
+                                        data={growthSeries}
+                                        index="period"
+                                        categories={["Tăng trưởng DT (%)", "Tăng trưởng LN (%)"]}
+                                        colors={["cyan", "rose"]}
                                         valueFormatter={formatNumber}
                                         yAxisWidth={56}
                                         customTooltip={CustomTooltip}
