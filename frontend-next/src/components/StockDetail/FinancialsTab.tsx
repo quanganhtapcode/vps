@@ -4,6 +4,20 @@ import React, { useEffect, useState } from 'react';
 import { formatNumber } from '@/lib/api';
 import type { HistoricalChartData } from '@/lib/types';
 import { LineChart, type CustomTooltipProps as TremorCustomTooltipProps } from '@tremor/react';
+import {
+    ResponsiveContainer,
+    ComposedChart,
+    BarChart,
+    Bar,
+    Line,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip as RechartsTooltip,
+    Legend,
+    ReferenceLine,
+    Cell,
+} from 'recharts';
 import { cx } from '@/lib/utils';
 
 type FinancialDashboardSeries = {
@@ -113,11 +127,12 @@ const formatPercentNumber = (value: number | null | undefined): string => {
 export default function FinancialsTab({
     symbol,
     period,
-    setPeriod,
+    setPeriod: _setPeriod,
     initialChartData,
     initialOverviewData,
     isLoading: isParentLoading = false
 }: FinancialsTabProps) {
+    void _setPeriod;
     const effectivePeriod: 'quarter' | 'year' = period ?? 'quarter';
     const [chartData, setChartData] = useState<HistoricalChartData | null>(initialChartData || null);
     const [overviewData, setOverviewData] = useState<any>(initialOverviewData || null);
@@ -297,6 +312,7 @@ export default function FinancialsTab({
         period: item.period,
         'Doanh thu': toNumOrNull(item.revenue),
         'Lợi nhuận ròng': toNumOrNull(item.net_profit),
+        'Biên LN ròng (%)': toNumOrNull(item.net_margin),
     }));
 
     const marginLeverageSeries = dashboardSeries.map((item) => ({
@@ -305,11 +321,20 @@ export default function FinancialsTab({
         'Nợ vay/VCSH (%)': toNumOrNull(item.debt_to_equity_pct),
     }));
 
-    const debtEquitySeries = dashboardSeries.map((item) => ({
+    const debtEquitySeries = dashboardSeries.map((item) => {
+        const equity = toNumOrNull(item.total_equity);
+        const debt = toNumOrNull(item.total_debt);
+        const debtToEquityPct = toNumOrNull(item.debt_to_equity_pct);
+        const estimatedDebt = debt !== null
+            ? debt
+            : (equity !== null && debtToEquityPct !== null ? (equity * debtToEquityPct) / 100 : null);
+
+        return {
         period: item.period,
-        'Nợ vay': toNumOrNull(item.total_debt),
-        'Vốn chủ sở hữu': toNumOrNull(item.total_equity),
-    }));
+        'Nợ vay': estimatedDebt,
+        'Vốn chủ sở hữu': equity,
+        };
+    });
 
     const growthPercent = (current: number | null, previous: number | null): number | null => {
         if (current === null || previous === null || previous === 0) return null;
@@ -499,73 +524,82 @@ export default function FinancialsTab({
 
                             {hasDashboardSeries && (
                                 <ChartCard title="Hiệu suất">
-                                    <LineChart
-                                        className="h-full w-full"
-                                        style={{ height: '100%', width: '100%' }}
-                                        data={performanceSeries}
-                                        index="period"
-                                        categories={["Doanh thu", "Lợi nhuận ròng"]}
-                                        colors={["blue", "emerald"]}
-                                        valueFormatter={formatCompactNumber}
-                                        yAxisWidth={84}
-                                        customTooltip={CustomTooltip}
-                                        showLegend={true}
-                                        showAnimation={false}
-                                    />
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ComposedChart data={performanceSeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.14} />
+                                            <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                                            <YAxis yAxisId="left" tickFormatter={(value) => formatCompactNumber(Number(value))} width={84} />
+                                            <YAxis yAxisId="right" orientation="right" tickFormatter={(value) => formatPercentNumber(Number(value))} width={72} />
+                                            <RechartsTooltip
+                                                formatter={(value: any, name: string) => {
+                                                    if (String(name).includes('%')) return [formatPercentNumber(Number(value)), name];
+                                                    return [formatCompactNumber(Number(value)), name];
+                                                }}
+                                            />
+                                            <Legend />
+                                            <Bar yAxisId="left" dataKey="Doanh thu" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                            <Bar yAxisId="left" dataKey="Lợi nhuận ròng" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                            <Line yAxisId="right" type="monotone" dataKey="Biên LN ròng (%)" stroke="#f59e0b" strokeWidth={2.2} dot={{ r: 2 }} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
                                 </ChartCard>
                             )}
 
                             {hasDashboardSeries && (
                                 <ChartCard title="Biên lợi nhuận & Đòn bẩy (%)">
-                                    <LineChart
-                                        className="h-full w-full"
-                                        style={{ height: '100%', width: '100%' }}
-                                        data={marginLeverageSeries}
-                                        index="period"
-                                        categories={["Biên LN ròng (%)", "Nợ vay/VCSH (%)"]}
-                                        colors={["amber", "violet"]}
-                                        valueFormatter={formatPercentNumber}
-                                        yAxisWidth={84}
-                                        customTooltip={CustomTooltip}
-                                        showLegend={true}
-                                        showAnimation={false}
-                                    />
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ComposedChart data={marginLeverageSeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.14} />
+                                            <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                                            <YAxis tickFormatter={(value) => formatPercentNumber(Number(value))} width={84} />
+                                            <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
+                                            <RechartsTooltip formatter={(value: any) => formatPercentNumber(Number(value))} />
+                                            <Legend />
+                                            <Line type="monotone" dataKey="Biên LN ròng (%)" stroke="#f59e0b" strokeWidth={2.2} dot={{ r: 2 }} />
+                                            <Line type="monotone" dataKey="Nợ vay/VCSH (%)" stroke="#8b5cf6" strokeWidth={2.2} dot={{ r: 2 }} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
                                 </ChartCard>
                             )}
 
                             {hasDashboardSeries && (
                                 <ChartCard title="Tài sản và Vốn chủ sở hữu">
-                                    <LineChart
-                                        className="h-full w-full"
-                                        style={{ height: '100%', width: '100%' }}
-                                        data={debtEquitySeries}
-                                        index="period"
-                                        categories={["Nợ vay", "Vốn chủ sở hữu"]}
-                                        colors={["sky", "emerald"]}
-                                        valueFormatter={formatCompactNumber}
-                                        yAxisWidth={84}
-                                        customTooltip={CustomTooltip}
-                                        showLegend={true}
-                                        showAnimation={false}
-                                    />
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={debtEquitySeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.14} />
+                                            <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                                            <YAxis tickFormatter={(value) => formatCompactNumber(Number(value))} width={84} />
+                                            <RechartsTooltip formatter={(value: any) => formatCompactNumber(Number(value))} />
+                                            <Legend />
+                                            <Bar dataKey="Nợ vay" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="Vốn chủ sở hữu" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </ChartCard>
                             )}
 
                             {hasDashboardSeries && (
                                 <ChartCard title="Tăng trưởng theo kỳ (%)">
-                                    <LineChart
-                                        className="h-full w-full"
-                                        style={{ height: '100%', width: '100%' }}
-                                        data={growthSeries}
-                                        index="period"
-                                        categories={["Tăng trưởng DT (%)", "Tăng trưởng LN (%)"]}
-                                        colors={["cyan", "rose"]}
-                                        valueFormatter={formatPercentNumber}
-                                        yAxisWidth={84}
-                                        customTooltip={CustomTooltip}
-                                        showLegend={true}
-                                        showAnimation={false}
-                                    />
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={growthSeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.14} />
+                                            <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                                            <YAxis tickFormatter={(value) => formatPercentNumber(Number(value))} width={84} />
+                                            <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
+                                            <RechartsTooltip formatter={(value: any) => formatPercentNumber(Number(value))} />
+                                            <Legend />
+                                            <Bar dataKey="Tăng trưởng DT (%)" radius={[4, 4, 0, 0]}>
+                                                {growthSeries.map((entry, index) => (
+                                                    <Cell key={`rev-growth-${index}`} fill={(entry['Tăng trưởng DT (%)'] ?? 0) >= 0 ? '#06b6d4' : '#fb7185'} />
+                                                ))}
+                                            </Bar>
+                                            <Bar dataKey="Tăng trưởng LN (%)" radius={[4, 4, 0, 0]}>
+                                                {growthSeries.map((entry, index) => (
+                                                    <Cell key={`profit-growth-${index}`} fill={(entry['Tăng trưởng LN (%)'] ?? 0) >= 0 ? '#e11d48' : '#fda4af'} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </ChartCard>
                             )}
 
