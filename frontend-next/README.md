@@ -46,4 +46,5 @@ Notes:
 
 - The app uses `NEXT_PUBLIC_BACKEND_WS_URL/ws/market/indices` for realtime index stream.
 - If `NEXT_PUBLIC_BACKEND_WS_URL` is not set, it derives from `NEXT_PUBLIC_API_URL` and keeps path prefixes (example: `https://api.../v1/valuation` -> `wss://api.../v1/valuation/ws/market/indices`).
+- On `stock.quanganh.org`, fallback is pinned to `wss://api.quanganh.org/v1/valuation/ws/market/indices` to avoid wrong same-host WS path.
 - Ensure reverse proxy (Nginx/Cloudflare) supports WebSocket upgrade for `/ws/market/indices`.

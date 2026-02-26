@@ -220,17 +220,30 @@ function getIndicesWsUrl(): string {
     }
 
     const fromApiEnv = process.env.NEXT_PUBLIC_API_URL;
-    if (fromApiEnv && /^https?:\/\//i.test(fromApiEnv)) {
-        try {
-            const parsed = new URL(fromApiEnv);
-            const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
-            let basePath = parsed.pathname.replace(/\/$/, '');
+    if (fromApiEnv) {
+        if (/^https?:\/\//i.test(fromApiEnv)) {
+            try {
+                const parsed = new URL(fromApiEnv);
+                const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+                let basePath = parsed.pathname.replace(/\/$/, '');
+                if (basePath.endsWith('/api')) {
+                    basePath = basePath.slice(0, -4);
+                }
+                return `${wsProtocol}//${parsed.host}${basePath}/ws/market/indices`;
+            } catch {
+                // fall through to other API URL formats and runtime defaults
+            }
+        }
+
+        if (fromApiEnv.startsWith('/') && typeof window !== 'undefined') {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const isStockDomain = /(^|\.)stock\.quanganh\.org$/i.test(window.location.hostname);
+            const wsHost = isStockDomain ? 'api.quanganh.org' : window.location.host;
+            let basePath = fromApiEnv.replace(/\/$/, '');
             if (basePath.endsWith('/api')) {
                 basePath = basePath.slice(0, -4);
             }
-            return `${wsProtocol}//${parsed.host}${basePath}/ws/market/indices`;
-        } catch {
-            // fall through to runtime-based defaults
+            return `${wsProtocol}//${wsHost}${basePath}/ws/market/indices`;
         }
     }
 
@@ -239,6 +252,11 @@ function getIndicesWsUrl(): string {
         if (isLocal) {
             return 'ws://127.0.0.1:5000/ws/market/indices';
         }
+
+        if (/(^|\.)stock\.quanganh\.org$/i.test(window.location.hostname)) {
+            return 'wss://api.quanganh.org/v1/valuation/ws/market/indices';
+        }
+
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         return `${proto}//${window.location.host}/ws/market/indices`;
     }
