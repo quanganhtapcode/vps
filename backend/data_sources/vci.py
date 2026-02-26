@@ -8,6 +8,8 @@ import requests
 import logging
 import time
 import threading
+import os
+import random
 from typing import Optional, Dict, Any, List
 
 try:
@@ -53,6 +55,18 @@ class VCIClient:
     INDEX_SYMBOLS = ["VNINDEX", "VN30", "HNXIndex", "HNX30", "HNXUpcomIndex"]
     SOCKET_BASE_URL = "https://trading.vietcap.com.vn"
     SOCKET_PATH = "ws/price/socket.io"
+
+    _INDEX_REST_POLL_IDLE_SECONDS = max(1.0, float(os.getenv("VCI_INDEX_REST_POLL_IDLE_SECONDS", "3")))
+    _INDEX_REST_POLL_JITTER_SECONDS = max(0.0, float(os.getenv("VCI_INDEX_REST_POLL_JITTER_SECONDS", "0.6")))
+    _INDEX_RECENT_WS_SECONDS = max(1.0, float(os.getenv("VCI_INDEX_RECENT_WS_SECONDS", "2.5")))
+
+    _INDEX_WS_CONNECT_TIMEOUT_SECONDS = max(3.0, float(os.getenv("VCI_INDEX_WS_CONNECT_TIMEOUT_SECONDS", "8")))
+    _INDEX_WS_BACKOFF_MIN_SECONDS = max(1.0, float(os.getenv("VCI_INDEX_WS_BACKOFF_MIN_SECONDS", "2")))
+    _INDEX_WS_BACKOFF_MAX_SECONDS = max(
+        _INDEX_WS_BACKOFF_MIN_SECONDS,
+        float(os.getenv("VCI_INDEX_WS_BACKOFF_MAX_SECONDS", "60")),
+    )
+    _INDEX_WS_BACKOFF_JITTER_SECONDS = max(0.0, float(os.getenv("VCI_INDEX_WS_BACKOFF_JITTER_SECONDS", "0.8")))
 
     @classmethod
     def _normalize_index_item(cls, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -186,7 +200,7 @@ class VCIClient:
         while True:
             try:
                 # If WS has updated recently, skip REST call
-                if cls._indices_last_update > 0 and (time.time() - cls._indices_last_update) < 2.5:
+                if cls._indices_last_update > 0 and (time.time() - cls._indices_last_update) < cls._INDEX_RECENT_WS_SECONDS:
                     time.sleep(1)
                     continue
 
@@ -195,7 +209,8 @@ class VCIClient:
                     cls._update_indices_cache(items, source='REST')
             except Exception as e:
                 logger.error(f"[VCI] Indices background refresh error: {e}")
-            time.sleep(3)
+            sleep_seconds = cls._INDEX_REST_POLL_IDLE_SECONDS + random.uniform(0, cls._INDEX_REST_POLL_JITTER_SECONDS)
+            time.sleep(sleep_seconds)
 
     @classmethod
     def _indices_ws_loop(cls):
@@ -204,6 +219,7 @@ class VCIClient:
             logger.info("[VCI] python-socketio not installed; skip WS indices stream.")
             return
 
+        reconnect_delay = cls._INDEX_WS_BACKOFF_MIN_SECONDS
         while True:
             sio = None
             try:
@@ -225,7 +241,9 @@ class VCIClient:
 
                 @sio.event
                 def connect():
+                    nonlocal reconnect_delay
                     logger.info("[VCI] Connected to Vietcap Socket.IO for indices.")
+                    reconnect_delay = cls._INDEX_WS_BACKOFF_MIN_SECONDS
                     for event_name in ('subscribe', 'sub', 'join', 'reg', 'register', 'watch', 'indices'):
                         for payload in subscribe_payloads:
                             try:
@@ -262,7 +280,7 @@ class VCIClient:
                     cls.SOCKET_BASE_URL,
                     transports=['websocket'],
                     socketio_path=cls.SOCKET_PATH,
-                    wait_timeout=8,
+                    wait_timeout=cls._INDEX_WS_CONNECT_TIMEOUT_SECONDS,
                     headers={
                         'Origin': 'https://trading.vietcap.com.vn',
                         'Referer': 'https://trading.vietcap.com.vn/',
@@ -272,13 +290,19 @@ class VCIClient:
                 sio.wait()
             except Exception as exc:
                 logger.warning(f"[VCI] Socket.IO indices loop error: {exc}")
-                time.sleep(2)
             finally:
                 try:
                     if sio is not None:
                         sio.disconnect()
                 except Exception:
                     pass
+
+            sleep_seconds = min(
+                cls._INDEX_WS_BACKOFF_MAX_SECONDS,
+                reconnect_delay + random.uniform(0, cls._INDEX_WS_BACKOFF_JITTER_SECONDS),
+            )
+            time.sleep(sleep_seconds)
+            reconnect_delay = min(cls._INDEX_WS_BACKOFF_MAX_SECONDS, reconnect_delay * 2)
 
     @classmethod
     def ensure_indices_refresh(cls):

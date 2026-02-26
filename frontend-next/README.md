@@ -40,10 +40,10 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 When deploying this frontend to the official domain, set:
 
 - `NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api`
-- `NEXT_PUBLIC_BACKEND_WS_URL=wss://api.yourdomain.com`
+- `NEXT_PUBLIC_BACKEND_WS_URL=wss://api.yourdomain.com` (or include gateway prefix, e.g. `wss://api.yourdomain.com/v1/valuation`)
 
 Notes:
 
 - The app uses `NEXT_PUBLIC_BACKEND_WS_URL/ws/market/indices` for realtime index stream.
-- If `NEXT_PUBLIC_BACKEND_WS_URL` is not set, it tries to derive from `NEXT_PUBLIC_API_URL` when absolute.
+- If `NEXT_PUBLIC_BACKEND_WS_URL` is not set, it derives from `NEXT_PUBLIC_API_URL` and keeps path prefixes (example: `https://api.../v1/valuation` -> `wss://api.../v1/valuation/ws/market/indices`).
 - Ensure reverse proxy (Nginx/Cloudflare) supports WebSocket upgrade for `/ws/market/indices`.

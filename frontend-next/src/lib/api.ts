@@ -204,7 +204,19 @@ export async function fetchAllIndices(): Promise<Record<string, MarketIndexData>
 function getIndicesWsUrl(): string {
     const fromEnv = process.env.NEXT_PUBLIC_BACKEND_WS_URL;
     if (fromEnv) {
-        return `${fromEnv.replace(/\/$/, '')}/ws/market/indices`;
+        const normalized = fromEnv.replace(/\/$/, '');
+        if (/^wss?:\/\//i.test(normalized)) {
+            return `${normalized}/ws/market/indices`;
+        }
+        if (/^https?:\/\//i.test(normalized)) {
+            try {
+                const parsed = new URL(normalized);
+                const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+                return `${wsProtocol}//${parsed.host}${parsed.pathname.replace(/\/$/, '')}/ws/market/indices`;
+            } catch {
+                // fall through to NEXT_PUBLIC_API_URL and runtime-based defaults
+            }
+        }
     }
 
     const fromApiEnv = process.env.NEXT_PUBLIC_API_URL;
@@ -212,7 +224,11 @@ function getIndicesWsUrl(): string {
         try {
             const parsed = new URL(fromApiEnv);
             const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
-            return `${wsProtocol}//${parsed.host}/ws/market/indices`;
+            let basePath = parsed.pathname.replace(/\/$/, '');
+            if (basePath.endsWith('/api')) {
+                basePath = basePath.slice(0, -4);
+            }
+            return `${wsProtocol}//${parsed.host}${basePath}/ws/market/indices`;
         } catch {
             // fall through to runtime-based defaults
         }

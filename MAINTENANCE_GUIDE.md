@@ -41,3 +41,18 @@ systemctl start stock-fetch.service
 - Hệ thống sử dụng **30 requests/phút** (rất an toàn cho VCI).
 - Mỗi stock mất khoảng 8s-30s để hoàn tất (nếu không skip).
 - Việc quét toàn bộ 1700 mã sẽ diễn ra rất nhanh nếu đa số các mã đã có dữ liệu mới.
+
+### 5. Realtime WebSocket (VCI) - vận hành chuẩn
+- Kiến trúc hiện tại là đúng: **VPS giữ kết nối upstream tới VCI**, sau đó broadcast lại cho client qua endpoint nội bộ (`/ws/market/indices`).
+- Để giảm rủi ro bị chặn IP, nên giữ **một backend instance realtime chính** (tránh nhiều worker cùng mở nhiều upstream Socket.IO tới VCI).
+- Đã có cơ chế tự bảo vệ trong backend:
+    - reconnect theo **exponential backoff + jitter**
+    - REST fallback poll có **jitter** để tránh pattern request cứng
+- Có thể tinh chỉnh qua biến môi trường:
+    - `VCI_INDEX_REST_POLL_IDLE_SECONDS` (mặc định `3`)
+    - `VCI_INDEX_REST_POLL_JITTER_SECONDS` (mặc định `0.6`)
+    - `VCI_INDEX_RECENT_WS_SECONDS` (mặc định `2.5`)
+    - `VCI_INDEX_WS_CONNECT_TIMEOUT_SECONDS` (mặc định `8`)
+    - `VCI_INDEX_WS_BACKOFF_MIN_SECONDS` (mặc định `2`)
+    - `VCI_INDEX_WS_BACKOFF_MAX_SECONDS` (mặc định `60`)
+    - `VCI_INDEX_WS_BACKOFF_JITTER_SECONDS` (mặc định `0.8`)
