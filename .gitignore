@@ -67,3 +67,5 @@ fetch_sqlite/backups/**
 fetch_sqlite/*.sqlite
 fetch_sqlite/*.sqlite-wal
 fetch_sqlite/*.sqlite-shm
+
+tmp/
