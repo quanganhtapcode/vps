@@ -1,5 +1,58 @@
 # Hướng dẫn Vận hành VPS
 
+---
+
+## 0. Kiến trúc Domain (stock.quanganh.org & api.quanganh.org)
+
+### Sơ đồ tổng thể
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Browser                                                          │
+│                                                                   │
+│  REST  :  stock.quanganh.org/api/*                               │
+│           → Vercel (Next.js proxy)                                │
+│              → api.quanganh.org/v1/valuation/*  (nginx :443)     │
+│                 → Flask :8000  (/api/*)                           │
+│                                                                   │
+│  WebSocket:  wss://api.quanganh.org/v1/valuation/ws/market/indices│
+│           → nginx :443 (ws passthrough)                           │
+│              → Flask :8000  (/ws/market/indices)                  │
+│           [Vercel không proxy WebSocket — browser kết nối thẳng] │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Domain mapping
+
+| Domain | Nơi chạy | Vai trò |
+|---|---|---|
+| `stock.quanganh.org` | Vercel | Next.js frontend |
+| `api.quanganh.org` | VPS `203.55.176.10` | API gateway (nginx) |
+
+### nginx routes trên api.quanganh.org
+
+| Prefix | Rewrite | Backend |
+|---|---|---|
+| `/v1/valuation/ws/*` | không rewrite | Flask :8000 `/ws/*` (WebSocket) |
+| `/v1/valuation/*` | → `/api/$1` | Flask :8000 |
+| `/v1/store/*` | → `/api/$1` | PM2 store :3001 |
+| `/v1/invoice/*` | → `/$1` | Invoice :3000 |
+
+Config: [`deployment/api.quanganh.org.nginx.conf`](deployment/api.quanganh.org.nginx.conf)
+
+### Environment variables (frontend-next)
+
+| Variable | Scope | Giá trị production |
+|---|---|---|
+| `BACKEND_API_URL` | Server-side (Vercel edge) | `https://api.quanganh.org/v1/valuation` |
+| `BACKEND_API_URL_LOCAL` | Server-side (dev) | `http://127.0.0.1:8000/api` |
+| `NEXT_PUBLIC_API_URL` | Browser | *(để trống — dùng `/api` proxy mặc định)* |
+| `NEXT_PUBLIC_BACKEND_WS_URL` | Browser | `wss://api.quanganh.org/v1/valuation` |
+
+Xem thêm: [`frontend-next/.env.example`](frontend-next/.env.example), [`frontend-next/.env.production`](frontend-next/.env.production)
+
+---
+
 ## 1. Lịch chạy hàng ngày
 
 | Schedule | Loại | Script | DB output |

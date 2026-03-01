@@ -237,13 +237,11 @@ function getIndicesWsUrl(): string {
 
         if (fromApiEnv.startsWith('/') && typeof window !== 'undefined') {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const isStockDomain = /(^|\.)stock\.quanganh\.org$/i.test(window.location.hostname);
-            const wsHost = isStockDomain ? 'api.quanganh.org' : window.location.host;
             let basePath = fromApiEnv.replace(/\/$/, '');
             if (basePath.endsWith('/api')) {
                 basePath = basePath.slice(0, -4);
             }
-            return `${wsProtocol}//${wsHost}${basePath}/ws/market/indices`;
+            return `${wsProtocol}//${window.location.host}${basePath}/ws/market/indices`;
         }
     }
 
@@ -253,6 +251,10 @@ function getIndicesWsUrl(): string {
             return 'ws://127.0.0.1:5000/ws/market/indices';
         }
 
+        // Safety net: NEXT_PUBLIC_BACKEND_WS_URL should be set on Vercel; Vercel
+        // cannot proxy WebSocket connections so the browser must hit the API gateway
+        // directly. If the env var is missing this fallback handles stock.quanganh.org.
+        // Preferred: set NEXT_PUBLIC_BACKEND_WS_URL=wss://api.quanganh.org/v1/valuation
         if (/(^|\.)stock\.quanganh\.org$/i.test(window.location.hostname)) {
             return 'wss://api.quanganh.org/v1/valuation/ws/market/indices';
         }

@@ -37,14 +37,40 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## Production env (API + WebSocket)
 
-When deploying this frontend to the official domain, set:
+### Domain architecture
 
-- `NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api`
-- `NEXT_PUBLIC_BACKEND_WS_URL=wss://api.yourdomain.com` (or include gateway prefix, e.g. `wss://api.yourdomain.com/v1/valuation`)
+| Domain | Hosted on | Role |
+|---|---|---|
+| `stock.quanganh.org` | Vercel | This Next.js frontend |
+| `api.quanganh.org` | VPS (nginx → Flask :8000) | REST + WebSocket backend |
 
-Notes:
+### Traffic flow
 
-- The app uses `NEXT_PUBLIC_BACKEND_WS_URL/ws/market/indices` for realtime index stream.
-- If `NEXT_PUBLIC_BACKEND_WS_URL` is not set, it derives from `NEXT_PUBLIC_API_URL` and keeps path prefixes (example: `https://api.../v1/valuation` -> `wss://api.../v1/valuation/ws/market/indices`).
-- On `stock.quanganh.org`, fallback is pinned to `wss://api.quanganh.org/v1/valuation/ws/market/indices` to avoid wrong same-host WS path.
-- Ensure reverse proxy (Nginx/Cloudflare) supports WebSocket upgrade for `/ws/market/indices`.
+```
+Browser (stock.quanganh.org)
+  ├─ REST  : GET /api/*  →  Next.js proxy (route.ts)  →  api.quanganh.org/v1/valuation/*
+  └─ WS    : wss://api.quanganh.org/v1/valuation/ws/market/indices  (direct, bypasses Vercel)
+```
+
+### Environment variables
+
+All values are documented in `.env.example`. The canonical production values live in `.env.production` (committed) and should also be set in the **Vercel dashboard**.
+
+| Variable | Side | Purpose |
+|---|---|---|
+| `BACKEND_API_URL` | Server | URL the Next.js proxy forwards requests to |
+| `BACKEND_API_URL_LOCAL` | Server (dev) | Local Flask URL for `npm run dev` |
+| `NEXT_PUBLIC_API_URL` | Client | REST base URL — leave unset to use same-origin `/api` proxy |
+| `NEXT_PUBLIC_BACKEND_WS_URL` | Client | WebSocket base URL — **required on Vercel** (no WS proxy) |
+
+**Vercel dashboard** — set these two for `stock.quanganh.org`:
+```
+BACKEND_API_URL              = https://api.quanganh.org/v1/valuation
+NEXT_PUBLIC_BACKEND_WS_URL   = wss://api.quanganh.org/v1/valuation
+```
+
+**Local dev** — copy `.env.example` to `.env.local` and adjust:
+```bash
+cp .env.example .env.local
+# then edit BACKEND_API_URL_LOCAL if Flask runs on a different port
+```
