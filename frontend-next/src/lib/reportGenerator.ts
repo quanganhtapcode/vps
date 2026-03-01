@@ -237,10 +237,11 @@ export class ReportGenerator {
         sheet.getCell('A17').font = { italic: true, color: { argb: '92400E' }, size: 9 };
 
         const a = assumptions ?? {};
-        const growthHigh = a.growthRate ?? a.growth_rate ?? 0.15;
-        const growthTerm = a.terminalGrowthRate ?? a.terminal_growth_rate ?? 0.03;
-        const ke = a.ke ?? a.costOfEquity ?? a.discount_rate ?? 0.12;
-        const wacc = a.wacc ?? a.WACC ?? ke;
+        // ValuationTab sends percentages (e.g. 8, 3, 10.5, 12) — divide by 100
+        const growthHigh = a.revenueGrowth  != null ? a.revenueGrowth  / 100 : (a.growthRate  ?? a.growth_rate  ?? 0.08);
+        const growthTerm = a.terminalGrowth != null ? a.terminalGrowth / 100 : (a.terminalGrowthRate ?? a.terminal_growth_rate ?? 0.03);
+        const ke         = a.requiredReturn != null ? a.requiredReturn / 100 : (a.ke ?? a.costOfEquity ?? a.discount_rate ?? 0.12);
+        const wacc       = a.wacc           != null ? a.wacc           / 100 : (a.WACC != null ? a.WACC / 100 : ke);
 
         const inputFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FEF9C3' } };
 
@@ -257,10 +258,15 @@ export class ReportGenerator {
 
         // ── Comparable Multiples ──────────────────────────────────────────
         sectionHeader(sheet, 24, '  COMPARABLE VALUATION MULTIPLES', 5);
-        const peDetails = valuationResults.details?.justified_pe ?? {};
-        const pbDetails = valuationResults.details?.justified_pb ?? {};
-        setAssumption(I.peMultiple, 'P/E Multiple Used', peDetails.ratio ?? a.peRatio ?? 15, '0.00', 'Justified or sector median');
-        setAssumption(I.pbMultiple, 'P/B Multiple Used', pbDetails.ratio ?? a.pbRatio ?? 2, '0.00', 'Justified or sector median');
+        // Derive P/E and P/B multiples from backend fair values and base metrics
+        const peVal = valuationResults?.valuations?.justified_pe ?? 0;
+        const pbVal = valuationResults?.valuations?.justified_pb ?? 0;
+        const sdEps  = stockData?.eps_ttm ?? stockData?.eps ?? 0;
+        const sdBvps = stockData?.bvps ?? stockData?.book_value ?? 0;
+        const peMultipleDerived = (peVal > 0 && sdEps > 0) ? peVal / sdEps : (a.peRatio ?? 15);
+        const pbMultipleDerived = (pbVal > 0 && sdBvps > 0) ? pbVal / sdBvps : (a.pbRatio ?? 2);
+        setAssumption(I.peMultiple, 'P/E Multiple Used', peMultipleDerived, '0.00', 'Justified or sector median');
+        setAssumption(I.pbMultiple, 'P/B Multiple Used', pbMultipleDerived, '0.00', 'Justified or sector median');
 
         // ── FCFE Inputs ───────────────────────────────────────────────────
         sectionHeader(sheet, 30, '  FCFE RAW INPUTS (from latest financial statements)', 5);
@@ -268,8 +274,8 @@ export class ReportGenerator {
         sheet.getCell('A31').value = 'Base FCFE = Net Income + Depreciation − ΔWorking Capital − CapEx + Net Borrowing';
         sheet.getCell('A31').font = { italic: true, color: { argb: '475569' }, size: 9 };
 
-        const fi = valuationResults.details?.fcfe_details?.inputs
-            ?? valuationResults.details?.fcfe?.inputs ?? {};
+        const fi = valuationResults.fcfe_details?.inputs
+            ?? valuationResults.fcfe?.inputs ?? {};
 
         set(I.fcfe_netIncome, 'Net Income (VND)', fi.netIncome ?? 0, '#,##0');
         set(I.fcfe_depreciation, 'Depreciation & Amortisation (VND)', fi.depreciation ?? 0, '#,##0');
@@ -283,8 +289,8 @@ export class ReportGenerator {
         sheet.getCell('A41').value = 'Base FCFF = Net Income + Interest×(1−t) + Depreciation − ΔWorking Capital − CapEx';
         sheet.getCell('A41').font = { italic: true, color: { argb: '475569' }, size: 9 };
 
-        const ffi = valuationResults.details?.fcff_details?.inputs
-            ?? valuationResults.details?.fcff?.inputs ?? {};
+        const ffi = valuationResults.fcff_details?.inputs
+            ?? valuationResults.fcff?.inputs ?? {};
 
         set(I.fcff_netIncome, 'Net Income (VND)', ffi.netIncome ?? 0, '#,##0');
         set(I.fcff_interestAfterTax, 'Interest × (1 − Tax) (VND)', ffi.interestAfterTax ?? 0, '#,##0');
@@ -345,8 +351,9 @@ export class ReportGenerator {
      * Shared DCF builder for both FCFE (Ke) and FCFF (WACC) models.
      * All calculation rows use Excel formula strings – no pre-computed JS values.
      */
-    private buildDCFSheet(sheet: ExcelJS.Worksheet, type: 'FCFE' | 'FCFF', _valuationResults: any) {
+    private buildDCFSheet(sheet: ExcelJS.Worksheet, type: 'FCFE' | 'FCFF', valuationResults: any) {
         const isFCFE = type === 'FCFE';
+        const detailsData = isFCFE ? valuationResults?.fcfe_details : valuationResults?.fcff_details;
         const rateRow = isFCFE ? I.ke : I.wacc;
         const niRow = isFCFE ? I.fcfe_netIncome : I.fcff_netIncome;
         const depRow = isFCFE ? I.fcfe_depreciation : I.fcff_depreciation;
@@ -428,7 +435,8 @@ export class ReportGenerator {
         sheet.getCell(r, 1).value = `Base ${type} (Year 0)`;
         sheet.getCell(r, 1).font = { bold: true };
         const baseCell = sheet.getCell(r, 2);
-        baseCell.value = { formula: baseFml };
+        const baseCachedResult = detailsData?.baseFCFE ?? detailsData?.baseFCFF ?? undefined;
+        baseCell.value = baseCachedResult != null ? { formula: baseFml, result: baseCachedResult } : { formula: baseFml };
         baseCell.numFmt = '#,##0';
         baseCell.font = { bold: true };
         baseCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
@@ -583,7 +591,12 @@ export class ReportGenerator {
         sheet.getCell(r, 1).value = `★  INTRINSIC VALUE — ${type} (VND per share)`;
         sheet.getCell(r, 1).font = { bold: true, size: 12, color: { argb: ACCENT } };
         const intrinsicCell = sheet.getCell(r, 2);
-        intrinsicCell.value = { formula: `=B${sumPVRow}+B${pvTvRefRow}` };
+        const intrinsicCachedResult = isFCFE
+            ? valuationResults?.valuations?.fcfe ?? detailsData?.shareValue ?? undefined
+            : valuationResults?.valuations?.fcff ?? detailsData?.shareValue ?? undefined;
+        intrinsicCell.value = intrinsicCachedResult != null
+            ? { formula: `=B${sumPVRow}+B${pvTvRefRow}`, result: intrinsicCachedResult }
+            : { formula: `=B${sumPVRow}+B${pvTvRefRow}` };
         intrinsicCell.numFmt = '#,##0';
         intrinsicCell.font = { bold: true, size: 13, color: { argb: ACCENT } };
         intrinsicCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
@@ -631,7 +644,7 @@ export class ReportGenerator {
      * Shared builder for P/E and P/B sheets + sensitivity table.
      * Fair value cell is always at B9 (used by Summary cross-sheet formula).
      */
-    private buildMultipleSheet(sheet: ExcelJS.Worksheet, type: 'PE' | 'PB', _valuationResults: any) {
+    private buildMultipleSheet(sheet: ExcelJS.Worksheet, type: 'PE' | 'PB', valuationResults: any) {
         const isPE = type === 'PE';
         const baseMetricRow = isPE ? I.eps : I.bvps;
         const multipleRow = isPE ? I.peMultiple : I.pbMultiple;
@@ -684,7 +697,12 @@ export class ReportGenerator {
         sheet.getCell(9, 1).value = `★  FAIR VALUE — ${label} (VND per share)`;
         sheet.getCell(9, 1).font = { bold: true, size: 12, color: { argb: ACCENT } };
         const fairCell = sheet.getCell(9, 2);
-        fairCell.value = { formula: `=B${epsRow}*B${multRow}` };
+        const fairCachedResult = isPE
+            ? valuationResults?.valuations?.justified_pe ?? undefined
+            : valuationResults?.valuations?.justified_pb ?? undefined;
+        fairCell.value = fairCachedResult != null
+            ? { formula: `=B${epsRow}*B${multRow}`, result: fairCachedResult }
+            : { formula: `=B${epsRow}*B${multRow}` };
         fairCell.numFmt = '#,##0';
         fairCell.font = { bold: true, size: 13, color: { argb: ACCENT } };
         fairCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
@@ -768,8 +786,8 @@ export class ReportGenerator {
     private createSummarySheet(
         sheet: ExcelJS.Worksheet,
         stockData: any,
-        _valuationResults: any,
-        _modelWeights: any,
+        valuationResults: any,
+        modelWeights: any,
         symbol: string
     ) {
         sheet.mergeCells('A1:F1');
@@ -880,7 +898,10 @@ export class ReportGenerator {
         sheet.getCell(r, 1).font = { bold: true, size: 12, color: { argb: ACCENT } };
 
         const wavgCell = sheet.getCell(r, 2);
-        wavgCell.value = { formula: `=SUM(D${modelRowStart}:D${r - 2})` };
+        const wavgCachedResult = valuationResults?.valuations?.weighted_average ?? undefined;
+        wavgCell.value = wavgCachedResult != null
+            ? { formula: `=SUM(D${modelRowStart}:D${r - 2})`, result: wavgCachedResult }
+            : { formula: `=SUM(D${modelRowStart}:D${r - 2})` };
         wavgCell.numFmt = '#,##0';
         wavgCell.font = { bold: true, size: 13, color: { argb: ACCENT } };
         wavgCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
