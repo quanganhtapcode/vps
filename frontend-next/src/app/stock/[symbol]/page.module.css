@@ -209,6 +209,12 @@
     contain: layout;
 }
 
+/* When mainContent grid is nested inside mainContentFull (Overview tab),
+   avoid double top margin */
+.mainContentFull > .mainContent {
+    margin-top: 0;
+}
+
 .leftColumn {
     display: flex;
     flex-direction: column;
