@@ -1,58 +1,259 @@
-# Hướng dẫn Vận hành Tự động (VPS)
+# Hướng dẫn Vận hành VPS
 
-Hệ thống đã được thiết lập để tự động cập nhật dữ liệu báo cáo tài chính hàng ngày trên VPS.
+## 1. Lịch chạy hàng ngày
 
-### 1. Cơ chế hoạt động
-- **Script trung tâm**: `run_pipeline.py`
-- **Tần suất**: Chạy vào **18:00 (Giờ VN)** hàng ngày (thông qua `stock-fetch.timer`).
-- **Luồng xử lý**:
-    1. **Kiểm tra thông minh (Smart Update)**: Script sẽ so sánh dữ liệu trong database. Nếu dữ liệu của một mã cổ phiếu đã được cập nhật trong vòng **30 ngày** qua, nó sẽ **tự động Skip** để tiết kiệm API quota và thời gian.
-    2. **Cập nhật BCTC**: Nếu dữ liệu cũ hơn 30 ngày hoặc thiếu kỳ mới, nó sẽ gọi VCI API để tải Bảng cân đối, Kết quả kinh doanh, Lưu chuyển tiền tệ và Chỉ số tài chính.
-    3. **Phân loại Ngành**: Cập nhật bảng `stock_industry` để phục vụ tính năng so sánh định giá theo ngành (Sector Peers Analysis).
-    4. **Đồng bộ hóa**: Tự động đồng bộ sang bảng `overview` để đảm bảo hiển thị trên UI chính xác.
-    5. **Dọn dẹp**: Tự động dọn dẹp các tệp backup dư thừa.
+| Schedule | Loại | Script | DB output |
+|---|---|---|---|
+| Mỗi 5 phút | crontab | `fetch_vci_screener.py` | `vci_screening.sqlite` |
+| Mỗi 5 phút | crontab | `fetch_vci_news.py` | `vci_ai_news.sqlite` |
+| Mỗi 15 phút | crontab | `fetch_vci.py` | `index_history.sqlite` |
+| Mỗi 15 phút | crontab | `fetch_vci_standouts.py` | `vci_ai_standouts.sqlite` |
+| Mỗi 30 phút | crontab | `telegram_uptime_report.sh` | `telegram_uptime.log` |
+| **18:00 hàng ngày** | systemd | `run_pipeline.py` | `vietnam_stocks.db` |
+| Chủ nhật 18:00 | systemd | `run_pipeline.py` (thêm company info) | `vietnam_stocks.db` |
+| Chủ nhật 03:00 | crontab | `backup_vci_screening.py` | backups/ |
 
-### 2. Cách kiểm tra trạng thái
-Bạn có thể kiểm tra xem hệ thống có đang chạy hay không bằng các lệnh sau trên VPS:
+**Cơ chế smart-skip**: nếu BCTC của 1 mã đã được cập nhật trong 30 ngày qua, pipeline tự bỏ qua để tiết kiệm API quota.
+
+---
+
+## 2. Database duy nhất
+
+Toàn bộ hệ thống dùng **một file DB duy nhất**:
+
+```
+/var/www/valuation/vietnam_stocks.db   (~1.6 GB)
+```
+
+Tất cả 3 biến môi trường đều trỏ về file này:
+- `VIETNAM_STOCK_DB_PATH` (trong `/var/www/valuation/.env`)
+- `STOCKS_DB_PATH` (trong `/var/www/valuation/.env`)
+- `VSW_DB_PATH` (trong `/var/www/valuation/db_updater/.env`)
+
+**Nguồn gốc**: snapshot `vietnam_stocks_liquidity_fixed_2026-02-18.db` từ GitHub Release [`v2026.02.18`](https://github.com/Thanhtran-165/baocaotaichinh-/releases/tag/v2026.02.18), `PRAGMA integrity_check: ok`.
+
+**Bảng thật** (do db_updater viết): `stocks`, `company_overview`, `stock_exchange`, `stock_industry`, `financial_ratios`, `income_statement`, `balance_sheet`, `cash_flow_statement`
+
+**Views tương thích** (do `scripts/create_compat_views.py` tạo, chạy sau mỗi pipeline):
+| View | Mục đích |
+|---|---|
+| `overview` | Tổng hợp thông tin mã chứng khoán (1730 rows) |
+| `ratio_wide` | Lịch sử tỷ số tài chính theo kỳ (73K rows) |
+| `company` | Thông tin công ty, ngành, sàn (1730 rows) |
+| `fin_stmt` | BCTC thu nhập dạng JSON cho revenue-profit API (180K rows) |
+
+---
+
+## 3. Pipeline daily — luồng xử lý (`run_pipeline.py`)
+
+```
+Bước 1: db_updater fetch BCTC hàng ngày (balance_sheet, income, cashflow, ratios)
+         → smart-skip nếu mã đã update trong 30 ngày
+Bước 2: (Chủ nhật only) db_updater update thông tin công ty
+Bước 3: scripts/create_compat_views.py — refresh tất cả compatibility views
+```
+
+Delay mặc định giữa từng mã: `FETCH_DELAY_SECONDS=2.0` (set trong service file hoặc `.env`).
+Không giảm xuống dưới 1s để tránh rate limit VCI API.
+
+---
+
+## 4. Kiểm tra trạng thái VPS
 
 ```bash
-# Xem trạng thái của timer (xem khi nào sẽ chạy lần tới)
+# Timer sẽ chạy lúc nào tiếp theo?
 systemctl status stock-fetch.timer
 
-# Xem nhật ký (logs) thực tế của quá trình cập nhật
-journalctl -u stock-fetch.service -f
+# Xem log lần chạy cuối
+journalctl -u stock-fetch.service --no-pager -n 50
 
-# Xem file log chi tiết của Pipeline
+# Xem pipeline.log đầy đủ
 tail -f /var/www/valuation/logs/pipeline.log
+
+# Health check API
+curl -s http://localhost:8000/health | python3 -m json.tool
+
+# Crontab hiện tại
+crontab -l
 ```
 
-### 3. Cách chạy thủ công ngay lập tức
-Nếu bạn muốn buộc hệ thống cập nhật ngay bây giờ (không đợi đến 18:00):
+---
+
+## 5. Kiểm tra API (test nhanh)
 
 ```bash
-# Chạy thông qua systemd (khuyên dùng để giữ history)
-systemctl start stock-fetch.service
-
-# Hoặc chạy trực tiếp script
-/var/www/valuation/.venv/bin/python3 /var/www/valuation/run_pipeline.py
+# Kiểm tra toàn bộ endpoints chính (chạy trên VPS)
+BASE="http://localhost:8000"
+for ep in /health \
+  "/api/stock/VCB" "/api/current-price/VCB" "/api/tickers" \
+  "/api/market/vci-indices" "/api/market/news" "/api/market/index-history" \
+  "/api/market/top-movers" "/api/market/gold" "/api/market/prices"; do
+  status=$(curl -s -o /dev/null -w "%{http_code}" "$BASE$ep")
+  echo "$status  $ep"
+done
 ```
 
-### 4. Lưu ý về giới hạn (Rate Limits)
-- Hệ thống sử dụng **30 requests/phút** (rất an toàn cho VCI).
-- Mỗi stock mất khoảng 8s-30s để hoàn tất (nếu không skip).
-- Việc quét toàn bộ 1700 mã sẽ diễn ra rất nhanh nếu đa số các mã đã có dữ liệu mới.
+Tất cả phải trả về `200`. Các route deprecated trả về `410`.
 
-### 5. Realtime WebSocket (VCI) - vận hành chuẩn
-- Kiến trúc hiện tại là đúng: **VPS giữ kết nối upstream tới VCI**, sau đó broadcast lại cho client qua endpoint nội bộ (`/ws/market/indices`).
-- Để giảm rủi ro bị chặn IP, nên giữ **một backend instance realtime chính** (tránh nhiều worker cùng mở nhiều upstream Socket.IO tới VCI).
-- Đã có cơ chế tự bảo vệ trong backend:
-    - reconnect theo **exponential backoff + jitter**
-    - REST fallback poll có **jitter** để tránh pattern request cứng
-- Có thể tinh chỉnh qua biến môi trường:
-    - `VCI_INDEX_REST_POLL_IDLE_SECONDS` (mặc định `3`)
-    - `VCI_INDEX_REST_POLL_JITTER_SECONDS` (mặc định `0.6`)
-    - `VCI_INDEX_RECENT_WS_SECONDS` (mặc định `2.5`)
-    - `VCI_INDEX_WS_CONNECT_TIMEOUT_SECONDS` (mặc định `8`)
-    - `VCI_INDEX_WS_BACKOFF_MIN_SECONDS` (mặc định `2`)
-    - `VCI_INDEX_WS_BACKOFF_MAX_SECONDS` (mặc định `60`)
-    - `VCI_INDEX_WS_BACKOFF_JITTER_SECONDS` (mặc định `0.8`)
+---
+
+## 6. Chạy thủ công (manual trigger)
+
+```bash
+# Qua systemd (khuyên dùng — giữ history trong journalctl)
+systemctl start stock-fetch.service
+
+# Hoặc trực tiếp (cần load .env trước)
+source /var/www/valuation/.env
+/var/www/valuation/.venv/bin/python3 /var/www/valuation/run_pipeline.py
+
+# Chỉ refresh views (không fetch API)
+source /var/www/valuation/.env
+/var/www/valuation/.venv/bin/python3 /var/www/valuation/scripts/create_compat_views.py
+```
+
+---
+
+## 7. Biến môi trường quan trọng
+
+File `/var/www/valuation/.env` phải chứa:
+
+```env
+VNSTOCK_API_KEY=vnstock_xxxxxxxxxxxxxxxxxxxxxxxx
+VNSTOCK_API_KEYS=key1,key2          # Tuỳ chọn: nhiều key để rotation
+VIETNAM_STOCK_DB_PATH=/var/www/valuation/vietnam_stocks.db
+STOCKS_DB_PATH=/var/www/valuation/vietnam_stocks.db
+```
+
+File `/var/www/valuation/db_updater/.env` phải chứa:
+
+```env
+VSW_DB_PATH=/var/www/valuation/vietnam_stocks.db
+```
+
+Service file `/etc/systemd/system/stock-fetch.service` phải có dòng:
+
+```ini
+EnvironmentFile=/var/www/valuation/.env
+```
+
+> **Lưu ý**: Nếu thiếu `EnvironmentFile`, pipeline sẽ chạy ở chế độ "Guest"
+> (20 req/phút) và crash rate-limit chỉ sau vài giây.
+
+```bash
+systemctl daemon-reload
+systemctl show stock-fetch.service | grep -E 'EnvironmentFile|VNSTOCK'
+```
+
+---
+
+## 8. Cài đặt lần đầu trên VPS mới
+
+```bash
+# 1. Cài systemd service + timer
+cd /var/www/valuation/automation
+bash setup_systemd.sh
+
+# 2. Cài crontab (screener, news, standouts, index history, telegram)
+bash setup_cron_vps.sh
+
+# 3. Tạo file Telegram credentials
+printf 'TELEGRAM_BOT_TOKEN=<token>\nTELEGRAM_CHAT_ID=<chat_id>\n' \
+  > /var/www/valuation/.telegram_uptime.env
+chmod 600 /var/www/valuation/.telegram_uptime.env
+
+# 4. Test Telegram
+bash /var/www/valuation/scripts/telegram_uptime_report.sh
+
+# 5. Tải DB từ GitHub Release (nếu chưa có)
+wget -O /var/www/valuation/vietnam_stocks.db \
+  "https://github.com/Thanhtran-165/baocaotaichinh-/releases/download/v2026.02.18/vietnam_stocks_liquidity_fixed_2026-02-18.db"
+
+# 6. Tạo compatibility views
+source /var/www/valuation/.env
+/var/www/valuation/.venv/bin/python3 /var/www/valuation/scripts/create_compat_views.py
+
+# 7. Chạy thử pipeline và theo dõi
+systemctl start stock-fetch.service
+journalctl -u stock-fetch.service -f
+```
+
+---
+
+## 9. Telegram Uptime Monitor
+
+Script: `scripts/telegram_uptime_report.sh`
+Cron: `*/30 * * * *` (mỗi 30 phút)
+Credentials: `/var/www/valuation/.telegram_uptime.env`
+
+Nội dung báo cáo mỗi 30 phút:
+- Hostname, thời gian, uptime hệ thống
+- Load average (1/5/15 phút)
+- Memory & disk usage
+- Trạng thái service `valuation`
+- Tóm tắt health check API `/health`
+
+Chạy thủ công để test:
+```bash
+bash /var/www/valuation/scripts/telegram_uptime_report.sh
+```
+
+---
+
+## 10. Troubleshooting
+
+### Rate limit exceeded (vnstock "Guest" 20 req/phút)
+**Nguyên nhân**: `EnvironmentFile` chưa có trong service, hoặc `.env` thiếu `VNSTOCK_API_KEY`.
+**Fix**:
+```bash
+grep EnvironmentFile /etc/systemd/system/stock-fetch.service
+# Nếu không có dòng trên, thêm vào và reload:
+sed -i '/^ExecStart=/i EnvironmentFile=/var/www/valuation/.env' /etc/systemd/system/stock-fetch.service
+systemctl daemon-reload
+```
+
+### Pipeline crash sau vài phút
+Xem log chi tiết:
+```bash
+journalctl -u stock-fetch.service --no-pager -n 100
+```
+
+### DB không được update nhiều ngày
+```bash
+# Kiểm tra trigger cuối cùng
+systemctl list-timers stock-fetch.timer --no-pager
+# Persistent=true: nếu VPS bị tắt, sẽ chạy bù ngay khi bật lại
+```
+
+### Backend trả về lỗi "no such table: company" hoặc "no such table: overview"
+Views bị mất (sau khi replace DB hoặc WAL checkpoint). Re-tạo:
+```bash
+source /var/www/valuation/.env
+/var/www/valuation/.venv/bin/python3 /var/www/valuation/scripts/create_compat_views.py
+systemctl restart valuation
+```
+
+### Crontab không chạy (log file có đuôi `.log\r`)
+```bash
+# Kiểm tra CRLF trong crontab
+crontab -l | cat -A | grep '\^M'
+# Nếu có: xoá CRLF và reinstall
+crontab -l | tr -d '\r' | crontab -
+# Hoặc reinstall đúng:
+bash /var/www/valuation/automation/setup_cron_vps.sh
+```
+
+---
+
+## 11. Realtime WebSocket
+
+Biến môi trường tuỳ chỉnh WebSocket kết nối VCI:
+
+| Biến | Default | Mô tả |
+|---|---|---|
+| `VCI_INDEX_REST_POLL_IDLE_SECONDS` | `3` | Polling interval khi WS idle |
+| `VCI_INDEX_RECENT_WS_SECONDS` | `2.5` | Ngưỡng coi WS data là fresh |
+| `VCI_INDEX_WS_BACKOFF_MIN_SECONDS` | `2` | Reconnect backoff tối thiểu |
+| `VCI_INDEX_WS_BACKOFF_MAX_SECONDS` | `60` | Reconnect backoff tối đa |
+
+WebSocket endpoint: `ws://api.quanganh.org/v1/valuation/ws/market/indices`

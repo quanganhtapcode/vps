@@ -184,17 +184,10 @@ class StockDataProvider:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='stock_industry'")
-            if cursor.fetchone():
-                cursor.execute("SELECT icb_name3, icb_name2 FROM stock_industry WHERE ticker = ?", (symbol_upper,))
-                row = cursor.fetchone()
-                res = (row[0] or row[1]) if row else "Unknown"
-            else:
-                cursor.execute("SELECT industry FROM overview WHERE symbol = ?", (symbol_upper,))
-                row = cursor.fetchone()
-                res = row[0] if row else "Unknown"
+            cursor.execute("SELECT industry FROM overview WHERE symbol = ?", (symbol_upper,))
+            row = cursor.fetchone()
             conn.close()
-            return res
+            return row[0] if row else "Unknown"
         except:
             return "Unknown"
 
@@ -207,11 +200,7 @@ class StockDataProvider:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='stocks'")
-            if cursor.fetchone():
-                cursor.execute("SELECT organ_name FROM stocks WHERE ticker = ?", (symbol_upper,))
-            else:
-                cursor.execute("SELECT name FROM company WHERE symbol = ?", (symbol_upper,))
+            cursor.execute("SELECT name FROM company WHERE symbol = ?", (symbol_upper,))
             row = cursor.fetchone()
             conn.close()
             return row[0] if row else symbol_upper
@@ -225,11 +214,7 @@ class StockDataProvider:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='stocks'")
-            if cursor.fetchone():
-                cursor.execute("SELECT ticker FROM stocks")
-            else:
-                cursor.execute("SELECT symbol FROM overview")
+            cursor.execute("SELECT symbol FROM overview")
             symbols = [row[0].upper() for row in cursor.fetchall()]
             conn.close()
             return symbols
@@ -289,197 +274,14 @@ class StockDataProvider:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # Detect DB schema
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='financial_ratios'")
-            is_new_db = cursor.fetchone() is not None
-
-            if is_new_db:
-                # Query new Vietnam_stocks.db
-                data = {'data_period': period, 'data_source': 'SQLite'}
-                
-                # 1. Company Info
-                cursor.execute("SELECT organ_name, organ_short_name FROM stocks WHERE ticker=?", (symbol,))
-                company = cursor.fetchone()
-                if company:
-                    data['name'] = company['organ_name']
-                    data['symbol'] = symbol
-                
-                cursor.execute("SELECT icb_name2, icb_name3 FROM stock_industry WHERE ticker=?", (symbol,))
-                industry = cursor.fetchone()
-                if industry:
-                    data['sector'] = industry['icb_name3'] or industry['icb_name2']
-                    data['industry'] = data['sector']
-                
-                cursor.execute("SELECT exchange FROM stock_exchange WHERE ticker=?", (symbol,))
-                exchange = cursor.fetchone()
-                if exchange:
-                    data['exchange'] = exchange['exchange']
-                
-                cursor.execute("SELECT company_profile, history FROM company_overview WHERE symbol=?", (symbol,))
-                overview = cursor.fetchone()
-                if overview:
-                    desc = overview['company_profile'] or overview['history'] or "No description available."
-                    data['overview'] = {'description': desc}
-                else:
-                    data['overview'] = {'description': "No description available."}
-                
-                # 2. Latest Financial Ratios - Filtered by period (Year/Quarter)
-                if period == 'year':
-                    cursor.execute("SELECT * FROM financial_ratios WHERE symbol=? AND (quarter IS NULL OR quarter = 0) ORDER BY year DESC LIMIT 1", (symbol,))
-                else:
-                    cursor.execute("SELECT * FROM financial_ratios WHERE symbol=? AND quarter > 0 ORDER BY year DESC, quarter DESC LIMIT 1", (symbol,))
-                
-                ratios = cursor.fetchone()
-                if ratios:
-                    data['success'] = True
-                    data['latest_year'] = ratios['year']
-                    data['latest_quarter'] = ratios['quarter']
-                    data['pe'] = ratios['price_to_earnings']
-                    data['pb'] = ratios['price_to_book']
-                    data['ps'] = ratios['price_to_sales']
-                    data['eps_ttm'] = ratios['eps_vnd']
-                    data['bvps'] = ratios['bvps_vnd']
-                    data['roe'] = ratios['roe']
-                    data['roa'] = ratios['roa']
-                    data['roic'] = ratios['roic']
-                    data['net_profit_margin'] = ratios['net_profit_margin']
-                    data['gross_margin'] = ratios['gross_margin']
-                    data['debt_to_equity'] = ratios['debt_to_equity']
-                    data['current_ratio'] = ratios['current_ratio']
-                    data['quick_ratio'] = ratios['quick_ratio']
-                    data['cash_ratio'] = ratios['cash_ratio']
-                    data['market_cap'] = ratios['market_cap_billions']
-                    data['shares_outstanding'] = ratios['shares_outstanding_millions'] 
-                
-                # 3. Apply overrides from VCI screening
-                from backend.db_path import resolve_vci_screening_db_path
-                screening_db_path = resolve_vci_screening_db_path()
-                try:
-                    cursor.execute(f"ATTACH DATABASE '{screening_db_path}' AS screening")
-                    cursor.execute("SELECT ttmPe, ttmPb, ttmRoe, netMargin, npatmiGrowthYoyQm1 FROM screening.screening_data WHERE ticker=?", (symbol,))
-                    live_row = cursor.fetchone()
-                    if live_row:
-                        if live_row['ttmPe'] is not None: data['pe'] = live_row['ttmPe']
-                        if live_row['ttmPb'] is not None: data['pb'] = live_row['ttmPb']
-                        if live_row['ttmRoe'] is not None: data['roe'] = live_row['ttmRoe']
-                        if live_row['netMargin'] is not None: data['net_profit_margin'] = live_row['netMargin']
-                        if live_row['npatmiGrowthYoyQm1'] is not None: data['profit_growth'] = live_row['npatmiGrowthYoyQm1']
-                    cursor.execute("DETACH DATABASE screening")
-                except Exception as e:
-                    logger.warning(f"Could not attach screening DB in _get_data_from_db: {e}")
-                
-                # 4. Populate historical chart series
-                period_filter = period if period in ('year', 'quarter') else 'year'
-                
-                # Default arrays
-                series_map = {
-                    'price_to_earnings': 'pe_ratio_data',
-                    'price_to_book': 'pb_ratio_data',
-                    'price_to_sales': 'ps_ratio_data',
-                    'roe': 'roe_data',
-                    'roa': 'roa_data',
-                    'debt_to_equity': 'debt_to_equity_data',
-                    'current_ratio': 'current_ratio_data',
-                    'quick_ratio': 'quick_ratio_data',
-                }
-                data.setdefault('years', [])
-                data.setdefault('revenue_data', [])
-                data.setdefault('profit_data', [])
-                data.setdefault('nim_data', [])
-                for out_key in series_map.values():
-                    data.setdefault(out_key, [])
-                    
-                cursor.execute(f"""
-                    SELECT year, quarter, period, {', '.join(series_map.keys())}
-                    FROM financial_ratios 
-                    WHERE symbol=? 
-                    ORDER BY year ASC, quarter ASC
-                """, (symbol,))
-                
-                rows = cursor.fetchall()
-                if rows:
-                    if period_filter == 'quarter':
-                        # Keep only quarterly if both exist
-                        q_rows = [r for r in rows if r['quarter'] is not None and int(r['quarter']) > 0]
-                        if q_rows: rows = q_rows
-                    else:
-                        y_rows = [r for r in rows if r['quarter'] is None or int(r['quarter']) == 0]
-                        if y_rows: rows = y_rows
-                        
-                    rows = rows[-12:]
-                    years = []
-                    series = {out_key: [] for out_key in series_map.values()}
-                    for r in rows:
-                        y = r['year']
-                        q = r['quarter']
-                        label = f"{y} Q{q}" if q and int(q) > 0 else str(y)
-                        years.append(label)
-                        for col, out_key in series_map.items():
-                            val = r[col]
-                            series[out_key].append(float(val) if val is not None else 0.0)
-                            
-                    data['years'] = years
-                    for out_key, vals in series.items():
-                        data[out_key] = vals
-
-                cursor.execute(f"""
-                    SELECT year, quarter, revenue, net_profit_parent_company
-                    FROM income_statement
-                    WHERE symbol=? 
-                    ORDER BY year ASC, quarter ASC
-                """, (symbol,))
-                inc_rows = cursor.fetchall()
-                if inc_rows:
-                    if period_filter == 'quarter':
-                        inc_rows = [r for r in inc_rows if r['quarter'] is not None and int(r['quarter']) > 0]
-                    else:
-                        inc_rows = [r for r in inc_rows if r['quarter'] is None or int(r['quarter']) == 0]
-                    
-                    inc_rows = inc_rows[-12:]
-                    for r in inc_rows:
-                        val_rev = r['revenue']
-                        val_prof = r['net_profit_parent_company']
-                        data['revenue_data'].append(float(val_rev) if val_rev is not None else 0.0)
-                        data['profit_data'].append(float(val_prof) if val_prof is not None else 0.0)
-
-                conn.close()
-                return data
-
-            # Query old overview table which has pre-calculated metrics
-            from backend.db_path import resolve_vci_screening_db_path
-            screening_db_path = resolve_vci_screening_db_path()
-            try:
-                cursor.execute(f"ATTACH DATABASE '{screening_db_path}' AS screening")
-                cursor.execute("""
-                    SELECT o.*, 
-                           s.ttmPe as live_pe, 
-                           s.ttmPb as live_pb, 
-                           s.ttmRoe as live_roe, 
-                           s.netMargin as live_net_margin, 
-                           s.npatmiGrowthYoyQm1 as live_profit_growth
-                    FROM overview o 
-                    LEFT JOIN screening.screening_data s ON o.symbol = s.ticker
-                    WHERE o.symbol = ?
-                """, (symbol,))
-                row = cursor.fetchone()
-                cursor.execute("DETACH DATABASE screening")
-            except Exception as e:
-                logger.warning(f"Could not attach screening DB in _get_data_from_db: {e}")
-                cursor.execute("SELECT * FROM overview WHERE symbol = ?", (symbol,))
-                row = cursor.fetchone()
+            # Query overview table which has pre-calculated metrics
+            cursor.execute("SELECT * FROM overview WHERE symbol = ?", (symbol,))
+            row = cursor.fetchone()
 
             data = {}
             if row:
                 # Convert row to dict
                 data = dict(row)
-                
-                # Override with live metrics from screening DB if available
-                if data.get('live_pe') is not None: data['pe'] = data['live_pe']
-                if data.get('live_pb') is not None: data['pb'] = data['live_pb']
-                if data.get('live_roe') is not None: data['roe'] = data['live_roe']
-                if data.get('live_net_margin') is not None: data['net_profit_margin'] = data['live_net_margin']
-                if data.get('live_profit_growth') is not None: data['profit_growth'] = data['live_profit_growth']
-                
                 data['success'] = True
                 data['data_period'] = period
                 # Consistent metadata keys with Live API shape
@@ -506,7 +308,7 @@ class StockDataProvider:
                     data['overview'] = {'description': "No description available."}
 
                 # Enrich banking metrics from normalized wide ratio table (if available)
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ratio_wide'")
+                cursor.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name='ratio_wide'")
                 has_ratio_wide = cursor.fetchone() is not None
 
                 if has_ratio_wide:
@@ -754,75 +556,32 @@ class StockDataProvider:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            # Check DB schema
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='financial_ratios'")
-            is_new_db = cursor.fetchone() is not None
-
-            if is_new_db:
-                cursor.execute("SELECT icb_name3, icb_name2 FROM stock_industry WHERE ticker=?", (symbol,))
-                ind_row = cursor.fetchone()
-                industry = ind_row['icb_name3'] or ind_row['icb_name2'] if ind_row else None
-                if not industry:
-                    conn.close()
-                    return []
-                    
-                from backend.db_path import resolve_vci_screening_db_path
-                screening_db_path = resolve_vci_screening_db_path()
-                cursor.execute(f"ATTACH DATABASE '{screening_db_path}' AS screening")
+            # 1. Get industry of the symbol
+            cursor.execute("SELECT industry FROM overview WHERE symbol = ?", (symbol,))
+            row = cursor.fetchone()
+            industry = row['industry'] if row and row['industry'] else None
+            
+            if not industry:
+                # Fallback to metadata/listing
+                industry = self._get_industry_for_symbol(symbol)
                 
-                cursor.execute("""
-                    SELECT s.ticker as symbol, 
-                           s.organ_name as name, 
-                           si.icb_name3 as industry, 
-                           sd.marketPrice as current_price, 
-                           sd.ttmPe as pe, 
-                           sd.ttmPb as pb, 
-                           sd.ttmRoe as roe, 
-                           NULL as roa, 
-                           sd.marketCap as market_cap, 
-                           sd.netMargin as net_profit_margin, 
-                           sd.npatmiGrowthYoyQm1 as profit_growth
-                    FROM stocks s
-                    JOIN stock_industry si ON s.ticker = si.ticker
-                    JOIN screening.screening_data sd ON s.ticker = sd.ticker
-                    WHERE (si.icb_name3 = ? OR si.icb_name2 = ?) AND s.ticker != ?
-                    ORDER BY sd.marketCap DESC
-                    LIMIT 10
-                """, (industry, industry, symbol))
-                peers = [dict(r) for r in cursor.fetchall()]
-                cursor.execute("DETACH DATABASE screening")
+            if not industry or industry == "Unknown":
                 conn.close()
-            else:
-                # 1. Get industry of the symbol
-                cursor.execute("SELECT industry FROM overview WHERE symbol = ?", (symbol,))
-                row = cursor.fetchone()
-                industry = row['industry'] if row and row['industry'] else None
-                
-                if not industry:
-                    industry = self._get_industry_for_symbol(symbol)
-                    
-                if not industry or industry == "Unknown":
-                    conn.close()
-                    return []
-                
-                from backend.db_path import resolve_vci_screening_db_path
-                screening_db_path = resolve_vci_screening_db_path()
-                cursor.execute(f"ATTACH DATABASE '{screening_db_path}' AS screening")
-                
-                cursor.execute("""
-                    SELECT s.symbol, c.name, s.industry, s.current_price, s.pe, s.pb, s.roe, s.roa, s.market_cap, s.net_profit_margin, 
-                           COALESCE(sd.npatmiGrowthYoyQm1, s.profit_growth) as profit_growth
-                    FROM overview s
-                    LEFT JOIN company c ON s.symbol = c.symbol
-                    LEFT JOIN screening.screening_data sd ON sd.ticker = s.symbol
-                    WHERE s.industry = ? AND s.symbol != ?
-                    ORDER BY s.market_cap DESC
-                    LIMIT 10
-                """, (industry, symbol))
-                
-                peers = [dict(r) for r in cursor.fetchall()]
-                cursor.execute("DETACH DATABASE screening")
-                conn.close()
+                return []
+            
+            # 2. Get top 10 stocks in same industry by market cap
+            # Exclude current symbol
+            cursor.execute("""
+                SELECT s.symbol, c.name, s.industry, s.current_price, s.pe, s.pb, s.roe, s.roa, s.market_cap, s.net_profit_margin, s.profit_growth
+                FROM overview s
+                LEFT JOIN company c ON s.symbol = c.symbol
+                WHERE s.industry = ? AND s.symbol != ?
+                ORDER BY s.market_cap DESC
+                LIMIT 10
+            """, (industry, symbol))
+            
+            peers = [dict(r) for r in cursor.fetchall()]
+            conn.close()
             
             # Normalize keys to camelCase for frontend
             result = []
@@ -1881,12 +1640,12 @@ class StockDataProvider:
             
             # Sub-tasks
             # These are properties or methods in vnstock
-            def get_ratio_summary(): return stock.company.ratio_summary()
+            def get_ratio_summary(): return stock.company.ratio_summary
             def get_ratio_period(): return stock.finance.ratio(period, lang='en', dropna=True)
             def get_income(): return stock.finance.income_statement(period, lang='en', dropna=True)
             def get_balance(): return stock.finance.balance_sheet(period, lang='en', dropna=True)
             def get_cashflow(): return stock.finance.cash_flow(period, lang='en', dropna=True)
-            def get_overview(): return stock.company.overview()
+            def get_overview(): return stock.company.overview
 
             task_list = [
                 ("ratio_summary", get_ratio_summary),
@@ -1927,20 +1686,7 @@ class StockDataProvider:
 
             # B. Process period-specific ratios (More accurate for the requested period)
             if results.get("ratio_period") is not None and not results["ratio_period"].empty:
-                rp_df = results["ratio_period"]
-                rp = rp_df.iloc[0]
-
-                # Extract year/quarter from live data if possible
-                year_col = next((c for c in rp_df.columns if "yearReport" in (str(c[1]) if isinstance(c, tuple) else str(c))), None)
-                quarter_col = next((c for c in rp_df.columns if "lengthReport" in (str(c[1]) if isinstance(c, tuple) else str(c))), None)
-                
-                if year_col:
-                    y_val = rp[year_col]
-                    if pd.notna(y_val): financial_data['latest_year'] = int(y_val)
-                if quarter_col:
-                    q_val = rp[quarter_col]
-                    if pd.notna(q_val): financial_data['latest_quarter'] = int(q_val)
-
+                rp = results["ratio_period"].iloc[0]
                 # Extract all MultiIndex or flat keys
                 extract_keys = {
                     'P/E': 'pe', 'P/B': 'pb', 'P/S': 'ps', 

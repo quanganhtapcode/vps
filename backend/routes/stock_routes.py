@@ -459,7 +459,7 @@ def api_historical_chart_data(symbol):
                     conn.row_factory = sqlite3.Row
                     cursor = conn.cursor()
 
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ratio_wide'")
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name='ratio_wide'")
                     has_ratio_wide = cursor.fetchone() is not None
 
                     if has_ratio_wide:
@@ -467,7 +467,7 @@ def api_historical_chart_data(symbol):
                             cursor.execute(
                                 """
                                 SELECT year, quarter, nim, cof
-                                                                FROM ratio_wide
+                                FROM ratio_wide
                                 WHERE symbol = ?
                                   AND period_type = 'quarter'
                                   AND nim IS NOT NULL
@@ -807,7 +807,11 @@ def api_revenue_profit(symbol):
     is_valid, result = validate_stock_symbol(symbol)
     if not is_valid: return jsonify({"error": result}), 400
     symbol = result
-    
+
+    cache_key = f'rev_profit_{symbol}_{period}'
+    cached = _cache_get(cache_key)
+    if cached: return jsonify(cached)
+
     try:
         provider = get_provider()
         db_path = getattr(provider, 'db_path', None)
@@ -817,7 +821,7 @@ def api_revenue_profit(symbol):
 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='fin_stmt'")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name='fin_stmt'")
         has_financial_statements = cursor.fetchone() is not None
 
         rows = []
@@ -911,69 +915,12 @@ def api_revenue_profit(symbol):
             except Exception:
                 continue
 
-        if not periods:
-            try:
-                stock = Vnstock().stock(symbol=symbol, source='VCI')
-                income_df = stock.finance.income_statement(period=period, lang='en', dropna=True)
-                if income_df is None or income_df.empty:
-                    income_df = stock.finance.income_statement(period=period, lang='vn', dropna=True)
-
-                if income_df is not None and not income_df.empty:
-                    year_col = None
-                    quarter_col = None
-                    for col in income_df.columns:
-                        col_text = str(col)
-                        if 'yearReport' in col_text or col_text.lower() == 'year':
-                            year_col = col
-                        if 'lengthReport' in col_text or col_text.lower() == 'quarter':
-                            quarter_col = col
-
-                    if year_col:
-                        sort_cols = [year_col]
-                        sort_dirs = [True]
-                        if period == 'quarter' and quarter_col:
-                            sort_cols.append(quarter_col)
-                            sort_dirs.append(True)
-                        income_df = income_df.sort_values(sort_cols, ascending=sort_dirs)
-
-                    for _, row in income_df.tail(24).iterrows():
-                        row_dict = row.to_dict()
-                        revenue = _pick_metric(
-                            row_dict,
-                            revenue_key_hints,
-                            reject_tokens=['yoy', '%', 'growth', 'margin'],
-                        )
-                        net_profit = _pick_metric(
-                            row_dict,
-                            net_profit_key_hints,
-                            reject_tokens=['yoy', '%', 'growth', 'margin'],
-                        )
-                        net_margin = _pick_metric(row_dict, net_margin_key_hints)
-
-                        if revenue is None:
-                            continue
-
-                        revenue_bn = (revenue / 1_000_000_000) if abs(revenue) > 1_000_000 else revenue
-                        if net_margin is None and net_profit is not None and revenue not in (0, None):
-                            net_margin = (net_profit / revenue) * 100
-
-                        y_raw = row.get(year_col) if year_col is not None else datetime.now().year
-                        q_raw = row.get(quarter_col) if quarter_col is not None else 0
-                        y = int(_safe_float(y_raw) or datetime.now().year)
-                        q = int(_safe_float(q_raw) or 0)
-
-                        periods.append({
-                            "period": f"{y}" if period == 'year' else f"{y} Q{q}",
-                            "revenue": round(revenue_bn, 2),
-                            "netMargin": round(float(net_margin), 2) if net_margin is not None else 0,
-                            "year": y,
-                            "quarter": q,
-                        })
-            except Exception as live_exc:
-                logger.warning(f"Revenue live fallback failed for {symbol}: {live_exc}")
 
         periods.sort(key=lambda item: (item['year'], item.get('quarter', 0)))
-        return jsonify({"periods": periods})
+        result = {"periods": periods}
+        if periods:
+            _cache_set(cache_key, result)
+        return jsonify(result)
     except Exception as ex:
         logger.error(f"Error fetching revenue/profit for {symbol}: {ex}")
         return jsonify({"periods": []})
