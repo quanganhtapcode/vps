@@ -213,7 +213,12 @@ export class ReportGenerator {
         set(5, 'Symbol', symbol);
         set(6, 'Company Name', stockData.companyName || stockData.company_name || symbol);
 
-        const cp = stockData.current_price ?? 0;
+        // Prefer real-time price from valuation result; fall back to stockData fields (with <500 scaling for raw VND in thousands)
+        const rawCp = stockData.current_price ?? stockData.price ?? stockData.close ?? 0;
+        const scaledCp = rawCp > 0 && rawCp < 500 ? rawCp * 1000 : rawCp;
+        const cp = (valuationResults?.market_comparison?.current_price ?? 0) > 0
+            ? valuationResults.market_comparison.current_price
+            : scaledCp;
         const eps = stockData.eps_ttm ?? stockData.eps ?? 0;
         const bvps = stockData.bvps ?? stockData.book_value ?? 0;
 
