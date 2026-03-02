@@ -11,6 +11,7 @@ from backend.extensions import get_provider
 from backend.utils import validate_stock_symbol
 from backend.db_path import resolve_stocks_db_path
 from backend.routes.stock.financial_dashboard import register as register_financial_dashboard_routes
+from backend.routes.stock.missing_routes import register as register_missing_routes
 from vnstock import Vnstock, Quote, Company
 
 stock_bp = Blueprint('stock', __name__)
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Register modular extra routes onto the active monolithic blueprint
 register_financial_dashboard_routes(stock_bp)
+register_missing_routes(stock_bp)
 
 # ===================== IN-MEMORY CACHE =====================
 import time as _time
@@ -210,6 +212,7 @@ def api_price(symbol):
         return jsonify({"success": False, "error": str(exc)}), 500
 
 @stock_bp.route("/stock/batch-price")
+@stock_bp.route("/batch-price")  # alias – frontend calls /api/batch-price
 def api_batch_price():
     """Get real-time prices for multiple symbols at once"""
     provider = get_provider()
@@ -925,7 +928,7 @@ def api_revenue_profit(symbol):
         logger.error(f"Error fetching revenue/profit for {symbol}: {ex}")
         return jsonify({"periods": []})
 
-@stock_bp.route("/valuation/<symbol>", methods=['POST'])
+@stock_bp.route("/valuation/<symbol>", methods=['GET', 'POST'])
 def api_valuation(symbol):
     """
     Calculate valuation based on assumptions.

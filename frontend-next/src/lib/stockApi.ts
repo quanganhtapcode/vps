@@ -374,6 +374,37 @@ export async function calculateValuation(symbol: string, assumptions: any): Prom
     }
 }
 
+/**
+ * Get DCF sensitivity matrix (WACC vs Growth rate grid)
+ */
+export async function fetchValuationSensitivity(symbol: string, params: {
+    baseWacc?: number;
+    baseGrowth?: number;
+    terminalGrowth?: number;
+    projectionYears?: number;
+} = {}): Promise<{
+    success: boolean;
+    wacc_axis: number[];
+    growth_axis: number[];
+    matrix: number[][];
+    eps_used: number;
+    base_wacc: number;
+    base_growth: number;
+} | null> {
+    try {
+        const response = await fetch(`${API_BASE}/valuation/${symbol}/sensitivity`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params),
+        });
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (error) {
+        console.error(`Error fetching valuation sensitivity for ${symbol}:`, error);
+        return null;
+    }
+}
+
 // ==================== EXPORT EXCEL ====================
 
 /**

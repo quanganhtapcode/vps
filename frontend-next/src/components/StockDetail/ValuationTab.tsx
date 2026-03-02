@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { calculateValuation } from '@/lib/stockApi';
+import { calculateValuation, fetchValuationSensitivity } from '@/lib/stockApi';
 import { Card, Title, Text, Metric, Button, Badge, Grid, Col, TextInput, Callout } from '@tremor/react';
 import { RiRefreshLine, RiStackLine, RiMoneyDollarCircleLine, RiBuildingLine, RiBarChartLine, RiBookOpenLine, RiScales3Line, RiErrorWarningFill, RiFileZipLine } from '@remixicon/react';
 import { ReportGenerator } from '@/lib/reportGenerator';
@@ -23,6 +23,9 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
     const [result, setResult] = useState<any>(initialData || null);
     const [manualPrice, setManualPrice] = useState<number>(currentPrice || 0);
     const [userEditedPrice, setUserEditedPrice] = useState<boolean>(false);
+    const [sensitivityData, setSensitivityData] = useState<any>(null);
+    const [sensitivityLoading, setSensitivityLoading] = useState(false);
+    const [showSensitivity, setShowSensitivity] = useState(false);
 
 
 
@@ -338,6 +341,24 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
         }
     }, [symbol, manualPrice, result]); // eslint-disable-line
 
+    const handleLoadSensitivity = async () => {
+        setSensitivityLoading(true);
+        setShowSensitivity(true);
+        try {
+            const data = await fetchValuationSensitivity(symbol, {
+                baseWacc: assumptions.wacc,
+                baseGrowth: assumptions.revenueGrowth,
+                terminalGrowth: assumptions.terminalGrowth,
+                projectionYears: assumptions.projectionYears,
+            });
+            if (data?.success) setSensitivityData(data);
+        } catch (err) {
+            console.error('Sensitivity error:', err);
+        } finally {
+            setSensitivityLoading(false);
+        }
+    };
+
     const formatPrice = (val: number) => {
         if (!val) return '-';
         return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(val);
@@ -575,6 +596,161 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                 </Col>
             </Grid>
 
+
+            {/* ── Individual model breakdown ── */}
+            {result?.valuations && (
+                <Card className="rounded-tremor-default overflow-hidden">
+                    <div className="flex items-center justify-between mb-4">
+                        <Title>Model Breakdown</Title>
+                        <Badge size="sm" color="blue">{Object.values(models).filter(m => m.enabled).length} active models</Badge>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-gray-200 dark:border-gray-800">
+                                    <th className="text-left py-2 pr-4 font-medium text-gray-600 dark:text-gray-400">Model</th>
+                                    <th className="text-right py-2 px-4 font-medium text-gray-600 dark:text-gray-400">Est. Value</th>
+                                    <th className="text-right py-2 px-4 font-medium text-gray-600 dark:text-gray-400">Upside</th>
+                                    <th className="text-right py-2 pl-4 font-medium text-gray-600 dark:text-gray-400">Weight</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(Object.keys(models) as Array<keyof typeof models>).filter(k => models[k].enabled).map(key => {
+                                    const m = models[key];
+                                    const val = result.valuations[key] || 0;
+                                    const up = getUpside(val);
+                                    return (
+                                        <tr key={key} className="border-b border-gray-100 dark:border-gray-900 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-900/50">
+                                            <td className="py-3 pr-4">
+                                                <div className="flex items-center gap-2">
+                                                    <m.icon className="h-4 w-4 text-gray-400" />
+                                                    <span className="font-medium text-gray-800 dark:text-gray-200">{m.name}</span>
+                                                </div>
+                                                <span className="text-xs text-gray-400">{m.desc}</span>
+                                            </td>
+                                            <td className="text-right px-4 font-mono font-semibold text-gray-900 dark:text-gray-100">
+                                                {formatPrice(val)}
+                                            </td>
+                                            <td className={classNames(
+                                                'text-right px-4 font-semibold tabular-nums',
+                                                up >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                            )}>
+                                                {up > 0 ? '+' : ''}{up.toFixed(1)}%
+                                            </td>
+                                            <td className="text-right pl-4 text-gray-500">{m.weight.toFixed(0)}%</td>
+                                        </tr>
+                                    );
+                                })}
+                                <tr className="bg-gray-50 dark:bg-gray-900/50 font-bold">
+                                    <td className="py-3 pr-4 text-gray-900 dark:text-gray-100">Weighted Average</td>
+                                    <td className="text-right px-4 font-mono text-gray-900 dark:text-gray-100">{formatPrice(weightedAvg)}</td>
+                                    <td className={classNames(
+                                        'text-right px-4 tabular-nums',
+                                        finalUpside >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                    )}>
+                                        {finalUpside > 0 ? '+' : ''}{finalUpside.toFixed(1)}%
+                                    </td>
+                                    <td className="text-right pl-4 text-gray-500">100%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            )}
+
+            {/* ── DCF Sensitivity Analysis ── */}
+            <Card className="rounded-tremor-default">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <Title>DCF Sensitivity Analysis</Title>
+                        <Text className="mt-1 text-xs">Intrinsic value matrix: rows = EPS Growth, columns = WACC</Text>
+                    </div>
+                    <Button
+                        variant="secondary"
+                        size="xs"
+                        onClick={handleLoadSensitivity}
+                        loading={sensitivityLoading}
+                        icon={RiBarChartLine}
+                    >
+                        {sensitivityData ? 'Refresh' : 'Load Matrix'}
+                    </Button>
+                </div>
+
+                {showSensitivity && sensitivityLoading && (
+                    <div className="mt-6 flex items-center justify-center h-32 text-gray-400">
+                        <RiRefreshLine className="animate-spin h-6 w-6 mr-2" />
+                        <span>Computing sensitivity matrix…</span>
+                    </div>
+                )}
+
+                {sensitivityData?.success && !sensitivityLoading && (
+                    <div className="mt-4 overflow-x-auto">
+                        <p className="text-xs text-gray-500 mb-3">
+                            EPS used: <strong>{sensitivityData.eps_used?.toLocaleString()}</strong> &nbsp;·&nbsp;
+                            Base WACC: <strong>{sensitivityData.base_wacc}%</strong> &nbsp;·&nbsp;
+                            Base Growth: <strong>{sensitivityData.base_growth}%</strong>
+                        </p>
+                        <table className="min-w-full text-xs border-collapse">
+                            <thead>
+                                <tr>
+                                    <th className="p-2 text-right text-gray-500 border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+                                        Growth↓ / WACC→
+                                    </th>
+                                    {sensitivityData.wacc_axis.map((w: number) => (
+                                        <th key={w} className={classNames(
+                                            'p-2 font-semibold text-center border border-gray-200 dark:border-gray-800',
+                                            w === sensitivityData.base_wacc
+                                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+                                                : 'bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400'
+                                        )}>{w}%</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {sensitivityData.growth_axis.map((g: number, gi: number) => (
+                                    <tr key={g}>
+                                        <td className={classNames(
+                                            'p-2 font-semibold text-right whitespace-nowrap border border-gray-200 dark:border-gray-800',
+                                            g === sensitivityData.base_growth
+                                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+                                                : 'bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400'
+                                        )}>{g}%</td>
+                                        {sensitivityData.matrix[gi].map((val: number, wi: number) => {
+                                            const up = manualPrice > 0 ? ((val - manualPrice) / manualPrice) * 100 : 0;
+                                            const isBase = sensitivityData.wacc_axis[wi] === sensitivityData.base_wacc && g === sensitivityData.base_growth;
+                                            return (
+                                                <td key={wi} className={classNames(
+                                                    'p-2 text-center tabular-nums font-mono border border-gray-200 dark:border-gray-800 transition-colors',
+                                                    isBase ? 'ring-2 ring-inset ring-blue-500 font-bold' : '',
+                                                    val === 0
+                                                        ? 'bg-gray-100 dark:bg-gray-900 text-gray-400'
+                                                        : up >= 20 ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300'
+                                                        : up >= 5 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                                                        : up >= -5 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
+                                                        : up >= -15 ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400'
+                                                        : 'bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400'
+                                                )}>
+                                                    <span>{val > 0 ? val.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—'}</span>
+                                                    {manualPrice > 0 && val > 0 && (
+                                                        <span className="block text-[10px] opacity-70">{up > 0 ? '+' : ''}{up.toFixed(0)}%</span>
+                                                    )}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-gray-500">
+                            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-emerald-100 dark:bg-emerald-900/30 inline-block"></span> ≥+20% upside</span>
+                            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-green-50 dark:bg-green-900/20 inline-block"></span> +5–20%</span>
+                            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-amber-50 dark:bg-amber-900/20 inline-block"></span> -5 to +5%</span>
+                            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-orange-50 dark:bg-orange-900/20 inline-block"></span> -15 to -5%</span>
+                            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-rose-50 dark:bg-rose-900/20 inline-block"></span> ≤-15%</span>
+                        </div>
+                    </div>
+                )}
+            </Card>
 
             {isBank && (
                 <Callout
