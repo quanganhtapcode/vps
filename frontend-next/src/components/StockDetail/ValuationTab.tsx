@@ -130,111 +130,85 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
         csvRows.push([]);
 
         // Comparables breakdown (Industry median P/E TTM & P/B)
-        const exportData = result?.export;
-        const comparables = exportData?.comparables;
-        const peTtm = comparables?.pe_ttm;
-        const pb = comparables?.pb;
-        const calc = exportData?.calculation;
+        const inp = result?.inputs || {};
+        const fd  = result?.fcfe_details || {};
+        const ffd = result?.fcff_details || {};
 
-        const industry = comparables?.industry || result?.inputs?.industry || '';
-        const epsTtm = calc?.justified_pe?.eps_ttm ?? result?.inputs?.eps_ttm ?? '';
-        const bvps = calc?.justified_pb?.bvps ?? result?.inputs?.bvps ?? '';
+        const industry = inp.industry || '';
+        const epsTtm = inp.eps_ttm ?? '';
+        const bvps = inp.bvps ?? '';
 
-        const peMedianComputed = peTtm?.median_computed ?? '';
-        const peUsed = peTtm?.used ?? result?.inputs?.industry_median_pe_ttm_used ?? '';
-        const peCount = peTtm?.count ?? result?.inputs?.industry_pe_sample_size ?? '';
-        const pbMedianComputed = pb?.median_computed ?? '';
-        const pbUsed = pb?.used ?? result?.inputs?.industry_median_pb_used ?? '';
-        const pbCount = pb?.count ?? result?.inputs?.industry_pb_sample_size ?? '';
+        const peUsed    = inp.industry_median_pe_ttm_used ?? '';
+        const peCount   = inp.industry_pe_sample_size ?? '';
+        const pbUsed    = inp.industry_median_pb_used ?? '';
+        const pbCount   = inp.industry_pb_sample_size ?? '';
 
-        const justifiedPeResult = calc?.justified_pe?.result ?? result?.valuations?.justified_pe ?? '';
-        const justifiedPbResult = calc?.justified_pb?.result ?? result?.valuations?.justified_pb ?? '';
-
-        const peValues = Array.isArray(peTtm?.values) ? peTtm.values : [];
-        const pbValues = Array.isArray(pb?.values) ? pb.values : [];
-        const peValuesText = peValues.length ? peValues.slice(0, 100).join(';') : '';
-        const pbValuesText = pbValues.length ? pbValues.slice(0, 100).join(';') : '';
+        const justifiedPeResult = result?.valuations?.justified_pe ?? '';
+        const justifiedPbResult = result?.valuations?.justified_pb ?? '';
 
         csvRows.push(['COMPARABLES (INDUSTRY MEDIAN)']);
         csvRows.push(['Field', 'Value']);
         csvRows.push(['Industry', industry]);
         csvRows.push(['EPS TTM', epsTtm]);
         csvRows.push(['BVPS', bvps]);
-        csvRows.push(['PE TTM Median (Computed)', peMedianComputed]);
         csvRows.push(['PE TTM Used', peUsed]);
         csvRows.push(['PE Sample Size', peCount]);
-        csvRows.push(['PB Median (Computed)', pbMedianComputed]);
         csvRows.push(['PB Used', pbUsed]);
         csvRows.push(['PB Sample Size', pbCount]);
-        csvRows.push(['Justified PE Formula', 'EPS_TTM * PE_USED']);
+        csvRows.push(['Justified PE Formula', 'EPS_TTM × PE_USED']);
         csvRows.push(['Justified PE Result', justifiedPeResult]);
-        csvRows.push(['Justified PB Formula', 'BVPS * PB_USED']);
+        csvRows.push(['Justified PB Formula', 'BVPS × PB_USED']);
         csvRows.push(['Justified PB Result', justifiedPbResult]);
-        if (peValuesText) csvRows.push(['PE values used (sample; max 100)', peValuesText]);
-        if (pbValuesText) csvRows.push(['PB values used (sample; max 100)', pbValuesText]);
         csvRows.push([]);
 
-        if (exportData?.comparables?.peers_detailed && exportData.comparables.peers_detailed.length > 0) {
+        const peersList = result?.sector_peers?.peers_detail || [];
+        if (peersList.length > 0) {
             csvRows.push(['DETAILED COMPARABLES']);
             csvRows.push(['Symbol', 'P/E', 'P/B']);
-            exportData.comparables.peers_detailed.forEach((peer: any) => {
-                csvRows.push([
-                    peer.symbol,
-                    peer.pe !== null ? peer.pe.toFixed(2) : '',
-                    peer.pb !== null ? peer.pb.toFixed(2) : ''
-                ]);
+            peersList.forEach((peer: any) => {
+                csvRows.push([peer.symbol, peer.pe ?? '', peer.pb ?? '']);
             });
             csvRows.push([]);
         }
 
-        // DCF Steps
-        const fcfe = calc?.dcf_fcfe;
-        if (fcfe?.details) {
-            csvRows.push(['DCF FCFE CALCULATION']);
+        // DCF Steps – FCFE
+        if (fd && fd.assumptions) {
+            csvRows.push(['DCF FCFE CALCULATION (EPS-based proxy)']);
             csvRows.push(['Field', 'Value']);
-            csvRows.push(['Base Cashflow (EPS)', fcfe.details.base_cashflow_per_share]);
-            csvRows.push(['Annual Growth (%)', (fcfe.details.annual_growth * 100).toFixed(2)]);
-            csvRows.push(['Discount Rate (Required Return) (%)', (fcfe.details.discount_rate * 100).toFixed(2)]);
-            csvRows.push(['Terminal Growth (%)', (fcfe.details.terminal_growth * 100).toFixed(2)]);
-            csvRows.push(['Years Projected', fcfe.details.years]);
-            if (fcfe.details.cashflows && Array.isArray(fcfe.details.cashflows)) {
-                fcfe.details.cashflows.forEach((cf: any) => {
-                    csvRows.push([`Year ${cf.t} Cashflow`, cf.cashflow.toFixed(2)]);
-                    csvRows.push([`Year ${cf.t} Present Value`, cf.pv.toFixed(2)]);
-                });
-            }
-            csvRows.push(['PV Sum', fcfe.details.pv_sum?.toFixed(2) || '']);
-            csvRows.push(['Terminal Value (TV)', fcfe.details.terminal_value?.toFixed(2) || '']);
-            csvRows.push(['Terminal Value Discounted', fcfe.details.terminal_value_discounted?.toFixed(2) || '']);
-            csvRows.push(['FCFE Result', fcfe.details.result?.toFixed(2) || '']);
-            if (fcfe.details.notes && fcfe.details.notes.length > 0) {
-                csvRows.push(['Notes', fcfe.details.notes.join('; ')]);
-            }
+            csvRows.push(['Base Cashflow (EPS)', fd.baseFCFE ?? epsTtm]);
+            csvRows.push(['Annual Growth (%)', ((fd.assumptions?.shortTermGrowth ?? 0) * 100).toFixed(2)]);
+            csvRows.push(['Discount Rate (Ke) (%)', ((fd.assumptions?.costOfEquity ?? 0) * 100).toFixed(2)]);
+            csvRows.push(['Terminal Growth (%)', ((fd.assumptions?.terminalGrowth ?? 0) * 100).toFixed(2)]);
+            csvRows.push(['Years Projected', fd.assumptions?.forecastYears ?? '']);
+            (fd.projectedCashFlows || []).forEach((cf: number, i: number) => {
+                const pv = fd.presentValues?.[i] ?? '';
+                csvRows.push([`Year ${i + 1} Cashflow`, cf.toFixed ? cf.toFixed(2) : cf]);
+                csvRows.push([`Year ${i + 1} Present Value`, pv !== '' && pv.toFixed ? pv.toFixed(2) : pv]);
+            });
+            csvRows.push(['PV Sum', fd.pvTerminal != null ? ((fd.shareValue ?? 0) - (fd.pvTerminal ?? 0)).toFixed(2) : '']);
+            csvRows.push(['Terminal Value (TV)', fd.terminalValue?.toFixed(2) ?? '']);
+            csvRows.push(['Terminal Value Discounted', fd.pvTerminal?.toFixed(2) ?? '']);
+            csvRows.push(['FCFE Result', fd.shareValue?.toFixed(2) ?? '']);
             csvRows.push([]);
         }
 
-        const fcff = calc?.dcf_fcff;
-        if (fcff?.details) {
-            csvRows.push(['DCF FCFF CALCULATION']);
+        // DCF Steps – FCFF
+        if (ffd && ffd.assumptions) {
+            csvRows.push(['DCF FCFF CALCULATION (EPS-based proxy × 1.2)']);
             csvRows.push(['Field', 'Value']);
-            csvRows.push(['Base Cashflow (EPS)', fcff.details.base_cashflow_per_share]);
-            csvRows.push(['Annual Growth (%)', (fcff.details.annual_growth * 100).toFixed(2)]);
-            csvRows.push(['Discount Rate (WACC) (%)', (fcff.details.discount_rate * 100).toFixed(2)]);
-            csvRows.push(['Terminal Growth (%)', (fcff.details.terminal_growth * 100).toFixed(2)]);
-            csvRows.push(['Years Projected', fcff.details.years]);
-            if (fcff.details.cashflows && Array.isArray(fcff.details.cashflows)) {
-                fcff.details.cashflows.forEach((cf: any) => {
-                    csvRows.push([`Year ${cf.t} Cashflow`, cf.cashflow.toFixed(2)]);
-                    csvRows.push([`Year ${cf.t} Present Value`, cf.pv.toFixed(2)]);
-                });
-            }
-            csvRows.push(['PV Sum', fcff.details.pv_sum?.toFixed(2) || '']);
-            csvRows.push(['Terminal Value (TV)', fcff.details.terminal_value?.toFixed(2) || '']);
-            csvRows.push(['Terminal Value Discounted', fcff.details.terminal_value_discounted?.toFixed(2) || '']);
-            csvRows.push(['FCFF Result', fcff.details.result?.toFixed(2) || '']);
-            if (fcff.details.notes && fcff.details.notes.length > 0) {
-                csvRows.push(['Notes', fcff.details.notes.join('; ')]);
-            }
+            csvRows.push(['Base Cashflow (EPS × 1.2)', ffd.baseFCFF ?? '']);
+            csvRows.push(['Annual Growth (%)', ((ffd.assumptions?.shortTermGrowth ?? 0) * 100).toFixed(2)]);
+            csvRows.push(['Discount Rate (WACC) (%)', ((ffd.assumptions?.wacc ?? 0) * 100).toFixed(2)]);
+            csvRows.push(['Terminal Growth (%)', ((ffd.assumptions?.terminalGrowth ?? 0) * 100).toFixed(2)]);
+            csvRows.push(['Years Projected', ffd.assumptions?.forecastYears ?? '']);
+            (ffd.projectedCashFlows || []).forEach((cf: number, i: number) => {
+                const pv = ffd.presentValues?.[i] ?? '';
+                csvRows.push([`Year ${i + 1} Cashflow`, cf.toFixed ? cf.toFixed(2) : cf]);
+                csvRows.push([`Year ${i + 1} Present Value`, pv !== '' && pv.toFixed ? pv.toFixed(2) : pv]);
+            });
+            csvRows.push(['Terminal Value (TV)', ffd.terminalValue?.toFixed(2) ?? '']);
+            csvRows.push(['Terminal Value Discounted', ffd.pvTerminal?.toFixed(2) ?? '']);
+            csvRows.push(['FCFF Result', ffd.shareValue?.toFixed(2) ?? '']);
             csvRows.push([]);
         }
 
@@ -296,7 +270,14 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                 graham: models.graham.enabled ? models.graham.weight : 0,
             };
 
-            await generator.exportReport(stockData || result.metrics || result, result, assumptions, modelWeights, symbol);
+            // Merge stockData prop (if any) with valuation inputs so Excel sheet has eps/bvps/price
+            const mergedStockData = {
+                ...(stockData || {}),
+                ...(result?.inputs || {}),
+                current_price: result?.inputs?.current_price || result?.market_comparison?.current_price || manualPrice,
+            };
+
+            await generator.exportReport(mergedStockData, result, assumptions, modelWeights, symbol);
         } catch (error) {
             console.error('Export error:', error);
             alert('Lỗi xuất báo cáo: ' + (error as any).message);

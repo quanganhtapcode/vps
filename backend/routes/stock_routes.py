@@ -931,8 +931,8 @@ def api_revenue_profit(symbol):
 @stock_bp.route("/valuation/<symbol>", methods=['GET', 'POST'])
 def api_valuation(symbol):
     """
-    Calculate valuation based on assumptions.
-    Simplified implementation to support the frontend UI.
+    Calculate valuation: P/E, P/B, Graham (comparable) + EPS-based DCF for FCFE/FCFF.
+    EPS from SQLite overview view (reliable); industry median from full overview table.
     """
     try:
         is_valid, clean_symbol = validate_stock_symbol(symbol)
@@ -951,100 +951,203 @@ def api_valuation(symbol):
 
         provider = get_provider()
 
-        stock_data = provider.get_stock_data(clean_symbol, period='quarter')
-        if not stock_data or not stock_data.get('success'):
-            stock_data = provider.get_stock_data(clean_symbol, period='year')
-
+        # ── 1. EPS / BVPS – primary source: SQLite overview (fastest, no network) ──
+        eps = 0.0
+        bvps = 0.0
+        shares_outstanding = 0.0
         current_price = to_float(data.get('currentPrice'), 0.0)
-        if current_price <= 0:
-            current_price = to_float(stock_data.get('current_price'), 0.0)
-
-        eps = to_float(stock_data.get('eps_ttm'))
-        if eps <= 0:
-            eps = to_float(stock_data.get('eps'))
-        if eps <= 0:
-            eps = to_float(stock_data.get('earnings_per_share'))
-
-        bvps = to_float(stock_data.get('bvps'))
-        if bvps <= 0:
-            bvps = to_float(stock_data.get('book_value_per_share'))
-        if bvps <= 0:
-            total_equity = to_float(stock_data.get('total_equity'))
-            shares_outstanding = to_float(stock_data.get('shares_outstanding'))
-            if total_equity > 0 and shares_outstanding > 0:
-                bvps = total_equity / shares_outstanding
-
-        def median(values: list[float]) -> float | None:
-            vals = [float(v) for v in values if v is not None]
-            if not vals:
-                return None
-            vals.sort()
-            n = len(vals)
-            mid = n // 2
-            if n % 2 == 1:
-                return vals[mid]
-            return (vals[mid - 1] + vals[mid]) / 2
-
-        # === Industry median multiples (TTM) ===
-        # Use full-industry distribution from the SQLite overview table (not just top-10 peers)
-        industry = None
-        peer_pe_values: list[float] = []
-        peer_pb_values: list[float] = []
 
         try:
-            import sqlite3
+            db_overview = provider.db.get_stock_overview(clean_symbol)
+            if db_overview:
+                eps = to_float(db_overview.get('eps'))
+                bvps = to_float(db_overview.get('bvps'))
+        except Exception as exc:
+            logger.warning(f"DB overview failed for {clean_symbol}: {exc}")
 
+        # Fallback: VCI Live only if DB gave nothing
+        if eps <= 0 or bvps <= 0:
+            try:
+                sd = provider.get_stock_data(clean_symbol, period='year')
+                if sd and sd.get('success'):
+                    if eps <= 0:
+                        eps = to_float(sd.get('eps_ttm')) or to_float(sd.get('eps'))
+                    if bvps <= 0:
+                        bvps = to_float(sd.get('bvps')) or to_float(sd.get('book_value_per_share'))
+                    if current_price <= 0:
+                        current_price = to_float(sd.get('current_price'))
+            except Exception as exc:
+                logger.warning(f"VCI Live fallback failed for {clean_symbol}: {exc}")
+
+        # ── 2. Industry medians + shares outstanding (single DB connection) ──
+        industry = None
+        peer_pe_values: list = []
+        peer_pb_values: list = []
+        peers_detailed: list = []
+
+        try:
+            import sqlite3 as _sqlite3
             db_path = getattr(provider, 'db_path', None)
             if db_path:
-                conn = sqlite3.connect(db_path)
-                conn.row_factory = sqlite3.Row
+                conn = _sqlite3.connect(db_path)
+                conn.row_factory = _sqlite3.Row
                 cur = conn.cursor()
 
                 cur.execute("SELECT industry FROM overview WHERE symbol = ?", (clean_symbol,))
                 row = cur.fetchone()
                 industry = row['industry'] if row and row['industry'] else None
 
-                if not industry and hasattr(provider, '_get_industry_for_symbol'):
-                    industry = provider._get_industry_for_symbol(clean_symbol)
-
                 if industry and industry != 'Unknown':
                     cur.execute(
-                        "SELECT pe, pb FROM overview WHERE industry = ? AND symbol != ?",
+                        "SELECT symbol, pe, pb FROM overview WHERE industry = ? AND symbol != ?",
                         (industry, clean_symbol),
                     )
-                    rows = cur.fetchall() or []
-                    for r in rows:
+                    for r in (cur.fetchall() or []):
                         pe_val = to_float(r['pe'])
                         pb_val = to_float(r['pb'])
                         if 0 < pe_val <= 80:
                             peer_pe_values.append(pe_val)
                         if 0 < pb_val <= 20:
                             peer_pb_values.append(pb_val)
+                        if 0 < pe_val <= 80 or 0 < pb_val <= 20:
+                            peers_detailed.append({
+                                'symbol': r['symbol'],
+                                'pe': round(pe_val, 2) if pe_val > 0 else None,
+                                'pb': round(pb_val, 2) if pb_val > 0 else None,
+                            })
+
+                # Shares outstanding from financial_ratios
+                cur.execute(
+                    """SELECT shares_outstanding_millions FROM financial_ratios
+                       WHERE symbol = ? AND quarter IS NULL
+                       ORDER BY year DESC LIMIT 1""",
+                    (clean_symbol,)
+                )
+                row = cur.fetchone()
+                if row and row['shares_outstanding_millions']:
+                    shares_outstanding = to_float(row['shares_outstanding_millions']) * 1_000_000
+
                 conn.close()
         except Exception as exc:
-            logger.warning(f"Industry median multiples fallback for {clean_symbol} failed: {exc}")
+            logger.warning(f"DB industry query failed for {clean_symbol}: {exc}")
 
-        industry_median_pe = median(peer_pe_values)
-        industry_median_pb = median(peer_pb_values)
+        def _median(values):
+            vals = sorted(v for v in values if v is not None)
+            if not vals:
+                return None
+            n = len(vals)
+            mid = n // 2
+            return vals[mid] if n % 2 == 1 else (vals[mid - 1] + vals[mid]) / 2
 
-        # Sensible fallbacks if industry data is missing
-        peer_pe = float(industry_median_pe) if industry_median_pe is not None else 15.0
-        peer_pb = float(industry_median_pb) if industry_median_pb is not None else 1.5
+        peer_pe = float(_median(peer_pe_values) or 15.0)
+        peer_pb = float(_median(peer_pb_values) or 1.5)
 
-        graham = 0.0
-        if eps > 0 and bvps > 0:
-            graham = float((22.5 * eps * bvps) ** 0.5)
-
+        # ── 3. Comparable valuation ──────────────────────────────────────────
+        graham = float((22.5 * eps * bvps) ** 0.5) if eps > 0 and bvps > 0 else 0.0
         justified_pe = float(eps * peer_pe) if eps > 0 else 0.0
         justified_pb = float(bvps * peer_pb) if bvps > 0 else 0.0
 
-        growth = to_float(data.get('revenueGrowth'), 8.0) / 100
-        dcf_base = current_price if current_price > 0 else max(justified_pe, justified_pb, graham, 0)
-        dcf_value = float(dcf_base * (1 + growth)) if dcf_base > 0 else 0.0
+        # ── 4. EPS-based DCF for FCFE and FCFF ──────────────────────────────
+        #  FCFE: proxy = EPS (per-share earnings available to equity holders)
+        #  FCFF: proxy = EPS * 1.2 (adds back after-tax interest; rough estimate)
+        #  Both use Gordon-Growth terminal value
+        growth_rate     = to_float(data.get('revenueGrowth'),   8.0) / 100
+        terminal_growth = to_float(data.get('terminalGrowth'),  3.0) / 100
+        ke              = to_float(data.get('requiredReturn'),  12.0) / 100
+        wacc            = to_float(data.get('wacc'),            10.5) / 100
+        n_years         = max(1, min(int(data.get('projectionYears', 5)), 20))
 
+        def _eps_dcf(base_cf, discount_rate, growth, t_growth, n):
+            """Returns (value_per_share, details_dict)"""
+            if discount_rate <= t_growth:
+                discount_rate = t_growth + 0.02
+            cashflows = []
+            pv_sum = 0.0
+            for yr in range(1, n + 1):
+                cf = base_cf * (1 + growth) ** yr
+                pv = cf / (1 + discount_rate) ** yr
+                pv_sum += pv
+                cashflows.append({'t': yr, 'cashflow': round(cf, 2), 'pv': round(pv, 2)})
+            last_cf = base_cf * (1 + growth) ** n
+            tv_cf = last_cf * (1 + t_growth)
+            terminal_value = tv_cf / (discount_rate - t_growth)
+            tv_disc = terminal_value / (1 + discount_rate) ** n
+            total = pv_sum + tv_disc
+            details = {
+                'base_cashflow_per_share': round(base_cf, 2),
+                'annual_growth': growth,
+                'discount_rate': discount_rate,
+                'terminal_growth': t_growth,
+                'years': n,
+                'cashflows': cashflows,
+                'pv_sum': round(pv_sum, 2),
+                'terminal_value': round(terminal_value, 2),
+                'terminal_value_discounted': round(tv_disc, 2),
+                'result': round(total, 2),
+                'notes': ['EPS used as per-share free cashflow proxy'],
+            }
+            return round(total, 2), details
+
+        fcfe_value = 0.0
+        fcff_value = 0.0
+        fcfe_details = {}
+        fcff_details = {}
+        estimated_net_income = round(eps * shares_outstanding, 0) if shares_outstanding > 0 else 0.0
+
+        if eps > 0:
+            fcfe_value, fcfe_dcf = _eps_dcf(eps, ke, growth_rate, terminal_growth, n_years)
+            fcff_base = eps * 1.2  # approx firm-level per-share CF (add back after-tax interest proxy)
+            fcff_value, fcff_dcf = _eps_dcf(fcff_base, wacc, growth_rate, terminal_growth, n_years)
+
+            fcfe_details = {
+                'shareValue': fcfe_value,
+                'baseFCFE': eps,
+                'inputs': {
+                    'netIncome': estimated_net_income,
+                    'depreciation': 0,
+                    'workingCapitalInvestment': 0,
+                    'fixedCapitalInvestment': 0,
+                    'netBorrowing': 0,
+                },
+                'projectedCashFlows': [c['cashflow'] for c in fcfe_dcf['cashflows']],
+                'presentValues':      [c['pv']       for c in fcfe_dcf['cashflows']],
+                'terminalValue':      fcfe_dcf['terminal_value'],
+                'pvTerminal':         fcfe_dcf['terminal_value_discounted'],
+                'assumptions': {
+                    'costOfEquity': ke,
+                    'shortTermGrowth': growth_rate,
+                    'terminalGrowth': terminal_growth,
+                    'forecastYears': n_years,
+                },
+            }
+
+            fcff_details = {
+                'shareValue': fcff_value,
+                'baseFCFF': fcff_base,
+                'inputs': {
+                    'netIncome': estimated_net_income,
+                    'interestAfterTax': round(estimated_net_income * 0.15, 0) if estimated_net_income else 0,
+                    'depreciation': 0,
+                    'workingCapitalInvestment': 0,
+                    'fixedCapitalInvestment': 0,
+                },
+                'projectedCashFlows': [c['cashflow'] for c in fcff_dcf['cashflows']],
+                'presentValues':      [c['pv']       for c in fcff_dcf['cashflows']],
+                'terminalValue':      fcff_dcf['terminal_value'],
+                'pvTerminal':         fcff_dcf['terminal_value_discounted'],
+                'assumptions': {
+                    'wacc': wacc,
+                    'shortTermGrowth': growth_rate,
+                    'terminalGrowth': terminal_growth,
+                    'forecastYears': n_years,
+                    'taxRate': to_float(data.get('taxRate'), 20.0) / 100,
+                },
+            }
+
+        # ── 5. Weighted average ──────────────────────────────────────────────
         valuations = {
-            'fcfe': dcf_value,
-            'fcff': dcf_value * 0.95,
+            'fcfe': fcfe_value,
+            'fcff': fcff_value,
             'justified_pe': justified_pe,
             'justified_pb': justified_pb,
             'graham': graham,
@@ -1052,16 +1155,9 @@ def api_valuation(symbol):
 
         weights = data.get('modelWeights', {}) or {}
         if not any(to_float(w) > 0 for w in weights.values()):
-            weights = {
-                'fcfe': 20,
-                'fcff': 20,
-                'justified_pe': 20,
-                'justified_pb': 20,
-                'graham': 20,
-            }
+            weights = {'fcfe': 20, 'fcff': 20, 'justified_pe': 20, 'justified_pb': 20, 'graham': 20}
 
-        total_val = 0.0
-        total_weight = 0.0
+        total_val = total_weight = 0.0
         for key, weight in weights.items():
             val = to_float(valuations.get(key))
             w = to_float(weight)
@@ -1072,10 +1168,28 @@ def api_valuation(symbol):
         weighted_avg = (total_val / total_weight) if total_weight > 0 else 0.0
         valuations['weighted_average'] = weighted_avg
 
+        # ── 6. Assemble response ─────────────────────────────────────────────
+        upside_pct = ((weighted_avg - current_price) / current_price * 100) if current_price > 0 and weighted_avg > 0 else 0.0
+        market_comparison = {
+            'current_price': current_price,
+            'average_valuation': weighted_avg,
+            'upside_downside_pct': upside_pct,
+            'recommendation': 'STRONG BUY' if upside_pct >= 20 else ('BUY' if upside_pct >= 10 else ('SELL' if upside_pct <= -10 else 'HOLD')),
+        } if current_price > 0 else None
+
         return jsonify({
             'success': True,
-            'valuations': valuations,
             'symbol': clean_symbol,
+            'valuations': valuations,
+            'fcfe_details': fcfe_details,
+            'fcff_details': fcff_details,
+            'sector_peers': {
+                'median_pe': peer_pe,
+                'median_pb': peer_pb,
+                'sector': industry,
+                'peer_count': len(peer_pe_values),
+                'peers_detail': peers_detailed[:20],
+            } if industry else None,
             'inputs': {
                 'current_price': current_price,
                 'eps_ttm': eps,
@@ -1085,7 +1199,9 @@ def api_valuation(symbol):
                 'industry_median_pb_used': peer_pb,
                 'industry_pe_sample_size': len(peer_pe_values),
                 'industry_pb_sample_size': len(peer_pb_values),
+                'shares_outstanding': shares_outstanding,
             },
+            'market_comparison': market_comparison,
         })
 
     except Exception as e:
