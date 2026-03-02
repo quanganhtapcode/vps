@@ -477,27 +477,22 @@ function parseDateInput(input: string | number | Date | undefined | null): Date 
 }
 
 /**
- * Format date from various formats (including CafeF /Date()/ format)
+ * Format date from various formats (including CafeF /Date()/ format, Vietnamese DD/MM/YYYY)
  */
 export function formatDate(dateStr: string | number | undefined): string {
     if (!dateStr) return '';
 
     try {
-        let date: Date;
+        const date = parseDateInput(dateStr);
+        if (!date) return '';
 
-        if (typeof dateStr === 'string' && dateStr.includes('/Date(')) {
-            const ms = parseInt(dateStr.match(/\d+/)?.[0] || '0');
-            date = new Date(ms);
-        } else {
-            date = new Date(dateStr);
-        }
-
-        return date.toLocaleString('en-US', {
+        return date.toLocaleString('vi-VN', {
             hour: '2-digit',
             minute: '2-digit',
             day: '2-digit',
-            month: 'short',
+            month: '2-digit',
             year: 'numeric',
+            timeZone: 'Asia/Ho_Chi_Minh',
         });
     } catch {
         return '';
