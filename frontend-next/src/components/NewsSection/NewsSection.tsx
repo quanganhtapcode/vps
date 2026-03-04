@@ -88,8 +88,8 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                 )}
             </Flex>
 
-            <div className="mt-4 md:mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-                {news.slice(0, 12).map((item, index) => {
+            <div className="mt-4 md:mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 md:gap-5">
+                {news.slice(0, 8).map((item, index) => {
                     const url = item.url || item.Link || item.NewsUrl || '#';
                     const finalUrl = url.startsWith('http') ? url : `https://cafef.vn${url}`;
                     const title = item.title || item.Title || '';

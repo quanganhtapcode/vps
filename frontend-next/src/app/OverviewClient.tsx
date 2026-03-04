@@ -6,6 +6,7 @@ import PEChart from '@/components/PEChart';
 import NewsSection from '@/components/NewsSection';
 
 import { CryptoPrices, GoldPrice, Lottery, MarketPulse } from '@/components/Sidebar';
+import { HeatmapVN30 } from '@/components/HeatmapVN30';
 import {
     fetchAllIndices,
     subscribeIndicesStream,
@@ -318,6 +319,9 @@ export default function OverviewClient({
                     </div>
 
 
+
+                    {/* VN30 Heatmap */}
+                    <HeatmapVN30 />
 
                     {/* P/E Chart */}
                     <PEChart initialData={initialPEData} />

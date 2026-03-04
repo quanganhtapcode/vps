@@ -4,6 +4,7 @@ import "./globals.css";
 import { Navbar } from "@/components/ui/Navbar";
 import Footer from "@/components/ui/Footer";
 import { ThemeProvider } from "next-themes";
+import { TickerTape } from "@/components/TickerTape";
 
 const inter = Inter({
   subsets: ["latin", "vietnamese"],
@@ -52,7 +53,8 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <Navbar />
-          <main className="pt-20 min-h-[calc(100vh-400px)]">{/* Add padding top for fixed header and min-height */}
+          <TickerTape />
+          <main className="pt-24 md:pt-32 min-h-[calc(100vh-400px)]">{/* pt-24 mobile (navbar64+ticker32) + pt-32 desktop (navbar80+ticker32+gap) */}
             {children}
           </main>
           <Footer />
