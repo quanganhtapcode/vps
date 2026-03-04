@@ -198,8 +198,12 @@ export default function CryptoPrices() {
                                 className="flex items-center justify-between py-3 border-b border-gray-50 dark:border-gray-800/50 last:border-0"
                             >
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                                        {it.label}
+                                    <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-gray-800 overflow-hidden">
+                                        <img
+                                            src={`https://img.logo.dev/crypto/${it.label}USD?token=pk_NNp9abu9TMm9II6Z0666YA&format=png&fallback=404&size=80`}
+                                            alt={it.label}
+                                            className="w-7 h-7 object-contain"
+                                        />
                                     </div>
                                     <div className="flex flex-col min-w-0">
                                         <span className="text-[13px] font-bold text-gray-700 dark:text-gray-200 truncate">
@@ -219,8 +223,8 @@ export default function CryptoPrices() {
                                             (pct == null
                                                 ? 'text-gray-500 dark:text-gray-400'
                                                 : isUp
-                                                  ? 'text-emerald-600'
-                                                  : 'text-rose-500')
+                                                    ? 'text-emerald-600'
+                                                    : 'text-rose-500')
                                         }
                                     >
                                         {pct == null ? (
