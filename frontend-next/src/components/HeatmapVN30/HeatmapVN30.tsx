@@ -152,21 +152,6 @@ export default function HeatmapVN30() {
 
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f1117] p-4 md:p-6 shadow-sm overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5 gap-2">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            HOSE Heatmap
-          </h2>
-          <p className="text-xs text-slate-500 font-medium">VN-Index stocks grouped by sector</p>
-        </div>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-          Expand
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-          </svg>
-        </button>
-      </div>
 
       {/* Treemap */}
       <div ref={containerRef} className="relative w-full" style={{ height: ch }}>
@@ -373,22 +358,6 @@ export default function HeatmapVN30() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="text-[11px] text-slate-400 font-medium">
-            {new Date().toLocaleString('vi-VN', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: true
-            })}
-          </div>
-          <div className="flex items-center gap-1.5 grayscale opacity-50 hover:grayscale-0 hover:opacity-100 transition-all cursor-default">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Live Data</span>
-          </div>
-        </div>
       </div>
     </div>
   );

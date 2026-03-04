@@ -284,15 +284,6 @@ export default function OverviewClient({
             <div className={styles.mainContent}>
                 {/* Left Column - Main Content */}
                 <div className={styles.leftColumn}>
-                    <div className="flex flex-col md:flex-row md:items-end justify-between mb-4 gap-2">
-                        <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Thị trường</h1>
-                        {isMounted && lastUpdate && (
-                            <div className="text-[11px] font-bold text-slate-400 bg-slate-50 dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800 flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                📅 Cập nhật: {lastUpdate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                            </div>
-                        )}
-                    </div>
 
                     {/* Indices Grid - 2x2 layout, no title */}
                     <div className={styles.indicesGrid}>
