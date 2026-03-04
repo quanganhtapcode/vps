@@ -88,8 +88,8 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                 )}
             </Flex>
 
-            <div className="mt-4 md:mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 md:gap-5">
-                {news.slice(0, 8).map((item, index) => {
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 lg:gap-x-12 border-t border-gray-100 dark:border-gray-800">
+                {news.slice(0, 10).map((item, index) => {
                     const url = item.url || item.Link || item.NewsUrl || '#';
                     const finalUrl = url.startsWith('http') ? url : `https://cafef.vn${url}`;
                     const title = item.title || item.Title || '';
@@ -100,27 +100,6 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                     const symbol = item.Symbol || item.symbol || '';
                     const priceInfo = symbol ? prices[symbol] : undefined;
 
-                    // Sentiment formatting
-                    let sentiment = '';
-                    let sentimentColor = 'text-yellow-600 dark:text-yellow-500';
-                    const rawSentiment = item.sentiment || item.Sentiment || '';
-                    if (rawSentiment === 'Positive') {
-                        sentiment = 'Tích cực';
-                        sentimentColor = 'text-emerald-600 dark:text-emerald-500';
-                    } else if (rawSentiment === 'Negative') {
-                        sentiment = 'Tiêu cực';
-                        sentimentColor = 'text-rose-600 dark:text-rose-500';
-                    } else if (rawSentiment === 'Neutral') {
-                        sentiment = 'Trung lập';
-                        sentimentColor = 'text-yellow-600 dark:text-yellow-500';
-                    }
-
-                    // Audio duration
-                    const audioDur = item.female_audio_duration || item.male_audio_duration || 0;
-                    const mins = Math.floor(audioDur / 60);
-                    const secs = Math.floor(audioDur % 60);
-                    const durString = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-
                     // Price color
                     const priceUp = priceInfo && priceInfo.change > 0;
                     const priceDown = priceInfo && priceInfo.change < 0;
@@ -128,97 +107,57 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                         ? 'text-emerald-600 dark:text-emerald-400'
                         : priceDown
                             ? 'text-rose-600 dark:text-rose-400'
-                            : 'text-yellow-600 dark:text-yellow-400';
-                    const priceBg = priceUp
-                        ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
-                        : priceDown
-                            ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400'
-                            : 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400';
+                            : 'text-gray-500';
 
                     return (
                         <div
                             key={index}
-                            className="flex flex-col rounded-xl border border-tremor-border dark:border-dark-tremor-border bg-white dark:bg-[#1a1c23] overflow-hidden hover:ring-1 hover:ring-tremor-brand transition-all cursor-pointer shadow-sm hover:shadow-md"
+                            className={`flex items-start gap-4 py-6 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-all cursor-pointer group px-1 ${index % 2 === 0 ? 'lg:border-r lg:pr-10 lg:mr-[-1px]' : 'lg:pl-6'}`}
                             onClick={() => window.open(finalUrl, '_blank')}
                         >
-                            {/* Image Header */}
-                            <div className="h-44 w-full bg-slate-100 dark:bg-slate-800 relative overflow-hidden group">
-                                {image ? (
-                                    <img
-                                        src={image}
-                                        alt={title}
-                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                        loading="lazy"
-                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                    />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                        <svg className="w-10 h-10 opacity-20 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M19.5 3h-15C3.12 3 2 4.12 2 5.5v13C2 19.88 3.12 21 4.5 21h15c1.38 0 2.5-1.12 2.5-2.5v-13C22 4.12 20.88 3 19.5 3zM19.5 19h-15V5.5h15V19zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
-                                        </svg>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Content */}
-                            <div className="p-4 flex flex-col flex-1">
-                                {/* Meta: Sentiment + Symbol + Price */}
-                                <div className="flex items-center gap-1.5 text-xs font-semibold mb-2 flex-wrap">
-                                    {sentiment && (
-                                        <span className={sentimentColor}>{sentiment}</span>
-                                    )}
-                                    {sentiment && symbol && (
-                                        <span className="text-gray-400 dark:text-gray-600">•</span>
-                                    )}
-                                    {symbol && (
-                                        <span className={`font-bold ${priceColor}`}>{symbol}</span>
-                                    )}
-                                    {priceInfo && (
-                                        <div className="flex items-center gap-1 ml-0.5">
-                                            <span className={priceColor}>
-                                                {formatNumber(priceInfo.price, { maximumFractionDigits: 0 })}
-                                            </span>
-                                            <span className={`px-1 py-0.5 rounded text-[10px] font-bold ${priceBg}`}>
-                                                {priceInfo.change > 0 ? '+' : ''}{priceInfo.change === 0 ? '0' : formatNumber(priceInfo.change, { maximumFractionDigits: 0 })}
-                                                ({priceInfo.changePercent === 0 ? '0%' : (priceInfo.changePercent > 0 ? '+' : '') + priceInfo.changePercent.toFixed(1) + '%'})
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-
+                            <div className="flex-1 min-w-0 order-1">
                                 {/* Title */}
-                                <h3 className="text-[15px] font-bold text-tremor-content-strong dark:text-dark-tremor-content-strong leading-snug line-clamp-3 mb-auto">
+                                <h3 className="text-[15px] md:text-[16px] font-bold text-slate-900 dark:text-slate-100 leading-snug line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors mb-3">
                                     {title}
                                 </h3>
 
-                                {/* Footer */}
-                                <div className="flex items-center justify-between text-[12px] text-tremor-content-subtle dark:text-dark-tremor-content-subtle mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                        {timeFormat && <span className="shrink-0">{timeFormat}</span>}
-                                        {timeFormat && source && <span>•</span>}
-                                        <span className="truncate">{source}</span>
-                                    </div>
-
-                                    <div className="flex items-center gap-2 shrink-0 ml-2">
-                                        {audioDur > 0 && (
-                                            <div className="flex items-center gap-1 opacity-70">
-                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                                                    <rect x="2" y="9" width="4" height="6" rx="1" />
-                                                    <rect x="10" y="4" width="4" height="16" rx="1" />
-                                                    <rect x="18" y="9" width="4" height="6" rx="1" />
-                                                </svg>
-                                                <span className="font-medium">{durString}</span>
-                                            </div>
-                                        )}
-                                        <div className="w-7 h-7 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
-                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                                <circle cx="12" cy="12" r="10" />
-                                                <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none" />
-                                            </svg>
+                                {/* Meta Footer */}
+                                <div className="flex items-center gap-2 flex-wrap text-slate-500">
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <div className="w-5 h-5 rounded overflow-hidden flex items-center justify-center bg-white shadow-sm border border-gray-100">
+                                            <img
+                                                src={`https://www.google.com/s2/favicons?domain=${finalUrl.split('/')[2]}&sz=64`}
+                                                alt=""
+                                                className="w-3.5 h-3.5 object-contain"
+                                                onError={(e) => { (e.target as HTMLImageElement).src = 'https://www.google.com/s2/favicons?domain=cafef.vn&sz=64'; }}
+                                            />
                                         </div>
+                                        <span className="text-[12px] font-bold text-slate-700 dark:text-slate-300">{source}</span>
                                     </div>
+                                    <span className="text-slate-300 dark:text-slate-700 font-bold">·</span>
+                                    <span className="text-[12px] font-medium">{timeFormat}</span>
+
+                                    {symbol && (
+                                        <>
+                                            <span className="text-slate-300 dark:text-slate-700 font-bold">·</span>
+                                            <span className={`text-[12px] font-extrabold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 ${priceColor}`}>{symbol}</span>
+                                        </>
+                                    )}
                                 </div>
                             </div>
+
+                            {/* Thumbnail on the right */}
+                            {image && (
+                                <div className="w-20 h-20 md:w-28 md:h-20 shrink-0 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 shadow-sm order-2">
+                                    <img
+                                        src={image}
+                                        alt=""
+                                        className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500"
+                                        loading="lazy"
+                                        onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
+                                    />
+                                </div>
+                            )}
                         </div>
                     );
                 })}

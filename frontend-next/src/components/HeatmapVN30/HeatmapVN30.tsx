@@ -152,7 +152,7 @@ export default function HeatmapVN30() {
   const sectorTiles = squarifyTile(data?.sectors ?? [], s => s.totalCap, 0, 0, cw, ch);
 
   return (
-    <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f1117] p-1 shadow-sm overflow-hidden">
+    <div className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f1117] p-0.5 shadow-sm overflow-hidden">
 
       {/* Treemap */}
       <div ref={containerRef} className="relative w-full" style={{ height: ch }}>
@@ -370,19 +370,6 @@ export default function HeatmapVN30() {
         )}
       </div>
 
-      {/* Modern Legend Footer */}
-      <div className="mt-6 flex flex-wrap items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-5 gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
-            <span className="text-[11px] font-bold text-slate-400 mr-2">-5%</span>
-            {['#f4889a', '#f8a9b4', '#fce0e3', '#f3f4f6', '#e0f3d8', '#bceaa8', '#8bd071'].map((c, i) => (
-              <div key={i} className="w-5 h-4 first:rounded-l-md last:rounded-r-md shadow-sm" style={{ backgroundColor: c }} />
-            ))}
-            <span className="text-[11px] font-bold text-slate-400 ml-2">+5%</span>
-          </div>
-        </div>
-
-      </div>
     </div>
   );
 }

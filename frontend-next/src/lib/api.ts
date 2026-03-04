@@ -60,10 +60,10 @@ async function fetchAPI<T>(url: string, options?: RequestInit): Promise<T> {
         const resolvedUrl =
             typeof window === 'undefined' && url.startsWith('/')
                 ? new URL(
-                      url,
-                      process.env.NEXT_PUBLIC_SITE_URL ||
-                          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'),
-                  ).toString()
+                    url,
+                    process.env.NEXT_PUBLIC_SITE_URL ||
+                    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'),
+                ).toString()
                 : url;
 
         const response = await fetch(resolvedUrl, {
@@ -127,6 +127,19 @@ export interface NewsItem {
     Symbol?: string;
     Price?: number;
     ChangePrice?: number;
+    sentiment?: string;
+    Sentiment?: string;
+    source?: string;
+    Source?: string;
+    publish_date?: string;
+    image_url?: string;
+    url?: string;
+    title?: string;
+    symbol?: string;
+    female_audio_duration?: number;
+    male_audio_duration?: number;
+    CompanyName?: string;
+    [key: string]: any;
 }
 
 export interface TopMoverItem {

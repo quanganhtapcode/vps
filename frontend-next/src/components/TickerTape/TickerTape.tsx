@@ -20,20 +20,80 @@ function formatPrice(price: number): string {
 export default function TickerTape() {
   const [indices, setIndices] = useState<WorldIndex[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const load = async () => {
     try {
       const r = await fetch(`${API_BASE}/market/world-indices`);
       if (!r.ok) return;
       const data: WorldIndex[] = await r.json();
-      if (Array.isArray(data) && data.length > 0) setIndices(data);
+      if (Array.isArray(data) && data.length > 0) {
+        setIndices(prev => {
+          // Merge logic: preserve existing WS updates if any
+          const merged = data.map(newItem => {
+            const existing = prev.find(p => p.symbol === newItem.symbol);
+            if (existing && (newItem.symbol === 'BTC-USD' || newItem.symbol === 'ETH-USD' || newItem.symbol === 'SOL-USD' || newItem.symbol === 'XRP-USD')) {
+              // Only merge if we don't have WS data yet or keep WS one
+              return { ...newItem, ...existing };
+            }
+            return newItem;
+          });
+          return merged;
+        });
+      }
     } catch { /* silently fail */ }
   };
 
   useEffect(() => {
     load();
-    intervalRef.current = setInterval(load, 90_000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+    intervalRef.current = setInterval(load, 30_000); // Poll indices every 30s
+
+    // OKX WebSocket for live Crypto on Tape
+    const WS_URL = 'wss://ws.okx.com:8443/ws/v5/public';
+    const ws = new WebSocket(WS_URL);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        op: 'subscribe',
+        args: [
+          { channel: 'tickers', instId: 'BTC-USDT' },
+          { channel: 'tickers', instId: 'ETH-USDT' },
+          { channel: 'tickers', instId: 'SOL-USDT' },
+          { channel: 'tickers', instId: 'XRP-USDT' },
+        ],
+      }));
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.arg?.channel === 'tickers' && msg.data?.[0]) {
+          const t = msg.data[0];
+          const symMap: Record<string, string> = {
+            'BTC-USDT': 'BTC-USD',
+            'ETH-USDT': 'ETH-USD',
+            'SOL-USDT': 'SOL-USD',
+            'XRP-USDT': 'XRP-USD',
+          };
+          const targetSym = symMap[t.instId];
+          const last = parseFloat(t.last);
+          const open = parseFloat(t.open24h);
+          if (targetSym && !isNaN(last) && !isNaN(open)) {
+            setIndices(current => current.map(idx =>
+              idx.symbol === targetSym
+                ? { ...idx, price: last, changePercent: ((last - open) / open) * 100 }
+                : idx
+            ));
+          }
+        }
+      } catch { /* ignore */ }
+    };
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (wsRef.current) wsRef.current.close();
+    };
   }, []);
 
   if (indices.length === 0) return null;
@@ -44,7 +104,7 @@ export default function TickerTape() {
   const duration = Math.max(30, indices.length * 8);
 
   return (
-    <div className="fixed z-40 h-8 overflow-hidden bg-white/80 backdrop-blur-md border border-gray-200/50 dark:border-gray-800/50 dark:bg-gray-950/80 top-[64px] md:top-[72px] left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-[1440px] shadow-sm rounded-none">
+    <div className="fixed z-40 h-8 overflow-hidden bg-white/80 backdrop-blur-md border border-gray-200/50 dark:border-gray-800/50 dark:bg-gray-950/80 top-[64px] md:top-[72px] left-1/2 -translate-x-1/2 w-full max-w-[1440px] shadow-sm rounded-none">
       <div className="h-full flex items-center px-4">
         <style dangerouslySetInnerHTML={{
           __html: `
@@ -66,7 +126,7 @@ export default function TickerTape() {
                 {(idx.symbol === 'BTC-USD' || idx.symbol === 'ETH-USD' || idx.symbol === 'SOL-USD' || idx.symbol === 'XRP-USD') && (
                   <img
                     src={`https://img.logo.dev/crypto/${idx.symbol.replace('-', '')}?token=pk_NNp9abu9TMm9II6Z0666YA&format=png&fallback=404&size=50`}
-                    alt="" className="w-4 h-4 rounded-full"
+                    alt="" className="w-4 h-4 rounded-sm shadow-sm"
                   />
                 )}
                 <span className="text-gray-500 dark:text-gray-400 font-semibold">{idx.name}</span>

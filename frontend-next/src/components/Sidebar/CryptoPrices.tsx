@@ -188,11 +188,11 @@ export default function CryptoPrices() {
                                 className="flex items-center justify-between py-3 border-b border-gray-50 dark:border-gray-800/50 last:border-0"
                             >
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-gray-800 overflow-hidden">
+                                    <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 shadow-sm border border-gray-50 dark:border-gray-800">
                                         <img
                                             src={`https://img.logo.dev/crypto/${it.label}USD?token=pk_NNp9abu9TMm9II6Z0666YA&format=png&fallback=404&size=80`}
                                             alt={it.label}
-                                            className="w-7 h-7 object-contain"
+                                            className="w-full h-full object-cover"
                                         />
                                     </div>
                                     <div className="flex flex-col min-w-0">

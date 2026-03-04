@@ -180,7 +180,7 @@ function MarketList({
                                 <Link
                                     key={item.Symbol}
                                     href={`/stock/${item.Symbol}`}
-                                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group"
+                                    className="flex items-center justify-between px-5 py-4 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-all group relative"
                                 >
                                     <div className="flex items-center gap-3 overflow-hidden flex-1 mr-2">
                                         <div className="shrink-0 relative w-9 h-9 rounded-lg bg-white border border-gray-100 dark:border-gray-700 dark:bg-gray-800 flex items-center justify-center p-1.5 shadow-sm group-hover:border-blue-200 transition-colors overflow-hidden">

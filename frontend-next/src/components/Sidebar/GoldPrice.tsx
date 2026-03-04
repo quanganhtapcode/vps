@@ -47,7 +47,7 @@ export default function GoldPrice({ prices, isLoading, updatedAt }: GoldPricePro
                                 <div key={item.Id} className="flex items-center justify-between py-3 border-b border-gray-50 dark:border-gray-800/50 last:border-0 group">
                                     {/* Left: Badge + Name */}
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm ${isSilver
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold text-[11px] shadow-sm border border-gray-100 dark:border-gray-800 ${isSilver
                                             ? 'bg-slate-100 text-slate-500 dark:bg-slate-800'
                                             : 'bg-amber-100 text-amber-600 dark:bg-amber-900/30'
                                             }`}>
