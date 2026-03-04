@@ -31,16 +31,8 @@ export default function GoldPrice({ prices, isLoading, updatedAt }: GoldPricePro
 
     return (
         <Card className="mt-4 p-0 overflow-hidden bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm rounded-2xl">
-            {/* Header */}
-            <div className="flex items-center gap-2 px-5 py-4">
-                <span className="text-xl">🏆</span>
-                <span className="text-base font-bold text-gray-900 dark:text-gray-100">
-                    Giá Vàng & Bạc
-                </span>
-            </div>
-
             {/* Content List */}
-            <div className="px-5 pb-2">
+            <div className="px-5 py-2">
                 {isLoading ? (
                     <div className="flex flex-col items-center justify-center py-10">
                         <div className="animate-spin rounded-full h-6 w-6 border-2 border-amber-500 border-t-transparent" />

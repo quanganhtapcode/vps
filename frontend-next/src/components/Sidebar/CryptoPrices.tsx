@@ -174,16 +174,6 @@ export default function CryptoPrices() {
 
     return (
         <Card className="mt-4 p-0 overflow-hidden bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm rounded-2xl">
-            <div className="flex items-center justify-between gap-2 px-5 py-4">
-                <div className="flex items-center gap-2">
-                    <span className="text-xl">🪙</span>
-                    <span className="text-base font-bold text-gray-900 dark:text-gray-100">Crypto (OKX)</span>
-                </div>
-                <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
-                    {status === 'connected' ? 'Live' : status === 'connecting' ? '...' : 'Reconnecting'}
-                </span>
-            </div>
-
             <div className="px-5 pb-2">
                 <div className="flex flex-col">
                     {INSTRUMENTS.map((it) => {
