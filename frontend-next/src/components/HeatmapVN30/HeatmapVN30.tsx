@@ -66,26 +66,25 @@ function squarifyTile<T>(
   return result;
 }
 
-//  Heatmap Color Scale (Standard Financial)
+//  Pastel Color Scale (Perplexity/Generic style as requested)
 function changeColor(pct: number): string {
-  if (pct >= 6.5) return '#7c3aed'; // Ceiling - Purple (VN Market)
-  if (pct >= 3.0) return '#166534'; // Strong Green
-  if (pct >= 1.5) return '#22c55e'; // Green
-  if (pct >= 0.5) return '#86efac'; // Light Green
-  if (pct > -0.5) return '#f1f5f9'; // Neutral / Reference
-  if (pct > -1.5) return '#fecaca'; // Light Red
-  if (pct > -3.0) return '#ef4444'; // Red
-  if (pct <= -6.5) return '#0e7490'; // Floor - Cyan (VN Market)
-  return '#991b1b'; // Strong Red
+  if (pct === undefined || pct === null) return '#ffffff';
+  if (pct <= -5) return '#f4889a'; // Red Strong
+  if (pct <= -2) return '#f8a9b4'; // Red Medium
+  if (pct < 0) return '#fce0e3'; // Red Light
+  if (pct === 0) return '#f3f4f6'; // Gray (Neutral)
+  if (pct < 2) return '#e0f3d8'; // Green Light
+  if (pct < 5) return '#bceaa8'; // Green Medium
+  return '#8bd071';               // Green Strong
 }
 
 function textColor(pct: number): string {
-  if (Math.abs(pct) >= 1.5 || pct >= 6.5 || pct <= -6.5) return '#ffffff';
-  return '#475569';
+  // Use dark text for better visibility on pastel backgrounds
+  return '#0f172a';
 }
 
 function sectorTextColor(pct: number): string {
-  if (pct > 0) return '#166534';
+  if (pct > 0) return '#065f46';
   if (pct < 0) return '#991b1b';
   return '#64748b';
 }
@@ -178,11 +177,15 @@ export default function HeatmapVN30() {
         ) : (
           <svg
             width={cw} height={ch}
-            style={{ display: 'block', fontFamily: 'Inter, system-ui, sans-serif', userSelect: 'none' }}
+            style={{
+              display: 'block',
+              fontFamily: 'var(--font-inter), Inter, system-ui, sans-serif',
+              userSelect: 'none'
+            }}
             onMouseLeave={() => setHover(null)}
           >
             {/* SVG background */}
-            <rect x={0} y={0} width={cw} height={H} fill={svgBg} />
+            <rect x={0} y={0} width={cw} height={ch} fill={svgBg} />
 
             {sectorTiles.map(({ item: sector, rect: sRaw }) => {
               // Inset sector
@@ -362,16 +365,11 @@ export default function HeatmapVN30() {
       <div className="mt-6 flex flex-wrap items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-5 gap-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
-            <span className="text-[11px] font-bold text-slate-400 mr-1">-3%</span>
-            {['#991b1b', '#ef4444', '#fecaca', '#f1f5f9', '#86efac', '#22c55e', '#166534'].map((c, i) => (
-              <div key={i} className="w-5 h-5 rounded-md shadow-sm" style={{ backgroundColor: c }} />
+            <span className="text-[11px] font-bold text-slate-400 mr-2">-5%</span>
+            {['#f4889a', '#f8a9b4', '#fce0e3', '#f3f4f6', '#e0f3d8', '#bceaa8', '#8bd071'].map((c, i) => (
+              <div key={i} className="w-5 h-4 first:rounded-l-md last:rounded-r-md shadow-sm" style={{ backgroundColor: c }} />
             ))}
-            <span className="text-[11px] font-bold text-slate-400 ml-1">+3%</span>
-          </div>
-          <div className="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1" />
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-md bg-[#7c3aed] text-[10px] font-bold text-white shadow-sm">Trần</span>
-            <span className="px-2 py-0.5 rounded-md bg-[#0e7490] text-[10px] font-bold text-white shadow-sm">Sàn</span>
+            <span className="text-[11px] font-bold text-slate-400 ml-2">+5%</span>
           </div>
         </div>
 
