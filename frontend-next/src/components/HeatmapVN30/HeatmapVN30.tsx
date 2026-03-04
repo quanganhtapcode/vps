@@ -30,88 +30,78 @@ function squarifyTile<T>(
   if (!filtered.length) return [];
   const sorted = [...filtered].sort((a, b) => getValue(b) - getValue(a));
   const totalValue = sorted.reduce((s, d) => s + getValue(d), 0);
-  const totalArea  = (x1 - x0) * (y1 - y0);
+  const totalArea = (x1 - x0) * (y1 - y0);
   const nodes = sorted.map(d => ({ item: d, area: (getValue(d) / totalValue) * totalArea }));
   const result: TileItem<T>[] = [];
   function place(ns: typeof nodes, rx0: number, ry0: number, rx1: number, ry1: number) {
     const rw = rx1 - rx0, rh = ry1 - ry0;
     if (!ns.length || rw <= 0 || rh <= 0) return;
     if (ns.length === 1) { result.push({ item: ns[0].item, rect: { x: rx0, y: ry0, w: rw, h: rh } }); return; }
-    const horiz    = rw >= rh;
+    const horiz = rw >= rh;
     const longSide = horiz ? rw : rh;
     let row = [ns[0]], i = 1;
     while (i < ns.length) {
       const cand = [...row, ns[i]].map(n => n.area);
       if (worstAspect(cand, longSide) <= worstAspect(row.map(n => n.area), longSide)) { row.push(ns[i++]); } else break;
     }
-    const rowArea   = row.reduce((s, n) => s + n.area, 0);
+    const rowArea = row.reduce((s, n) => s + n.area, 0);
     const stripThick = rowArea / longSide;
     let offset = horiz ? rx0 : ry0;
     for (const n of row) {
       const cellLen = (n.area / rowArea) * longSide;
-      result.push({ item: n.item, rect: horiz
-        ? { x: offset, y: ry0, w: cellLen, h: stripThick }
-        : { x: rx0, y: offset, w: stripThick, h: cellLen } });
+      result.push({
+        item: n.item, rect: horiz
+          ? { x: offset, y: ry0, w: cellLen, h: stripThick }
+          : { x: rx0, y: offset, w: stripThick, h: cellLen }
+      });
       offset += cellLen;
     }
     const rem = ns.slice(row.length);
     if (rem.length) {
       if (horiz) place(rem, rx0, ry0 + stripThick, rx1, ry1);
-      else       place(rem, rx0 + stripThick, ry0, rx1, ry1);
+      else place(rem, rx0 + stripThick, ry0, rx1, ry1);
     }
   }
   place(nodes, x0, y0, x1, y1);
   return result;
 }
 
-//  Perplexity-style pastel color scale 
-// Vietnamese market: ceiling ~+6.7% (purple), floor ~-6.7% (cyan)
+//  Heatmap Color Scale (Standard Financial)
 function changeColor(pct: number): string {
-  if (pct >= 6.5)  return '#6d28d9'; // tran - purple
-  if (pct >= 4.0)  return '#14532d'; // deep green
-  if (pct >= 2.5)  return '#16a34a'; // medium green
-  if (pct >= 1.5)  return '#4ade80'; // light green
-  if (pct >= 0.5)  return '#bbf7d0'; // very light green
-  if (pct > -0.5)  return '#fef9c3'; // reference - cream
-  if (pct > -1.5)  return '#fee2e2'; // very light red
-  if (pct > -2.5)  return '#fca5a5'; // light pink
-  if (pct > -4.0)  return '#f87171'; // salmon
-  if (pct <= -6.5) return '#155e75'; // san - deep cyan
-  return '#dc2626'; // medium-dark red
+  if (pct >= 6.5) return '#7c3aed'; // Ceiling - Purple (VN Market)
+  if (pct >= 3.0) return '#166534'; // Strong Green
+  if (pct >= 1.5) return '#22c55e'; // Green
+  if (pct >= 0.5) return '#86efac'; // Light Green
+  if (pct > -0.5) return '#f1f5f9'; // Neutral / Reference
+  if (pct > -1.5) return '#fecaca'; // Light Red
+  if (pct > -3.0) return '#ef4444'; // Red
+  if (pct <= -6.5) return '#0e7490'; // Floor - Cyan (VN Market)
+  return '#991b1b'; // Strong Red
 }
 
-// Dark text on pale cells, white on saturated cells
 function textColor(pct: number): string {
-  if (pct >= 6.5 || pct <= -6.5) return '#ffffff';
-  if (pct >= 2.5 || pct <= -4.0) return '#ffffff';
-  if (pct >= 0.5)  return '#14532d'; // dark green text on pale green
-  if (pct > -1.5)  return '#7f1d1d'; // dark red text on cream/light-pink
-  return '#7f1d1d';
+  if (Math.abs(pct) >= 1.5 || pct >= 6.5 || pct <= -6.5) return '#ffffff';
+  return '#475569';
 }
 
-// Sector label text color
 function sectorTextColor(pct: number): string {
-  return pct >= 0 ? '#15803d' : '#dc2626';
+  if (pct > 0) return '#166534';
+  if (pct < 0) return '#991b1b';
+  return '#64748b';
 }
 
-const LEGEND: [string, string][] = [
-  ['#6d28d9','Tran'], ['#14532d','+4%'], ['#16a34a','+2%'], ['#4ade80','+1%'], ['#bbf7d0','+0.5%'],
-  ['#fef9c3','TC'],
-  ['#fee2e2','-0.5%'], ['#fca5a5','-1%'], ['#f87171','-2%'], ['#dc2626','-4%'], ['#155e75','San'],
-];
-
-const H          = 500;
-const SECTOR_PAD = 3;   // gap between sectors
-const STOCK_GAP  = 1;   // gap between stocks within a sector
-const LABEL_H    = 17;  // reserved height for sector label header row
+const H = 600;
+const SECTOR_PAD = 6;   // larger gap between sectors
+const STOCK_GAP = 1.5; // gap between stocks
+const LABEL_H = 24;  // height for sector label header
 
 //  Component 
 export default function HeatmapVN30() {
-  const [data,    setData]    = useState<HeatmapData | null>(null);
-  const [cw,      setCw]      = useState(800);
+  const [data, setData] = useState<HeatmapData | null>(null);
+  const [cw, setCw] = useState(800);
   const [loading, setLoading] = useState(true);
-  const [isDark,  setIsDark]  = useState(false);
-  const [hover,   setHover]   = useState<{
+  const [isDark, setIsDark] = useState(false);
+  const [hover, setHover] = useState<{
     ticker: string; change: number; price: number; cap: number;
     mx: number; my: number;
   } | null>(null);
@@ -148,33 +138,28 @@ export default function HeatmapVN30() {
 
   useEffect(() => { load(); const t = setInterval(load, 30_000); return () => clearInterval(t); }, [load]);
 
-  const svgBg     = isDark ? '#1a1c23' : '#ffffff';
-  const labelBg   = isDark ? '#1a1c23' : '#ffffff';
-  const labelText = isDark ? '#e2e8f0' : '#111827';
+  const svgBg = isDark ? '#0f1117' : '#ffffff';
+  const labelBg = isDark ? '#0f1117' : '#ffffff';
+  const labelText = isDark ? '#94a3b8' : '#64748b';
 
   const sectorTiles = squarifyTile(data?.sectors ?? [], s => s.totalCap, 0, 0, cw, H);
 
   return (
-    <div className="rounded-xl border border-tremor-border dark:border-dark-tremor-border bg-white dark:bg-[#1a1c23] p-3 md:p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f1117] p-4 md:p-6 shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <h2 className="text-sm font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong flex items-center gap-1.5">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="text-indigo-500">
-            <rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/>
-            <rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>
-          </svg>
-          Heatmap HOSE
-        </h2>
-        {/* Perplexity-style gradient legend */}
-        <div className="flex items-center gap-1 flex-wrap">
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 mr-0.5">-4%</span>
-          {['#dc2626','#f87171','#fca5a5','#fee2e2','#fef9c3','#bbf7d0','#4ade80','#16a34a','#14532d'].map((c,i) => (
-            <span key={i} className="inline-block w-4 h-3.5 rounded-sm" style={{ background: c }} />
-          ))}
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-0.5">+4%</span>
-          <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold text-white leading-none" style={{ background: '#6d28d9' }}>Tran</span>
-          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold text-white leading-none" style={{ background: '#155e75' }}>San</span>
+      <div className="flex items-center justify-between mb-5 gap-2">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            HOSE Heatmap
+          </h2>
+          <p className="text-xs text-slate-500 font-medium">VN-Index stocks grouped by sector</p>
         </div>
+        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+          Expand
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+        </button>
       </div>
 
       {/* Treemap */}
@@ -201,7 +186,7 @@ export default function HeatmapVN30() {
               if (sw < 4 || sh < 4) return null;
 
               const hasLabel = sw >= 50 && sh >= LABEL_H + 4;
-              const labelH   = hasLabel ? LABEL_H : 0;
+              const labelH = hasLabel ? LABEL_H : 0;
 
               // Stocks fill the area below the label
               const stockTiles = squarifyTile(
@@ -210,7 +195,7 @@ export default function HeatmapVN30() {
               );
 
               const sign = sector.avgChange >= 0 ? '+' : '';
-              const pct  = `${sign}${sector.avgChange.toFixed(2)}%`;
+              const pct = `${sign}${sector.avgChange.toFixed(2)}%`;
 
               return (
                 <g key={sector.name}>
@@ -219,17 +204,20 @@ export default function HeatmapVN30() {
 
                   {/* Sector label row */}
                   {hasLabel && (
-                    <text
-                      x={sx + 5} y={sy + 12}
-                      fontSize={9.5} fontWeight="700" fill={labelText}
-                      style={{ pointerEvents: 'none' }}
-                    >
-                      {sector.shortName}
-                      <tspan
-                        fill={sectorTextColor(sector.avgChange)}
-                        fontWeight="600"
-                      >{' '}{pct}</tspan>
-                    </text>
+                    <g transform={`translate(${sx}, ${sy})`} style={{ pointerEvents: 'none' }}>
+                      <text
+                        x={0} y={15}
+                        fontSize={11} fontWeight="700" fill={labelText}
+                      >
+                        {sector.shortName}
+                        <tspan
+                          dx={6}
+                          fill={sectorTextColor(sector.avgChange)}
+                          fontSize={10}
+                          fontWeight="600"
+                        >{pct}</tspan>
+                      </text>
+                    </g>
                   )}
 
                   {/* Stock cells */}
@@ -244,36 +232,46 @@ export default function HeatmapVN30() {
                     const fg = textColor(stock.change);
                     const cx = ix + iw / 2;
                     const cy = iy + ih / 2;
-                    const fs         = Math.min(13, Math.max(7, Math.min(iw / 4.5, ih / 3.2)));
-                    const showTicker = iw >= 18 && ih >= 13;
-                    const showPct    = iw >= 22 && ih >= 27;
+
+                    // Adaptive font sizes
+                    const fs = Math.min(14, Math.max(8, Math.min(iw / 4.2, ih / 3.0)));
+                    const showTicker = iw >= 20 && ih >= 15;
+                    const showPct = iw >= 25 && ih >= 30;
 
                     return (
                       <g
                         key={stock.ticker}
+                        className="transition-all duration-200"
                         style={{ cursor: 'pointer' }}
                         onClick={() => window.open(`/stock/${stock.ticker}`, '_blank')}
                         onMouseMove={e => {
                           const svg = (e.currentTarget as SVGGElement).closest('svg');
-                          const br  = svg?.getBoundingClientRect();
-                          setHover({ ticker: stock.ticker, change: stock.change, price: stock.price, cap: stock.cap,
-                            mx: e.clientX - (br?.left ?? 0), my: e.clientY - (br?.top ?? 0) });
+                          const br = svg?.getBoundingClientRect();
+                          setHover({
+                            ticker: stock.ticker, change: stock.change, price: stock.price, cap: stock.cap,
+                            mx: e.clientX - (br?.left ?? 0), my: e.clientY - (br?.top ?? 0)
+                          });
                         }}
                       >
-                        <rect x={ix} y={iy} width={iw} height={ih} fill={bg} rx={3} />
+                        <rect
+                          x={ix} y={iy} width={iw} height={ih}
+                          fill={bg} rx={4}
+                          className="hover:brightness-110 transition-all shadow-sm"
+                        />
                         {showTicker && (
                           <text
-                            x={cx} y={cy - (showPct ? fs * 0.68 : 0)}
-                            fill={fg} fontSize={fs} fontWeight="700"
+                            x={cx} y={cy - (showPct ? fs * 0.75 : 0)}
+                            fill={fg} fontSize={fs} fontWeight="800"
                             textAnchor="middle" dominantBaseline="middle"
-                            style={{ pointerEvents: 'none' }}
+                            style={{ pointerEvents: 'none', letterSpacing: '-0.02em' }}
                           >{stock.ticker}</text>
                         )}
                         {showPct && (
                           <text
-                            x={cx} y={cy + fs * 1.12}
-                            fill={fg} fontSize={Math.max(6.5, fs * 0.8)} fontWeight="500"
+                            x={cx} y={cy + fs * 1.15}
+                            fill={fg} fontSize={Math.max(7, fs * 0.85)} fontWeight="600"
                             textAnchor="middle" dominantBaseline="middle"
+                            opacity={0.9}
                             style={{ pointerEvents: 'none' }}
                           >{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)}%</text>
                         )}
@@ -283,7 +281,7 @@ export default function HeatmapVN30() {
 
                   {/* Sector border -- thin, subtle */}
                   <rect x={sx} y={sy} width={sw} height={sh}
-                    fill="none" stroke={isDark ? '#334155' : '#e2e8f0'} strokeWidth={1} rx={4}
+                    fill="none" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'} strokeWidth={1} rx={6}
                     style={{ pointerEvents: 'none' }}
                   />
                 </g>
@@ -292,31 +290,65 @@ export default function HeatmapVN30() {
 
             {/* Tooltip */}
             {hover && (() => {
-              const TW = 148, TH = 56;
-              const tx = Math.min(hover.mx + 14, cw - TW - 4);
-              const ty = Math.max(hover.my - TH - 10, 4);
-              const sign   = hover.change >= 0 ? '+' : '';
-              const capStr = hover.cap >= 1000 ? `${(hover.cap / 1000).toFixed(1)}N` : `${hover.cap.toFixed(0)}T`;
-              const tBg    = isDark ? 'rgba(15,20,30,0.95)' : 'rgba(15,20,30,0.90)';
+              const TW = 160, TH = 64;
+              const tx = Math.min(hover.mx + 14, cw - TW - 10);
+              const ty = Math.min(hover.my + 14, H - TH - 10);
+              const sign = hover.change >= 0 ? '+' : '';
+              const capStr = hover.cap >= 1000 ? `${(hover.cap / 1000).toFixed(1)}N tỷ` : `${hover.cap.toFixed(0)} tỷ`;
+              const tBg = isDark ? '#1e293b' : '#0f172a';
               return (
-                <g style={{ pointerEvents: 'none' }}>
-                  <rect x={tx} y={ty} width={TW} height={TH} fill={tBg}
-                    stroke="rgba(255,255,255,0.1)" strokeWidth={1} rx={7} />
-                  <text x={tx + 10} y={ty + 19} fill="#f9fafb" fontSize={13} fontWeight="800">{hover.ticker}</text>
-                  <text x={tx + 10} y={ty + 33} fill="#cbd5e1" fontSize={9.5}>
-                    {hover.price.toLocaleString('vi-VN')} VND
+                <g style={{ pointerEvents: 'none' }} filter="drop-shadow(0 4px 6px rgba(0,0,0,0.3))">
+                  <rect x={tx} y={ty} width={TW} height={TH} fill={tBg} rx={10} />
+                  <text x={tx + 12} y={ty + 22} fill="#ffffff" fontSize={14} fontWeight="800">{hover.ticker}</text>
+                  <text x={tx + 12} y={ty + 40} fill="#94a3b8" fontSize={11}>
+                    Giá: {hover.price.toLocaleString('vi-VN')}
                   </text>
-                  <text x={tx + 10} y={ty + 47} fill="#94a3b8" fontSize={9}>
-                    VH: {capStr} {'  '}
-                    <tspan fill={hover.change >= 0 ? '#4ade80' : '#f87171'} fontWeight="700">
-                      {sign}{hover.change.toFixed(2)}%
-                    </tspan>
+                  <text x={tx + TW - 12} y={ty + 22} fill={hover.change >= 0 ? '#4ade80' : '#f87171'} fontSize={12} fontWeight="800" textAnchor="end">
+                    {sign}{hover.change.toFixed(2)}%
+                  </text>
+                  <text x={tx + TW - 12} y={ty + 40} fill="#64748b" fontSize={10} textAnchor="end">
+                    VH: {capStr}
                   </text>
                 </g>
               );
             })()}
           </svg>
         )}
+      </div>
+
+      {/* Modern Legend Footer */}
+      <div className="mt-6 flex flex-wrap items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-5 gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] font-bold text-slate-400 mr-1">-3%</span>
+            {['#991b1b', '#ef4444', '#fecaca', '#f1f5f9', '#86efac', '#22c55e', '#166534'].map((c, i) => (
+              <div key={i} className="w-5 h-5 rounded-md shadow-sm" style={{ backgroundColor: c }} />
+            ))}
+            <span className="text-[11px] font-bold text-slate-400 ml-1">+3%</span>
+          </div>
+          <div className="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1" />
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-md bg-[#7c3aed] text-[10px] font-bold text-white shadow-sm">Trần</span>
+            <span className="px-2 py-0.5 rounded-md bg-[#0e7490] text-[10px] font-bold text-white shadow-sm">Sàn</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="text-[11px] text-slate-400 font-medium">
+            {new Date().toLocaleString('vi-VN', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
+            })}
+          </div>
+          <div className="flex items-center gap-1.5 grayscale opacity-50 hover:grayscale-0 hover:opacity-100 transition-all cursor-default">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Live Data</span>
+          </div>
+        </div>
       </div>
     </div>
   );
