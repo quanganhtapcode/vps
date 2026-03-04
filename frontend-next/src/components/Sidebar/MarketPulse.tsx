@@ -260,11 +260,6 @@ function MarketList({
                 )}
             </div>
 
-            <div className="p-3 border-t border-tremor-border dark:border-dark-tremor-border">
-                <Link href="/market" className="block w-full py-2 text-center text-xs font-medium text-tremor-brand hover:text-tremor-brand-emphasis transition-colors">
-                    View all market data →
-                </Link>
-            </div>
         </div>
     );
 }
