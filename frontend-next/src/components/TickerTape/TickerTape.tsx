@@ -61,7 +61,13 @@ export default function TickerTape() {
               ? 'text-rose-500 dark:text-rose-400'
               : 'text-yellow-600 dark:text-yellow-400';
           return (
-            <span key={i} className="inline-flex items-center gap-1.5 px-4 text-[11px] font-medium">
+            <span key={i} className="inline-flex items-center gap-2 px-4 text-[11px] font-medium">
+              {(idx.symbol === 'BTC-USD' || idx.symbol === 'ETH-USD' || idx.symbol === 'SOL-USD' || idx.symbol === 'XRP-USD') && (
+                <img
+                  src={`https://img.logo.dev/crypto/${idx.symbol.replace('-', '')}?token=pk_NNp9abu9TMm9II6Z0666YA&format=png&fallback=404&size=50`}
+                  alt="" className="w-4 h-4 rounded-full"
+                />
+              )}
               <span className="text-gray-500 dark:text-gray-400 font-semibold">{idx.name}</span>
               <span className="text-gray-900 dark:text-gray-100 font-semibold tabular-nums">
                 {formatPrice(idx.price)}

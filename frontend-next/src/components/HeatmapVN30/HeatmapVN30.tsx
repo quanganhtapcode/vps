@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_BASE } from '@/lib/api';
 
 //  Types 
-interface Stock { ticker: string; cap: number; change: number; price: number }
+interface Stock { ticker: string; cap: number; change: number; price: number; name: string; sector: string }
 interface Sector { name: string; shortName: string; totalCap: number; avgChange: number; stocks: Stock[] }
 interface HeatmapData { sectors: Sector[] }
 interface TileRect { x: number; y: number; w: number; h: number }
@@ -103,6 +103,7 @@ export default function HeatmapVN30() {
   const [isDark, setIsDark] = useState(false);
   const [hover, setHover] = useState<{
     ticker: string; change: number; price: number; cap: number;
+    name: string; sector: string;
     mx: number; my: number;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -244,8 +245,14 @@ export default function HeatmapVN30() {
                           const br = svg?.getBoundingClientRect();
                           if (!br) return;
                           setHover({
-                            ticker: stock.ticker, change: stock.change, price: stock.price, cap: stock.cap,
-                            mx: e.clientX - br.left, my: e.clientY - br.top
+                            ticker: stock.ticker,
+                            change: stock.change,
+                            price: stock.price,
+                            cap: stock.cap,
+                            name: stock.name,
+                            sector: stock.sector,
+                            mx: e.clientX - br.left,
+                            my: e.clientY - br.top
                           });
                         }}
                         onTouchStart={e => {
@@ -254,8 +261,14 @@ export default function HeatmapVN30() {
                           if (!br) return;
                           const touch = e.touches[0];
                           setHover({
-                            ticker: stock.ticker, change: stock.change, price: stock.price, cap: stock.cap,
-                            mx: touch.clientX - br.left, my: touch.clientY - br.top
+                            ticker: stock.ticker,
+                            change: stock.change,
+                            price: stock.price,
+                            cap: stock.cap,
+                            name: stock.name,
+                            sector: stock.sector,
+                            mx: touch.clientX - br.left,
+                            my: touch.clientY - br.top
                           });
                         }}
                       >
@@ -296,9 +309,9 @@ export default function HeatmapVN30() {
 
             {/* Tooltip */}
             {hover && (() => {
-              const TW = cw < 400 ? 140 : 180;
-              const TH = cw < 400 ? 80 : 96;
-              // Tooltip positioning logic to keep it within bounds
+              const TW = 230;
+              const TH = 100;
+              // Tooltip positioning logic
               let tx = hover.mx + 15;
               let ty = hover.my + 15;
               if (tx + TW > cw) tx = hover.mx - TW - 15;
@@ -306,39 +319,45 @@ export default function HeatmapVN30() {
               if (tx < 5) tx = 5;
               if (ty < 5) ty = 5;
 
-              const sign = hover.change >= 0 ? '+' : '';
-              const capStr = hover.cap >= 1000 ? `${(hover.cap / 1000).toFixed(1)}N tỷ` : `${hover.cap.toFixed(0)} tỷ`;
+              const isUp = hover.change > 0;
+              const isDown = hover.change < 0;
+              const color = isUp ? '#065f46' : (isDown ? '#991b1b' : '#64748b');
+              const bgSubtle = isUp ? '#f0fdf4' : (isDown ? '#fef2f2' : '#f8fafc');
               const tBg = isDark ? '#1e2230' : '#ffffff';
               const tStroke = isDark ? '#334155' : '#e2e8f0';
-              const tText = isDark ? '#f8fafc' : '#0f172a';
-              const tMuted = isDark ? '#94a3b8' : '#64748b';
 
               return (
                 <g style={{ pointerEvents: 'none' }}>
-                  {/* Shadow filter defined once or just use a style */}
-                  <rect x={tx} y={ty} width={TW} height={TH} fill={tBg} rx={12} stroke={tStroke} strokeWidth={1.5} filter="drop-shadow(0 10px 15px rgba(0,0,0,0.1))" />
+                  <rect x={tx} y={ty} width={TW} height={TH} fill={tBg} rx={12} stroke={tStroke} strokeWidth={1} filter="drop-shadow(0 6px 12px rgba(0,0,0,0.08))" />
 
-                  {/* Ticker & Change */}
-                  <text x={tx + 12} y={ty + 26} fill={tText} fontSize={16} fontWeight="800">{hover.ticker}</text>
-                  <g transform={`translate(${tx + TW - 12}, ${ty + 23})`}>
-                    <rect x={-45} y={-12} width={45} height={18} rx={6} fill={hover.change >= 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)'} />
-                    <text x={-2} y={1} fill={hover.change >= 0 ? '#10b981' : '#ef4444'} fontSize={12} fontWeight="800" textAnchor="end">
-                      {sign}{hover.change.toFixed(2)}%
+                  {/* Top Line: Sector */}
+                  <text x={tx + 14} y={ty + 22} fill="#94a3b8" fontSize={10} fontWeight="600" className="uppercase tracking-tight" style={{ opacity: 0.8 }}>
+                    {hover.sector}
+                  </text>
+
+                  {/* Icon | Symbol | Name row */}
+                  <foreignObject x={tx + 12} y={ty + 34} width={24} height={24}>
+                    <div className="flex items-center justify-center w-6 h-6 rounded bg-slate-50 border border-slate-100 overflow-hidden">
+                      <img src={`https://vietcap-documents.s3.ap-southeast-1.amazonaws.com/sentiment/logo/${hover.ticker}.jpeg`}
+                        alt="" className="w-full h-full object-contain" />
+                    </div>
+                  </foreignObject>
+                  <text x={tx + 42} y={ty + 52} fill={isDark ? '#f8fafc' : '#0f172a'} fontSize={15} fontWeight="800">{hover.ticker}</text>
+                  <text x={tx + 78} y={ty + 51} fill="#64748b" fontSize={11} fontWeight="500" className="truncate">
+                    {hover.name.length > 22 ? hover.name.substring(0, 20) + '...' : hover.name}
+                  </text>
+
+                  {/* Price | Area Change% */}
+                  <text x={tx + 14} y={ty + 82} fill={isDark ? '#f1f5f9' : '#0f172a'} fontSize={16} fontWeight="800">
+                    {hover.price.toLocaleString('vi-VN')} đ
+                  </text>
+
+                  <g transform={`translate(${tx + 105}, ${ty + 68})`}>
+                    <rect x={0} y={0} width={62} height={18} rx={6} fill={bgSubtle} />
+                    <text x={8} y={13} fill={color} fontSize={12} fontWeight="900">
+                      {isUp ? '↗' : (isDown ? '↘' : '→')} {Math.abs(hover.change).toFixed(2)}%
                     </text>
                   </g>
-
-                  {/* Details */}
-                  <line x1={tx + 12} y1={ty + 40} x2={tx + TW - 12} y2={ty + 40} stroke={tStroke} strokeWidth={1} strokeDasharray="2 2" />
-
-                  <text x={tx + 12} y={ty + 58} fill={tMuted} fontSize={11} fontWeight="500">Giá hiện tại</text>
-                  <text x={tx + TW - 12} y={ty + 58} fill={tText} fontSize={12} fontWeight="700" textAnchor="end">{hover.price.toLocaleString('vi-VN')} đ</text>
-
-                  <text x={tx + 12} y={ty + 76} fill={tMuted} fontSize={11} fontWeight="500">Vốn hóa</text>
-                  <text x={tx + TW - 12} y={ty + 76} fill={tText} fontSize={12} fontWeight="700" textAnchor="end">{capStr}</text>
-
-                  {cw >= 400 && (
-                    <text x={tx + TW / 2} y={ty + 88} fill={tMuted} fontSize={8} fontWeight="500" textAnchor="middle" opacity={0.6}>Click để xem chi tiết</text>
-                  )}
                 </g>
               );
             })()}
