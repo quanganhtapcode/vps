@@ -90,9 +90,9 @@ function sectorTextColor(pct: number): string {
 }
 
 const H = 600;
-const SECTOR_PAD = 6;   // larger gap between sectors
-const STOCK_GAP = 1.5; // gap between stocks
-const LABEL_H = 24;  // height for sector label header
+const SECTOR_PAD = 1.5;   // reduced gap between sectors
+const STOCK_GAP = 0.5; // very tight gap between stocks
+const LABEL_H = 18;  // shorter header the labels
 
 //  Component 
 export default function HeatmapVN30() {
@@ -152,7 +152,7 @@ export default function HeatmapVN30() {
   const sectorTiles = squarifyTile(data?.sectors ?? [], s => s.totalCap, 0, 0, cw, ch);
 
   return (
-    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f1117] p-4 md:p-6 shadow-sm overflow-hidden">
+    <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f1117] p-1 shadow-sm overflow-hidden">
 
       {/* Treemap */}
       <div ref={containerRef} className="relative w-full" style={{ height: ch }}>
@@ -196,7 +196,7 @@ export default function HeatmapVN30() {
               return (
                 <g key={sector.name}>
                   {/* Sector background (white/dark card bg) */}
-                  <rect x={sx} y={sy} width={sw} height={sh} fill={labelBg} rx={4} />
+                  <rect x={sx} y={sy} width={sw} height={sh} fill={labelBg} rx={0} />
 
                   {/* Sector label row */}
                   {hasLabel && (
@@ -274,7 +274,7 @@ export default function HeatmapVN30() {
                       >
                         <rect
                           x={ix} y={iy} width={iw} height={ih}
-                          fill={bg} rx={4}
+                          fill={bg} rx={0}
                           className="hover:brightness-110 transition-all shadow-sm"
                         />
                         {showTicker && (
@@ -300,7 +300,7 @@ export default function HeatmapVN30() {
 
                   {/* Sector border -- thin, subtle */}
                   <rect x={sx} y={sy} width={sw} height={sh}
-                    fill="none" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'} strokeWidth={1} rx={6}
+                    fill="none" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'} strokeWidth={1} rx={0}
                     style={{ pointerEvents: 'none' }}
                   />
                 </g>

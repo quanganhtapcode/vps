@@ -44,41 +44,43 @@ export default function TickerTape() {
   const duration = Math.max(30, indices.length * 8);
 
   return (
-    <div className="fixed inset-x-4 z-40 h-8 overflow-hidden rounded-full border border-gray-200/50 bg-white/80 backdrop-blur-md dark:border-gray-800/50 dark:bg-gray-950/80 top-[72px] md:top-[88px] max-w-5xl mx-auto shadow-sm">
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .ticker-track { animation: ticker-scroll linear infinite; width: max-content; }
-        .ticker-track:hover { animation-play-state: paused; }
-      `}} />
-      <div className="ticker-track flex items-center h-full whitespace-nowrap" style={{ animationDuration: `${duration}s` }}>
-        {items.map((idx, i) => {
-          const up = idx.changePercent > 0;
-          const down = idx.changePercent < 0;
-          const colorCls = up
-            ? 'text-emerald-600 dark:text-emerald-400'
-            : down
-              ? 'text-rose-500 dark:text-rose-400'
-              : 'text-yellow-600 dark:text-yellow-400';
-          return (
-            <span key={i} className="inline-flex items-center gap-2 px-4 text-[11px] font-medium">
-              {(idx.symbol === 'BTC-USD' || idx.symbol === 'ETH-USD' || idx.symbol === 'SOL-USD' || idx.symbol === 'XRP-USD') && (
-                <img
-                  src={`https://img.logo.dev/crypto/${idx.symbol.replace('-', '')}?token=pk_NNp9abu9TMm9II6Z0666YA&format=png&fallback=404&size=50`}
-                  alt="" className="w-4 h-4 rounded-full"
-                />
-              )}
-              <span className="text-gray-500 dark:text-gray-400 font-semibold">{idx.name}</span>
-              <span className="text-gray-900 dark:text-gray-100 font-semibold tabular-nums">
-                {formatPrice(idx.price)}
+    <div className="fixed inset-x-0 z-40 h-8 overflow-hidden bg-white/80 backdrop-blur-md border-b border-gray-200/50 dark:border-gray-800/50 dark:bg-gray-950/80 top-[64px] md:top-[72px] w-full shadow-sm">
+      <div className="max-w-[1440px] px-6 md:px-[24px] mx-auto h-full flex items-center">
+        <style dangerouslySetInnerHTML={{
+          __html: `
+          @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+          .ticker-track { animation: ticker-scroll linear infinite; width: max-content; }
+          .ticker-track:hover { animation-play-state: paused; }
+        `}} />
+        <div className="ticker-track flex items-center h-full whitespace-nowrap" style={{ animationDuration: `${duration}s` }}>
+          {items.map((idx, i) => {
+            const up = idx.changePercent > 0;
+            const down = idx.changePercent < 0;
+            const colorCls = up
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : down
+                ? 'text-rose-500 dark:text-rose-400'
+                : 'text-yellow-600 dark:text-yellow-400';
+            return (
+              <span key={i} className="inline-flex items-center gap-2 px-4 text-[11px] font-medium">
+                {(idx.symbol === 'BTC-USD' || idx.symbol === 'ETH-USD' || idx.symbol === 'SOL-USD' || idx.symbol === 'XRP-USD') && (
+                  <img
+                    src={`https://img.logo.dev/crypto/${idx.symbol.replace('-', '')}?token=pk_NNp9abu9TMm9II6Z0666YA&format=png&fallback=404&size=50`}
+                    alt="" className="w-4 h-4 rounded-full"
+                  />
+                )}
+                <span className="text-gray-500 dark:text-gray-400 font-semibold">{idx.name}</span>
+                <span className="text-gray-900 dark:text-gray-100 font-semibold tabular-nums">
+                  {formatPrice(idx.price)}
+                </span>
+                <span className={`tabular-nums font-bold ${colorCls}`}>
+                  {idx.changePercent > 0 ? '+' : ''}{idx.changePercent.toFixed(2)}%
+                </span>
+                <span className="text-gray-200 dark:text-gray-700 select-none">|</span>
               </span>
-              <span className={`tabular-nums font-bold ${colorCls}`}>
-                {idx.changePercent > 0 ? '+' : ''}{idx.changePercent.toFixed(2)}%
-              </span>
-              <span className="text-gray-200 dark:text-gray-700 select-none">|</span>
-            </span>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
