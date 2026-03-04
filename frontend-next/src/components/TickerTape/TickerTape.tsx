@@ -44,8 +44,8 @@ export default function TickerTape() {
   const duration = Math.max(30, indices.length * 8);
 
   return (
-    <div className="fixed inset-x-0 z-40 h-8 overflow-hidden bg-white/80 backdrop-blur-md border-b border-gray-200/50 dark:border-gray-800/50 dark:bg-gray-950/80 top-[64px] md:top-[72px] w-full shadow-sm">
-      <div className="max-w-[1440px] px-6 md:px-[24px] mx-auto h-full flex items-center">
+    <div className="fixed z-40 h-8 overflow-hidden bg-white/80 backdrop-blur-md border border-gray-200/50 dark:border-gray-800/50 dark:bg-gray-950/80 top-[64px] md:top-[72px] left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-[1440px] shadow-sm rounded-none">
+      <div className="h-full flex items-center px-4">
         <style dangerouslySetInnerHTML={{
           __html: `
           @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }

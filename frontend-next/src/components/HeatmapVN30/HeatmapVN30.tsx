@@ -90,9 +90,9 @@ function sectorTextColor(pct: number): string {
 }
 
 const H = 600;
-const SECTOR_PAD = 1.5;   // reduced gap between sectors
-const STOCK_GAP = 0.5; // very tight gap between stocks
-const LABEL_H = 18;  // shorter header the labels
+const SECTOR_PAD = 4;   // slightly more breathing room
+const STOCK_GAP = 1.5;  // clearer separation
+const LABEL_H = 20;     // balanced header height
 
 //  Component 
 export default function HeatmapVN30() {
@@ -228,11 +228,16 @@ export default function HeatmapVN30() {
                     const fg = textColor(stock.change);
                     const cx = ix + iw / 2;
                     const cy = iy + ih / 2;
-
-                    // Adaptive font sizes
                     const fs = Math.min(14, Math.max(8, Math.min(iw / 4.2, ih / 3.0)));
-                    const showTicker = iw >= 20 && ih >= 15;
-                    const showPct = iw >= 25 && ih >= 30;
+
+                    // Sorting sector stocks once to find major ones
+                    const sortedSectorStocks = [...sector.stocks].sort((a, b) => b.cap - a.cap);
+                    const topCapTickers = sortedSectorStocks.slice(0, 3).map(s => s.ticker);
+
+                    const showTicker = iw >= 18 && ih >= 12;
+                    // Show % only for top 3 stocks or very high volatility AND enough space
+                    const isImportant = topCapTickers.includes(stock.ticker) || Math.abs(stock.change) >= 5;
+                    const showPct = isImportant && iw >= 32 && ih >= 30;
 
                     return (
                       <g
