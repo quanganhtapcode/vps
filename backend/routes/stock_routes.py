@@ -1025,7 +1025,9 @@ def api_valuation(symbol):
                 )
                 row = cur.fetchone()
                 if row and row['shares_outstanding_millions']:
-                    shares_outstanding = to_float(row['shares_outstanding_millions']) * 1_000_000
+                    # Column name is misleading — like market_cap_billions,
+                    # this stores the raw count (do NOT multiply by 1e6).
+                    shares_outstanding = to_float(row['shares_outstanding_millions'])
 
                 conn.close()
         except Exception as exc:
