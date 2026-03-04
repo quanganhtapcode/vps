@@ -99,6 +99,7 @@ const LABEL_H = 24;  // height for sector label header
 export default function HeatmapVN30() {
   const [data, setData] = useState<HeatmapData | null>(null);
   const [cw, setCw] = useState(800);
+  const [ch, setCh] = useState(600); // Responsive height
   const [loading, setLoading] = useState(true);
   const [isDark, setIsDark] = useState(false);
   const [hover, setHover] = useState<{
@@ -107,12 +108,18 @@ export default function HeatmapVN30() {
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Responsive width
+  // Responsive sizing
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    setCw(el.clientWidth || 800);
-    const ro = new ResizeObserver(e => { const w = e[0]?.contentRect.width; if (w > 0) setCw(Math.floor(w)); });
+    const updateSize = () => {
+      const w = el.clientWidth || 800;
+      setCw(w);
+      // Dynamic height: taller on desktop, shorter on mobile
+      setCh(w < 640 ? 450 : 600);
+    };
+    updateSize();
+    const ro = new ResizeObserver(updateSize);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -142,7 +149,7 @@ export default function HeatmapVN30() {
   const labelBg = isDark ? '#0f1117' : '#ffffff';
   const labelText = isDark ? '#94a3b8' : '#64748b';
 
-  const sectorTiles = squarifyTile(data?.sectors ?? [], s => s.totalCap, 0, 0, cw, H);
+  const sectorTiles = squarifyTile(data?.sectors ?? [], s => s.totalCap, 0, 0, cw, ch);
 
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f1117] p-4 md:p-6 shadow-sm overflow-hidden">
@@ -163,14 +170,14 @@ export default function HeatmapVN30() {
       </div>
 
       {/* Treemap */}
-      <div ref={containerRef} className="relative w-full" style={{ height: H }}>
+      <div ref={containerRef} className="relative w-full" style={{ height: ch }}>
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
           <svg
-            width={cw} height={H}
+            width={cw} height={ch}
             style={{ display: 'block', fontFamily: 'Inter, system-ui, sans-serif', userSelect: 'none' }}
             onMouseLeave={() => setHover(null)}
           >
@@ -247,9 +254,20 @@ export default function HeatmapVN30() {
                         onMouseMove={e => {
                           const svg = (e.currentTarget as SVGGElement).closest('svg');
                           const br = svg?.getBoundingClientRect();
+                          if (!br) return;
                           setHover({
                             ticker: stock.ticker, change: stock.change, price: stock.price, cap: stock.cap,
-                            mx: e.clientX - (br?.left ?? 0), my: e.clientY - (br?.top ?? 0)
+                            mx: e.clientX - br.left, my: e.clientY - br.top
+                          });
+                        }}
+                        onTouchStart={e => {
+                          const svg = (e.currentTarget as SVGGElement).closest('svg');
+                          const br = svg?.getBoundingClientRect();
+                          if (!br) return;
+                          const touch = e.touches[0];
+                          setHover({
+                            ticker: stock.ticker, change: stock.change, price: stock.price, cap: stock.cap,
+                            mx: touch.clientX - br.left, my: touch.clientY - br.top
                           });
                         }}
                       >
@@ -290,25 +308,49 @@ export default function HeatmapVN30() {
 
             {/* Tooltip */}
             {hover && (() => {
-              const TW = 160, TH = 64;
-              const tx = Math.min(hover.mx + 14, cw - TW - 10);
-              const ty = Math.min(hover.my + 14, H - TH - 10);
+              const TW = cw < 400 ? 140 : 180;
+              const TH = cw < 400 ? 80 : 96;
+              // Tooltip positioning logic to keep it within bounds
+              let tx = hover.mx + 15;
+              let ty = hover.my + 15;
+              if (tx + TW > cw) tx = hover.mx - TW - 15;
+              if (ty + TH > ch) ty = hover.my - TH - 15;
+              if (tx < 5) tx = 5;
+              if (ty < 5) ty = 5;
+
               const sign = hover.change >= 0 ? '+' : '';
               const capStr = hover.cap >= 1000 ? `${(hover.cap / 1000).toFixed(1)}N tỷ` : `${hover.cap.toFixed(0)} tỷ`;
-              const tBg = isDark ? '#1e293b' : '#0f172a';
+              const tBg = isDark ? '#1e2230' : '#ffffff';
+              const tStroke = isDark ? '#334155' : '#e2e8f0';
+              const tText = isDark ? '#f8fafc' : '#0f172a';
+              const tMuted = isDark ? '#94a3b8' : '#64748b';
+
               return (
-                <g style={{ pointerEvents: 'none' }} filter="drop-shadow(0 4px 6px rgba(0,0,0,0.3))">
-                  <rect x={tx} y={ty} width={TW} height={TH} fill={tBg} rx={10} />
-                  <text x={tx + 12} y={ty + 22} fill="#ffffff" fontSize={14} fontWeight="800">{hover.ticker}</text>
-                  <text x={tx + 12} y={ty + 40} fill="#94a3b8" fontSize={11}>
-                    Giá: {hover.price.toLocaleString('vi-VN')}
-                  </text>
-                  <text x={tx + TW - 12} y={ty + 22} fill={hover.change >= 0 ? '#4ade80' : '#f87171'} fontSize={12} fontWeight="800" textAnchor="end">
-                    {sign}{hover.change.toFixed(2)}%
-                  </text>
-                  <text x={tx + TW - 12} y={ty + 40} fill="#64748b" fontSize={10} textAnchor="end">
-                    VH: {capStr}
-                  </text>
+                <g style={{ pointerEvents: 'none' }}>
+                  {/* Shadow filter defined once or just use a style */}
+                  <rect x={tx} y={ty} width={TW} height={TH} fill={tBg} rx={12} stroke={tStroke} strokeWidth={1.5} filter="drop-shadow(0 10px 15px rgba(0,0,0,0.1))" />
+
+                  {/* Ticker & Change */}
+                  <text x={tx + 12} y={ty + 26} fill={tText} fontSize={16} fontWeight="800">{hover.ticker}</text>
+                  <g transform={`translate(${tx + TW - 12}, ${ty + 23})`}>
+                    <rect x={-45} y={-12} width={45} height={18} rx={6} fill={hover.change >= 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)'} />
+                    <text x={-2} y={1} fill={hover.change >= 0 ? '#10b981' : '#ef4444'} fontSize={12} fontWeight="800" textAnchor="end">
+                      {sign}{hover.change.toFixed(2)}%
+                    </text>
+                  </g>
+
+                  {/* Details */}
+                  <line x1={tx + 12} y1={ty + 40} x2={tx + TW - 12} y2={ty + 40} stroke={tStroke} strokeWidth={1} strokeDasharray="2 2" />
+
+                  <text x={tx + 12} y={ty + 58} fill={tMuted} fontSize={11} fontWeight="500">Giá hiện tại</text>
+                  <text x={tx + TW - 12} y={ty + 58} fill={tText} fontSize={12} fontWeight="700" textAnchor="end">{hover.price.toLocaleString('vi-VN')} đ</text>
+
+                  <text x={tx + 12} y={ty + 76} fill={tMuted} fontSize={11} fontWeight="500">Vốn hóa</text>
+                  <text x={tx + TW - 12} y={ty + 76} fill={tText} fontSize={12} fontWeight="700" textAnchor="end">{capStr}</text>
+
+                  {cw >= 400 && (
+                    <text x={tx + TW / 2} y={ty + 88} fill={tMuted} fontSize={8} fontWeight="500" textAnchor="middle" opacity={0.6}>Click để xem chi tiết</text>
+                  )}
                 </g>
               );
             })()}
