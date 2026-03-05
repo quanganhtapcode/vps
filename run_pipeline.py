@@ -16,15 +16,13 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-# ── Resolve DB path BEFORE any db_updater import so that module-level
-# DB_PATH = default_db_path() in each sub-script picks up the env var. ──────
 BASE_DIR = Path(__file__).resolve().parent
-DB_UPDATER_DIR = BASE_DIR / "db_updater"
+UPDATER_DIR = BASE_DIR / "backend" / "updater"
 
 # If VIETNAM_STOCK_DB_PATH is not in the environment (i.e. no .env loaded yet),
 # default to the db_updater's own DB so both pipeline and backend share one file.
 if not os.environ.get("VIETNAM_STOCK_DB_PATH"):
-    os.environ["VIETNAM_STOCK_DB_PATH"] = str(DB_UPDATER_DIR / "vietnam_stocks.db")
+    os.environ["VIETNAM_STOCK_DB_PATH"] = str(BASE_DIR / "vietnam_stocks.db")
 
 DB_PATH = os.environ["VIETNAM_STOCK_DB_PATH"]
 
@@ -45,11 +43,10 @@ logger = logging.getLogger(__name__)
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
-def _add_db_updater_to_path() -> None:
-    """Ensure db_updater is importable from both sys paths."""
-    for p in [str(BASE_DIR), str(DB_UPDATER_DIR)]:
-        if p not in sys.path:
-            sys.path.insert(0, p)
+def _add_updater_to_path() -> None:
+    """Ensure backend is importable."""
+    if str(BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(BASE_DIR))
 
 
 def _load_symbols() -> list[str]:
@@ -88,10 +85,10 @@ def _load_symbols() -> list[str]:
 # ── Step 1: Financial Reports (BCTC) ─────────────────────────────────────────
 
 def step_update_financial_reports(symbols: list[str]) -> bool:
-    """Daily: fetch balance_sheet / income / cash_flow / ratios via db_updater."""
-    _add_db_updater_to_path()
+    """Daily: fetch balance_sheet / income / cash_flow / ratios via backend.updater."""
+    _add_updater_to_path()
     try:
-        from db_updater.scripts.cli.update_financial_reports import update_multiple_stocks  # type: ignore
+        from backend.updater.pipeline_steps import update_financials
 
         period = os.getenv("FETCH_PERIOD", "year").strip().lower() or "year"
         if period not in ("year", "quarter"):
@@ -104,10 +101,10 @@ def step_update_financial_reports(symbols: list[str]) -> bool:
             delay = 30
 
         logger.info(
-            f">>> Starting: Fetching BCTC via db_updater "
+            f">>> Starting: Fetching BCTC via integrated updater "
             f"(symbols={len(symbols)}, period={period}, delay={delay}s, db={DB_PATH})"
         )
-        results = update_multiple_stocks(symbols=symbols, period=period, delay_between_stocks=delay)
+        results = update_financials(symbols=symbols, period=period, delay=delay)
 
         new_records = sum(
             sum(int(v or 0) for v in payload.values())
@@ -132,23 +129,12 @@ def step_update_financial_reports(symbols: list[str]) -> bool:
 
 def step_update_company_info(symbols: list[str]) -> bool:
     """Weekly: refresh stocks list + company overview, shareholders, officers."""
-    _add_db_updater_to_path()
+    _add_updater_to_path()
     try:
-        from stock_database import StockDatabase  # type: ignore
-
-        logger.info(f">>> Starting: Stock list update (db={DB_PATH})")
-        with StockDatabase(DB_PATH) as db:
-            stock_count = db.update_stocks()
-            logger.info(f"  stocks table: {stock_count} rows upserted")
-
+        from backend.updater.pipeline_steps import update_companies
         logger.info(f">>> Starting: Company info update ({len(symbols)} symbols)")
-        with StockDatabase(DB_PATH) as db:
-            results = db.company_updater.update_multiple_companies(symbols)
-            total = sum(
-                sum(v for v in r.values() if isinstance(v, int))
-                for r in results.values()
-            )
-            logger.info(f"✅ Finished: Company info ({total} records across {len(results)} symbols)")
+        count = update_companies(symbols)
+        logger.info(f"✅ Finished: Company info ({count} records updated)")
         return True
     except Exception as e:
         logger.error(f"❌ Failed: Company info update — {e}")
