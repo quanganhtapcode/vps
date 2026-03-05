@@ -187,14 +187,26 @@ export function Navbar() {
     // Handle Ctrl+K / Cmd+K
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            // Check for K key with Meta (Mac) or Ctrl (Windows/Linux)
+            if ((e.metaKey || e.ctrlKey) && (e.code === 'KeyK' || e.key === 'k' || e.key === 'K')) {
                 e.preventDefault();
                 setSearchOpen(true);
+                // Priority focus
+                if (window.innerWidth < 768) {
+                    setOpen(false); // Close menu if on mobile
+                    setTimeout(() => mobileInputRef.current?.focus(), 100);
+                } else {
+                    desktopInputRef.current?.focus();
+                }
+            }
+            // Close search on Escape
+            if (e.key === 'Escape') {
+                setSearchOpen(false);
             }
         };
-        document.addEventListener('keydown', onKeyDown);
-        return () => document.removeEventListener('keydown', onKeyDown);
-    }, []);
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [tickersLoaded]); // Added tickersLoaded as dependency to ensure it can trigger loading if needed (though it does anyway)
 
     // Focus handling
     useEffect(() => {
