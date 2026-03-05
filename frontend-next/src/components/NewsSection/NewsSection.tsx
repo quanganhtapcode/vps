@@ -88,7 +88,7 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                 )}
             </Flex>
 
-            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 lg:gap-x-12 border-t border-gray-100 dark:border-gray-800">
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 lg:gap-x-4 border-t border-gray-100 dark:border-gray-800">
                 {news.slice(0, 10).map((item, index) => {
                     const url = item.url || item.Link || item.NewsUrl || '#';
                     const finalUrl = url.startsWith('http') ? url : `https://cafef.vn${url}`;
@@ -112,7 +112,7 @@ export default function NewsSection({ news, isLoading, error }: NewsSectionProps
                     return (
                         <div
                             key={index}
-                            className={`flex items-start gap-4 py-6 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-all cursor-pointer group px-1 ${index % 2 === 0 ? 'lg:border-r lg:pr-10 lg:mr-[-1px]' : 'lg:pl-6'}`}
+                            className={`flex items-start gap-3 md:gap-4 py-6 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-all cursor-pointer group px-1 ${index % 2 === 0 ? 'lg:border-r lg:pr-4 lg:mr-[-1px]' : 'lg:pl-4'}`}
                             onClick={() => window.open(finalUrl, '_blank')}
                         >
                             <div className="flex-1 min-w-0 order-1">
