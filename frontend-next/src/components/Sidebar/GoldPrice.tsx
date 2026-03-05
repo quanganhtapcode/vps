@@ -31,8 +31,16 @@ export default function GoldPrice({ prices, isLoading, updatedAt }: GoldPricePro
 
     return (
         <Card className="mt-4 p-0 overflow-hidden bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm rounded-2xl">
+            {/* Header */}
+            <div className="flex items-center gap-2 px-5 py-4">
+                <span className="text-xl">🏆</span>
+                <span className="text-base font-bold text-gray-900 dark:text-gray-100">
+                    Giá Vàng & Bạc
+                </span>
+            </div>
+
             {/* Content List */}
-            <div className="px-5 py-2">
+            <div className="px-5 pb-2">
                 {isLoading ? (
                     <div className="flex flex-col items-center justify-center py-10">
                         <div className="animate-spin rounded-full h-6 w-6 border-2 border-amber-500 border-t-transparent" />
@@ -47,7 +55,7 @@ export default function GoldPrice({ prices, isLoading, updatedAt }: GoldPricePro
                                 <div key={item.Id} className="flex items-center justify-between py-3 border-b border-gray-50 dark:border-gray-800/50 last:border-0 group">
                                     {/* Left: Badge + Name */}
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold text-[11px] shadow-sm border border-gray-100 dark:border-gray-800 ${isSilver
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm ${isSilver
                                             ? 'bg-slate-100 text-slate-500 dark:bg-slate-800'
                                             : 'bg-amber-100 text-amber-600 dark:bg-amber-900/30'
                                             }`}>

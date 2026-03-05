@@ -174,6 +174,16 @@ export default function CryptoPrices() {
 
     return (
         <Card className="mt-4 p-0 overflow-hidden bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm rounded-2xl">
+            <div className="flex items-center justify-between gap-2 px-5 py-4">
+                <div className="flex items-center gap-2">
+                    <span className="text-xl">🪙</span>
+                    <span className="text-base font-bold text-gray-900 dark:text-gray-100">Crypto (OKX)</span>
+                </div>
+                <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                    {status === 'connected' ? 'Live' : status === 'connecting' ? '...' : 'Reconnecting'}
+                </span>
+            </div>
+
             <div className="px-5 pb-2">
                 <div className="flex flex-col">
                     {INSTRUMENTS.map((it) => {
@@ -188,12 +198,8 @@ export default function CryptoPrices() {
                                 className="flex items-center justify-between py-3 border-b border-gray-50 dark:border-gray-800/50 last:border-0"
                             >
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 shadow-sm border border-gray-50 dark:border-gray-800">
-                                        <img
-                                            src={`https://img.logo.dev/crypto/${it.label}USD?token=pk_NNp9abu9TMm9II6Z0666YA&format=png&fallback=404&size=80`}
-                                            alt={it.label}
-                                            className="w-full h-full object-cover"
-                                        />
+                                    <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                        {it.label}
                                     </div>
                                     <div className="flex flex-col min-w-0">
                                         <span className="text-[13px] font-bold text-gray-700 dark:text-gray-200 truncate">
@@ -213,8 +219,8 @@ export default function CryptoPrices() {
                                             (pct == null
                                                 ? 'text-gray-500 dark:text-gray-400'
                                                 : isUp
-                                                    ? 'text-emerald-600'
-                                                    : 'text-rose-500')
+                                                  ? 'text-emerald-600'
+                                                  : 'text-rose-500')
                                         }
                                     >
                                         {pct == null ? (

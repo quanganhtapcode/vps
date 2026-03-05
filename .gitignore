@@ -4,7 +4,6 @@
 # ========================================
 # LOCAL/VPS-ONLY FOLDERS (not tracked here)
 # ========================================
-backend/
 automation/
 deployment/
 notebooks/

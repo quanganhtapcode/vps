@@ -60,10 +60,10 @@ async function fetchAPI<T>(url: string, options?: RequestInit): Promise<T> {
         const resolvedUrl =
             typeof window === 'undefined' && url.startsWith('/')
                 ? new URL(
-                    url,
-                    process.env.NEXT_PUBLIC_SITE_URL ||
-                    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'),
-                ).toString()
+                      url,
+                      process.env.NEXT_PUBLIC_SITE_URL ||
+                          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'),
+                  ).toString()
                 : url;
 
         const response = await fetch(resolvedUrl, {
@@ -127,19 +127,6 @@ export interface NewsItem {
     Symbol?: string;
     Price?: number;
     ChangePrice?: number;
-    sentiment?: string;
-    Sentiment?: string;
-    source?: string;
-    Source?: string;
-    publish_date?: string;
-    image_url?: string;
-    url?: string;
-    title?: string;
-    symbol?: string;
-    female_audio_duration?: number;
-    male_audio_duration?: number;
-    CompanyName?: string;
-    [key: string]: any;
 }
 
 export interface TopMoverItem {
@@ -490,22 +477,27 @@ function parseDateInput(input: string | number | Date | undefined | null): Date 
 }
 
 /**
- * Format date from various formats (including CafeF /Date()/ format, Vietnamese DD/MM/YYYY)
+ * Format date from various formats (including CafeF /Date()/ format)
  */
 export function formatDate(dateStr: string | number | undefined): string {
     if (!dateStr) return '';
 
     try {
-        const date = parseDateInput(dateStr);
-        if (!date) return '';
+        let date: Date;
 
-        return date.toLocaleString('vi-VN', {
+        if (typeof dateStr === 'string' && dateStr.includes('/Date(')) {
+            const ms = parseInt(dateStr.match(/\d+/)?.[0] || '0');
+            date = new Date(ms);
+        } else {
+            date = new Date(dateStr);
+        }
+
+        return date.toLocaleString('en-US', {
             hour: '2-digit',
             minute: '2-digit',
             day: '2-digit',
-            month: '2-digit',
+            month: 'short',
             year: 'numeric',
-            timeZone: 'Asia/Ho_Chi_Minh',
         });
     } catch {
         return '';
