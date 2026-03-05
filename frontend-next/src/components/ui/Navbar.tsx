@@ -49,6 +49,13 @@ export function Navbar() {
         setOpen(false);
     }, [pathname]);
 
+    // Close mobile menu when search is toggled
+    useEffect(() => {
+        if (searchOpen && window.innerWidth < 768) {
+            setOpen(false);
+        }
+    }, [searchOpen]);
+
     useEffect(() => {
         const mediaQuery: MediaQueryList = window.matchMedia("(min-width: 768px)")
         const handleMediaQueryChange = () => {
@@ -172,6 +179,7 @@ export function Navbar() {
             if (next && !tickersLoaded) {
                 void ensureTickersLoaded();
             }
+            if (next) setOpen(false); // Close menu when opening search
             return next;
         });
     }
@@ -209,8 +217,8 @@ export function Navbar() {
         <header
             className={cx(
                 "fixed inset-x-2 top-2 z-50 mx-auto flex max-w-6xl transform-gpu animate-slide-down-fade justify-center overflow-visible rounded-xl border border-transparent px-3 py-2.5 md:top-4 md:px-3 md:py-3 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1.03)] will-change-transform",
-                open === true ? "h-52" : "h-14 md:h-16",
-                scrolled || open === true
+                open === true ? "h-64" : "h-14 md:h-16",
+                scrolled || open === true || searchOpen
                     ? "backdrop-blur-nav max-w-4xl border-gray-100 bg-white/80 shadow-xl shadow-black/5 dark:border-white/15 dark:bg-black/70"
                     : "bg-white/0 dark:bg-gray-950/0",
             )}
@@ -363,7 +371,10 @@ export function Navbar() {
                         </Button>
 
                         <Button
-                            onClick={() => setOpen(!open)}
+                            onClick={() => {
+                                setOpen(!open);
+                                if (!open) setSearchOpen(false); // Close search when opening menu
+                            }}
                             variant="light"
                             className="aspect-square p-2"
                         >
