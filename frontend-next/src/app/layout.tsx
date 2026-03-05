@@ -54,7 +54,7 @@ export default function RootLayout({
         >
           <Navbar />
           <TickerTape />
-          <main className="pt-24 md:pt-32 min-h-[calc(100vh-400px)]">{/* pt-24 mobile (navbar64+ticker32) + pt-32 desktop (navbar80+ticker32+gap) */}
+          <main className="pt-[112px] md:pt-[140px] min-h-[calc(100vh-400px)]">{/* Adjusted padding for new TickerTape position */}
             {children}
           </main>
           <Footer />

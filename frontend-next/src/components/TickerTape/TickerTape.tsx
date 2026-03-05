@@ -104,7 +104,7 @@ export default function TickerTape() {
   const duration = Math.max(30, indices.length * 8);
 
   return (
-    <div className="fixed z-40 h-8 overflow-hidden bg-white/80 backdrop-blur-md border border-gray-200/50 dark:border-gray-800/50 dark:bg-gray-950/80 top-[64px] md:top-[72px] left-1/2 -translate-x-1/2 w-full max-w-[1440px] shadow-sm rounded-none">
+    <div className="fixed z-40 h-6 overflow-hidden bg-white/80 backdrop-blur-md border border-gray-200/50 dark:border-gray-800/50 dark:bg-gray-950/80 top-[72px] md:top-[92px] left-1/2 -translate-x-1/2 w-[calc(100%-16px)] max-w-7xl shadow-sm rounded-full">
       <div className="h-full flex items-center px-4">
         <style dangerouslySetInnerHTML={{
           __html: `
