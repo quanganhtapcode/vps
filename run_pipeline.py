@@ -95,16 +95,11 @@ def step_update_financial_reports(symbols: list[str]) -> bool:
             logger.warning(f"Invalid FETCH_PERIOD={period!r}, using 'year'")
             period = "year"
 
-        try:
-            delay = max(1, int(float(os.getenv("FETCH_DELAY_SECONDS", "30"))))
-        except ValueError:
-            delay = 30
-
         logger.info(
             f">>> Starting: Fetching BCTC via integrated updater "
-            f"(symbols={len(symbols)}, period={period}, delay={delay}s, db={DB_PATH})"
+            f"(symbols={len(symbols)}, period={period}, db={DB_PATH})"
         )
-        results = update_financials(symbols=symbols, period=period, delay=delay)
+        results = update_financials(symbols=symbols, period=period)
 
         new_records = sum(
             sum(int(v or 0) for v in payload.values())
@@ -115,13 +110,17 @@ def step_update_financial_reports(symbols: list[str]) -> bool:
             1 for payload in (results or {}).values()
             if payload and sum(int(v or 0) for v in payload.values()) > 0
         )
+        skipped_count = sum(
+            1 for payload in (results or {}).values()
+            if not payload
+        )
         logger.info(
             f"✅ Finished: BCTC update "
-            f"(updated={success_count}/{len(symbols)} symbols, new_records={new_records})"
+            f"(updated={success_count}, skipped={skipped_count}, total={len(symbols)}, new_records={new_records})"
         )
         return True
     except Exception as e:
-        logger.error(f"❌ Failed: BCTC update — {e}")
+        logger.error(f"❌ Failed: BCTC update — {e}\n{__import__('traceback').format_exc()}")
         return False
 
 
