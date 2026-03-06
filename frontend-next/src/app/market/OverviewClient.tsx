@@ -199,7 +199,7 @@ export default function OverviewClient({
             unsubscribe();
             stopFallback();
         };
-    }, [loadIndices, initialIndices.length, mapMarketDataToIndices]);
+    }, [loadIndices, initialIndices?.length ?? 0, mapMarketDataToIndices]);
 
     // Auto refresh gold every 60 seconds
     useEffect(() => {

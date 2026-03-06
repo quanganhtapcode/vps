@@ -76,20 +76,20 @@ export default function OverviewClient({
 
     // State for news
     const [news, setNews] = useState<NewsItem[]>(initialNews);
-    const [newsLoading, setNewsLoading] = useState(initialNews.length === 0);
+    const [newsLoading, setNewsLoading] = useState(false);
     const [newsError, setNewsError] = useState<string | null>(null);
 
     // State for top movers
     const [gainers, setGainers] = useState<TopMoverItem[]>(initialGainers);
     const [losers, setLosers] = useState<TopMoverItem[]>(initialLosers);
     const [moversTab, setMoversTab] = useState<'UP' | 'DOWN'>('UP');
-    const [moversLoading, setMoversLoading] = useState(initialGainers.length === 0 || initialLosers.length === 0);
+    const [moversLoading, setMoversLoading] = useState(false);
 
     // State for foreign flow
     const [foreignBuys, setForeignBuys] = useState<TopMoverItem[]>(initialForeignBuys);
     const [foreignSells, setForeignSells] = useState<TopMoverItem[]>(initialForeignSells);
     const [foreignTab, setForeignTab] = useState<'buy' | 'sell'>('buy');
-    const [foreignLoading, setForeignLoading] = useState(initialForeignBuys.length === 0 || initialForeignSells.length === 0);
+    const [foreignLoading, setForeignLoading] = useState(false);
 
     // State for gold prices
     const [goldPrices, setGoldPrices] = useState<GoldPriceItem[]>(initialGoldPrices);
@@ -269,7 +269,7 @@ export default function OverviewClient({
             unsubscribe();
             stopFallback();
         };
-    }, [loadIndices, initialIndices.length, mapMarketDataToIndices]);
+    }, [loadIndices, initialIndices?.length ?? 0, mapMarketDataToIndices]);
 
     // Auto refresh gold every 60 seconds
     useEffect(() => {

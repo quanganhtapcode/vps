@@ -5,11 +5,13 @@ import { Navbar } from "@/components/ui/Navbar";
 import Footer from "@/components/ui/Footer";
 import { ThemeProvider } from "next-themes";
 import { TickerTape } from "@/components/TickerTape";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const inter = Inter({
   subsets: ["latin", "vietnamese"],
   weight: ['400', '500', '600', '700'],
   display: 'swap',
+  preload: false,
   variable: '--font-inter',
 });
 
@@ -54,9 +56,11 @@ export default function RootLayout({
         >
           <Navbar />
           <TickerTape />
-          <main className="pt-[112px] md:pt-[140px] min-h-[calc(100vh-400px)]">{/* Adjusted padding for new TickerTape position */}
-            {children}
-          </main>
+          <ErrorBoundary>
+            <main className="pt-[112px] md:pt-[140px] min-h-[calc(100vh-400px)]">{/* Adjusted padding for new TickerTape position */}
+              {children}
+            </main>
+          </ErrorBoundary>
           <Footer />
         </ThemeProvider>
       </body>
