@@ -101,7 +101,7 @@ const ChartCard = ({ title, children }: { title: string; children: React.ReactNo
         <div className="flex items-center justify-center border-b border-tremor-border px-4 py-3 text-tremor-default font-semibold text-tremor-content-strong dark:border-dark-tremor-border dark:text-dark-tremor-content-strong">
             {title}
         </div>
-        <div className="flex-1 px-4 pb-2 pt-3" style={{ position: 'relative', minHeight: 0 }}>
+        <div className="flex-1 px-4 pb-2 pt-3" style={{ position: 'relative', minHeight: '240px' }}>
             {children}
         </div>
     </div>
@@ -524,16 +524,16 @@ export default function FinancialsTab({
 
                             {hasDashboardSeries && (
                                 <ChartCard title="Hiệu suất">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                                         <ComposedChart data={performanceSeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.14} />
                                             <XAxis dataKey="period" tick={{ fontSize: 11 }} />
                                             <YAxis yAxisId="left" tickFormatter={(value) => formatCompactNumber(Number(value))} width={84} />
                                             <YAxis yAxisId="right" orientation="right" tickFormatter={(value) => formatPercentNumber(Number(value))} width={72} />
                                             <RechartsTooltip
-                                                formatter={(value: any, name: string) => {
-                                                    if (String(name).includes('%')) return [formatPercentNumber(Number(value)), name];
-                                                    return [formatCompactNumber(Number(value)), name];
+                                                formatter={(value: any, name: string | undefined) => {
+                                                    if (String(name ?? '').includes('%')) return [formatPercentNumber(Number(value)), name ?? ''];
+                                                    return [formatCompactNumber(Number(value)), name ?? ''];
                                                 }}
                                             />
                                             <Legend />
@@ -547,7 +547,7 @@ export default function FinancialsTab({
 
                             {hasDashboardSeries && (
                                 <ChartCard title="Biên lợi nhuận & Đòn bẩy (%)">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                                         <ComposedChart data={marginLeverageSeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.14} />
                                             <XAxis dataKey="period" tick={{ fontSize: 11 }} />
@@ -564,7 +564,7 @@ export default function FinancialsTab({
 
                             {hasDashboardSeries && (
                                 <ChartCard title="Tài sản và Vốn chủ sở hữu">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                                         <BarChart data={debtEquitySeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.14} />
                                             <XAxis dataKey="period" tick={{ fontSize: 11 }} />
@@ -580,7 +580,7 @@ export default function FinancialsTab({
 
                             {hasDashboardSeries && (
                                 <ChartCard title="Tăng trưởng theo kỳ (%)">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                                         <BarChart data={growthSeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.14} />
                                             <XAxis dataKey="period" tick={{ fontSize: 11 }} />

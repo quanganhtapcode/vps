@@ -117,6 +117,7 @@ export interface VciIndexItem {
 }
 
 export interface NewsItem {
+    // PascalCase fields (VCI / CafeF API)
     Title: string;
     Link?: string;
     NewsUrl?: string;
@@ -125,8 +126,16 @@ export interface NewsItem {
     PostDate?: string;
     PublishDate?: string;
     Symbol?: string;
+    Source?: string;
     Price?: number;
     ChangePrice?: number;
+    // camelCase / snake_case aliases (other news sources)
+    title?: string;
+    url?: string;
+    source?: string;
+    publish_date?: string;
+    image_url?: string;
+    symbol?: string;
 }
 
 export interface TopMoverItem {
