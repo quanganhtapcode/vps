@@ -5,12 +5,12 @@ import MarketIntelligence from "@/components/MarketIntelligence"
 import OverviewGlobeSection from "@/components/OverviewGlobeSection"
 
 export const metadata: Metadata = {
-  title: 'Tổng quan',
-  description: 'Khám phá nền tảng Quang Anh — phân tích cổ phiếu, theo dõi thị trường, định giá DCF và tin tức chứng khoán Việt Nam.',
+  title: 'Overview',
+  description: 'Explore Quang Anh — stock analysis, market tracking, DCF valuation and Vietnam stock market news.',
   alternates: { canonical: '/overview' },
   openGraph: {
-    title: 'Tổng quan | Quang Anh',
-    description: 'Nền tảng phân tích và định giá cổ phiếu Việt Nam.',
+    title: 'Overview | Quang Anh',
+    description: 'Vietnam stock analysis and valuation platform.',
     url: '/overview',
   },
 };

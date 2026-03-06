@@ -1,8 +1,8 @@
 import styles from './page.module.css';
 
 export const metadata = {
-    title: 'Liên hệ',
-    description: 'Liên hệ với đội ngũ Quang Anh.',
+    title: 'Contact',
+    description: 'Get in touch with the Quang Anh team.',
     alternates: { canonical: 'https://stock.quanganh.org/contact' },
 };
 

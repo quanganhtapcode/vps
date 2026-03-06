@@ -19,14 +19,14 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   title: {
-    default: "Quang Anh | Phân tích & Định giá Cổ phiếu Việt Nam",
+    default: "Quang Anh | Vietnam Stock Analysis & Valuation",
     template: "%s | Quang Anh",
   },
   description: siteConfig.description,
   keywords: [
-    "cổ phiếu", "chứng khoán việt nam", "vnindex", "định giá cổ phiếu",
-    "dcf", "phân tích tài chính", "heatmap thị trường", "vn30",
-    "stock valuation", "vietnam stock market", "financial analysis",
+    "vietnam stock market", "stock analysis", "stock valuation", "vnindex",
+    "vn30", "dcf valuation", "financial analysis", "market heatmap",
+    "hose", "hnx", "upcom", "pe ratio", "pb ratio",
   ],
   authors: [{ name: "Quang Anh", url: siteConfig.url }],
   creator: "Quang Anh",
@@ -53,16 +53,16 @@ export const metadata: Metadata = {
     shortcut: '/favicon.ico',
   },
   openGraph: {
-    title: "Quang Anh | Phân tích & Định giá Cổ phiếu Việt Nam",
+    title: "Quang Anh | Vietnam Stock Analysis & Valuation",
     description: siteConfig.description,
     url: siteConfig.url,
     siteName: "Quang Anh",
     type: "website",
-    locale: "vi_VN",
+    locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Quang Anh | Phân tích Cổ phiếu Việt Nam",
+    title: "Quang Anh | Vietnam Stock Analysis",
     description: siteConfig.description,
     creator: "@quanganh",
   },
@@ -70,7 +70,7 @@ export const metadata: Metadata = {
     canonical: siteConfig.url,
   },
   verification: {
-    google: "", // thêm Google Search Console verification token vào đây
+    google: "", // add Google Search Console verification token here
   },
 };
 
@@ -96,7 +96,7 @@ export default function RootLayout({
   };
 
   return (
-    <html lang="vi" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
         <link rel="manifest" href="/site.webmanifest" />

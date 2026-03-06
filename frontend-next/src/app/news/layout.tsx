@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Tin tức',
-  description: 'Tin tức chứng khoán mới nhất từ thị trường Việt Nam — cập nhật liên tục từ các doanh nghiệp niêm yết.',
+  title: 'News',
+  description: 'Latest Vietnam stock market news — continuously updated from listed companies.',
   alternates: { canonical: '/news' },
   openGraph: {
-    title: 'Tin tức Chứng khoán | Quang Anh',
-    description: 'Tin tức chứng khoán mới nhất từ thị trường Việt Nam.',
+    title: 'Stock Market News | Quang Anh',
+    description: 'Latest Vietnam stock market news from listed companies.',
     url: '/news',
   },
 };

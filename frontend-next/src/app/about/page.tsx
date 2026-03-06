@@ -2,8 +2,8 @@ import Link from 'next/link';
 import styles from './page.module.css';
 
 export const metadata = {
-    title: 'Về chúng tôi',
-    description: 'Quang Anh là nền tảng phân tích cổ phiếu Việt Nam với công cụ định giá DCF, tỷ số P/E, P/B và dữ liệu tài chính thười gian thực.',
+    title: 'About',
+    description: 'Quang Anh is a Vietnam stock analysis platform with DCF valuation tools, P/E, P/B ratios and real-time financial data.',
     alternates: { canonical: 'https://stock.quanganh.org/about' },
 };
 

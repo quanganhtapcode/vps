@@ -1,8 +1,8 @@
 import styles from './page.module.css';
 
 export const metadata = {
-    title: 'Điều khoản sử dụng',
-    description: 'Điều khoản sử dụng của nền tảng phân tích chứng khoán Quang Anh.',
+    title: 'Terms of Service',
+    description: 'Terms of Service for the Quang Anh stock analysis platform.',
     alternates: { canonical: 'https://stock.quanganh.org/terms' },
 };
 

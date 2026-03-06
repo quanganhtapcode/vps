@@ -1,7 +1,7 @@
 export const siteConfig = {
     name: "Quang Anh",
     url: "https://stock.quanganh.org",
-    description: "Nền tảng phân tích cổ phiếu Việt Nam: định giá DCF, P/E, P/B, heatmap thị trường, tin tức và dữ liệu tài chính theo thời gian thực.",
+    description: "Vietnam stock analysis platform: DCF valuation, P/E, P/B ratios, market heatmap, news and real-time financial data.",
     baseLinks: {
         home: "/",
         overview: "/overview",

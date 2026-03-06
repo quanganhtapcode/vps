@@ -13,12 +13,12 @@ import {
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Thị trường',
-  description: 'Theo dõi chỉ số VNINDEX, VN30, HNXINDEX, UPCOMINDEX theo thời gian thực. Bảng giá, top tăng giảm, dòng tiền ngoại, giá vàng.',
+  title: 'Market',
+  description: 'Track VNINDEX, VN30, HNXINDEX, UPCOMINDEX in real time. Price board, top gainers/losers, foreign flows, gold prices.',
   alternates: { canonical: '/market' },
   openGraph: {
-    title: 'Thị trường Chứng khoán Việt Nam | Quang Anh',
-    description: 'Theo dõi chỉ số VNINDEX, VN30 theo thời gian thực. Bảng giá, top tăng giảm, dòng tiền ngoại.',
+    title: 'Vietnam Stock Market | Quang Anh',
+    description: 'Track VNINDEX, VN30 in real time. Price board, top movers, foreign capital flows.',
     url: '/market',
   },
 };

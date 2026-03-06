@@ -1,8 +1,8 @@
 import styles from './page.module.css';
 
 export const metadata = {
-    title: 'Tuyên bố miễn trách nhiệm',
-    description: 'Tuyên bố miễn trách nhiệm pháp lý về thông tin và dữ liệu trên Quang Anh.',
+    title: 'Disclaimer',
+    description: 'Legal disclaimer regarding information and data on the Quang Anh platform.',
     alternates: { canonical: 'https://stock.quanganh.org/disclaimer' },
 };
 

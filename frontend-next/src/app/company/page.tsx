@@ -1,8 +1,8 @@
 import styles from './company.module.css';
 
 export const metadata = {
-    title: 'Danh sách doanh nghiệp niêm yết',
-    description: 'Tra cứu và phân tích các doanh nghiệp niêm yết trên sàn chứng khoán Việt Nam (HOSE, HNX, UPCOM).',
+    title: 'Company Directory',
+    description: 'Browse and analyze companies listed on Vietnam stock exchanges (HOSE, HNX, UPCOM).',
     alternates: { canonical: 'https://stock.quanganh.org/company' },
 };
 

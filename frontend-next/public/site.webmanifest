@@ -1,7 +1,7 @@
 {
-  "name": "Quang Anh | Chứng khoán Việt Nam",
+  "name": "Quang Anh | Vietnam Stock Market",
   "short_name": "Quang Anh",
-  "description": "Nền tảng phân tích và định giá cổ phiếu Việt Nam",
+  "description": "Vietnam stock analysis and valuation platform",
   "start_url": "/",
   "display": "standalone",
   "theme_color": "#FF6B00",

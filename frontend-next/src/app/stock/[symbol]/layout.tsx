@@ -7,11 +7,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const sym = symbol.toUpperCase();
   return {
     title: sym,
-    description: `Phân tích và định giá cổ phiếu ${sym} — lịch sử giá, báo cáo tài chính, định giá DCF và so sánh ngành.`,
+    description: `Analysis and valuation of ${sym} — price history, financial statements, DCF valuation and sector comparison.`,
     alternates: { canonical: `/stock/${sym}` },
     openGraph: {
-      title: `${sym} | Phân tích cổ phiếu Quang Anh`,
-      description: `Phân tích và định giá cổ phiếu ${sym} — lịch sử giá, tài chính, định giá DCF.`,
+      title: `${sym} | Stock Analysis — Quang Anh`,
+      description: `Analysis and valuation of ${sym} — price history, financials, DCF valuation.`,
       url: `/stock/${sym}`,
     },
   };
