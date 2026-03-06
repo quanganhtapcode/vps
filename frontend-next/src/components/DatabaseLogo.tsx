@@ -5,7 +5,7 @@ export const DatabaseLogo = ({ className }: { className?: string }) => {
     return (
         <div className={cx("flex items-center gap-2", className)}>
             <img
-                src="/favicon.svg"
+                src="/favicon-32x32.png"
                 alt="Quang Anh logo"
                 className="size-7 object-contain"
             />
