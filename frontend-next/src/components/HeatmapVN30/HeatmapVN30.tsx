@@ -362,7 +362,7 @@ export default function HeatmapVN30() {
                   <g transform={`translate(${tx + 105}, ${ty + 68})`}>
                     <rect x={0} y={0} width={62} height={18} rx={6} fill={bgSubtle} />
                     <text x={8} y={13} fill={color} fontSize={12} fontWeight="900">
-                      {isUp ? '?' : (isDown ? '?' : '?')} {Math.abs(hover.change).toFixed(2)}%
+                      {isUp ? '\u25b2' : (isDown ? '\u25bc' : '\u2014')} {Math.abs(hover.change).toFixed(2)}%
                     </text>
                   </g>
                 </g>
