@@ -254,8 +254,9 @@ export default function HeatmapVN30() {
                             change: stock.change,
                             price: stock.price,
                             cap: stock.cap,
-                            name: stock.name,
-                            sector: stock.sector,
+                            name: stock.name ?? '',
+                            sector: stock.sector ?? '',
+
                             mx: e.clientX - br.left,
                             my: e.clientY - br.top
                           });
@@ -270,8 +271,9 @@ export default function HeatmapVN30() {
                             change: stock.change,
                             price: stock.price,
                             cap: stock.cap,
-                            name: stock.name,
-                            sector: stock.sector,
+                            name: stock.name ?? '',
+                            sector: stock.sector ?? '',
+
                             mx: touch.clientX - br.left,
                             my: touch.clientY - br.top
                           });
@@ -349,18 +351,18 @@ export default function HeatmapVN30() {
                   </foreignObject>
                   <text x={tx + 42} y={ty + 52} fill={isDark ? '#f8fafc' : '#0f172a'} fontSize={15} fontWeight="800">{hover.ticker}</text>
                   <text x={tx + 78} y={ty + 51} fill="#64748b" fontSize={11} fontWeight="500" className="truncate">
-                    {hover.name.length > 22 ? hover.name.substring(0, 20) + '...' : hover.name}
+                    {(hover.name?.length ?? 0) > 22 ? hover.name!.substring(0, 20) + '...' : hover.name}
                   </text>
 
                   {/* Price | Area Change% */}
                   <text x={tx + 14} y={ty + 82} fill={isDark ? '#f1f5f9' : '#0f172a'} fontSize={16} fontWeight="800">
-                    {hover.price.toLocaleString('vi-VN')} đ
+                    {hover.price.toLocaleString('vi-VN')} d
                   </text>
 
                   <g transform={`translate(${tx + 105}, ${ty + 68})`}>
                     <rect x={0} y={0} width={62} height={18} rx={6} fill={bgSubtle} />
                     <text x={8} y={13} fill={color} fontSize={12} fontWeight="900">
-                      {isUp ? '↗' : (isDown ? '↘' : '→')} {Math.abs(hover.change).toFixed(2)}%
+                      {isUp ? '?' : (isDown ? '?' : '?')} {Math.abs(hover.change).toFixed(2)}%
                     </text>
                   </g>
                 </g>
