@@ -1,8 +1,9 @@
 import styles from './page.module.css';
 
 export const metadata = {
-    title: 'Privacy Policy - Quang Anh',
-    description: 'Privacy Policy for Quang Anh Stock Analysis Platform',
+    title: 'Chính sách bảo mật',
+    description: 'Chính sách bảo mật thông tin của nền tảng Quang Anh.',
+    alternates: { canonical: 'https://stock.quanganh.org/privacy' },
 };
 
 export default function PrivacyPage() {

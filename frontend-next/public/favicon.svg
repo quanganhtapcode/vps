@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Equinix-style: bold orange square rotated 45°, with a white diagonal slash/notch -->
+  <rect x="8" y="8" width="48" height="48" rx="10" fill="#FF6B00"/>
+  <polygon points="32,10 54,32 32,54 10,32" fill="#E85500" opacity="0.45"/>
+  <!-- White bar / letter mark -->
+  <rect x="20" y="28" width="24" height="8" rx="4" fill="#ffffff"/>
+</svg>

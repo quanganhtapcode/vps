@@ -1,8 +1,9 @@
 import styles from './company.module.css';
 
 export const metadata = {
-    title: 'Company Directory - Quang Anh',
-    description: 'Explore and analyze companies listed on the Vietnam Stock Exchange',
+    title: 'Danh sách doanh nghiệp niêm yết',
+    description: 'Tra cứu và phân tích các doanh nghiệp niêm yết trên sàn chứng khoán Việt Nam (HOSE, HNX, UPCOM).',
+    alternates: { canonical: 'https://stock.quanganh.org/company' },
 };
 
 export default function CompanyPage() {

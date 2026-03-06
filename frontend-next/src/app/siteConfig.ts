@@ -1,7 +1,7 @@
 export const siteConfig = {
     name: "Quang Anh",
-    url: "https://vps-mx16.vercel.app",
-    description: "Advanced stock analysis platform for Vietnam market.",
+    url: "https://stock.quanganh.org",
+    description: "Nền tảng phân tích cổ phiếu Việt Nam: định giá DCF, P/E, P/B, heatmap thị trường, tin tức và dữ liệu tài chính theo thời gian thực.",
     baseLinks: {
         home: "/",
         overview: "/overview",

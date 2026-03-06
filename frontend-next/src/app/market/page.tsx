@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import OverviewClient from './OverviewClient';
 import {
@@ -10,6 +11,17 @@ import {
 
 // Disable caching to ensure fresh data on every request
 export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = {
+  title: 'Thị trường',
+  description: 'Theo dõi chỉ số VNINDEX, VN30, HNXINDEX, UPCOMINDEX theo thời gian thực. Bảng giá, top tăng giảm, dòng tiền ngoại, giá vàng.',
+  alternates: { canonical: '/market' },
+  openGraph: {
+    title: 'Thị trường Chứng khoán Việt Nam | Quang Anh',
+    description: 'Theo dõi chỉ số VNINDEX, VN30 theo thời gian thực. Bảng giá, top tăng giảm, dòng tiền ngoại.',
+    url: '/market',
+  },
+};
 
 interface IndexData {
   id: string;

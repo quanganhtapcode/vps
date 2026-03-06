@@ -1,8 +1,9 @@
 import styles from './page.module.css';
 
 export const metadata = {
-    title: 'Contact Us - Quang Anh',
-    description: 'Get in touch with the Quang Anh platform team',
+    title: 'Liên hệ',
+    description: 'Liên hệ với đội ngũ Quang Anh.',
+    alternates: { canonical: 'https://stock.quanganh.org/contact' },
 };
 
 export default function ContactPage() {
