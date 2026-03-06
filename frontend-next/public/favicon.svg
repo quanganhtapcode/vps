@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Orange rounded square background -->
-  <rect x="4" y="4" width="56" height="56" rx="12" fill="#FF6B00"/>
-  <!-- Equinix-style E mark: three white bars -->
-  <rect x="14" y="14" width="36" height="8" rx="3" fill="white"/>
-  <rect x="14" y="28" width="24" height="8" rx="3" fill="white"/>
-  <rect x="14" y="42" width="36" height="8" rx="3" fill="white"/>
-</svg>
