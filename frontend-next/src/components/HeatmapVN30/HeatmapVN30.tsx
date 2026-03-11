@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { API_BASE } from '@/lib/api';
@@ -143,7 +143,7 @@ export default function HeatmapVN30() {
     } catch { /* silent */ } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); const t = setInterval(load, 30_000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { load(); const t = setInterval(load, 5_000); return () => clearInterval(t); }, [load]);
 
   const svgBg = isDark ? '#0f1117' : '#ffffff';
   const labelBg = isDark ? '#0f1117' : '#ffffff';
