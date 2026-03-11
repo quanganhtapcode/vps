@@ -127,13 +127,29 @@ class BSCWebSocket:
         def on_close(ws, status, msg):
             logger.info("[BSC WS] Closed.")
 
+        def heartbeat(ws):
+            while ws.sock and ws.sock.connected:
+                try:
+                    ws.send("2")
+                    time.sleep(10)
+                except Exception:
+                    break
+
         while True:
             cls._ws = websocket.WebSocketApp(url,
                                              on_open=on_open,
                                              on_message=cls._on_message,
                                              on_error=on_error,
                                              on_close=on_close)
-            cls._ws.run_forever(ping_interval=20, ping_timeout=10)
+            
+            # Start heartbeat thread when connection opens
+            def run_heartbeat(ws):
+                t = threading.Thread(target=heartbeat, args=(ws,), daemon=True)
+                t.start()
+
+            cls._ws.on_open = lambda ws: (on_open(ws), run_heartbeat(ws))
+
+            cls._ws.run_forever()
             logger.warning("[BSC WS] Reconnecting in 5s...")
             time.sleep(5)
 
