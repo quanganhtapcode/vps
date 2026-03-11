@@ -188,8 +188,7 @@ def ws_market_indices(ws):
     except Exception as exc:
         logger.info(f"WS client disconnected: /ws/market/indices ({exc})")
 
-@sock.route('/ws/market/prices')
-def ws_market_prices(ws):
+def _handle_prices_ws(ws):
     """Internal WS stream for frontend: pushes real-time price updates."""
     logger.info("WS client connected: /ws/market/prices")
     
@@ -233,6 +232,15 @@ def ws_market_prices(ws):
         logger.info(f"WS client disconnected: /ws/market/prices ({exc})")
     finally:
         BSCWebSocket.unregister_client(q)
+
+# Register under both paths: direct and Nginx-rewritten
+@sock.route('/ws/market/prices')
+def ws_market_prices(ws):
+    _handle_prices_ws(ws)
+
+@sock.route('/api/ws/market/prices')
+def ws_market_prices_api(ws):
+    _handle_prices_ws(ws)
 
 if __name__ == "__main__":
     logger.info("Vietnamese Stock Valuation Backend – running on http://0.0.0.0:5000")
