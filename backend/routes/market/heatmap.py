@@ -56,17 +56,33 @@ def register(market_bp: Blueprint) -> None:
                     (exchange, limit),
                 ).fetchall()
 
-            # Group by sector
+            # Group by sector and patch with REAL-TIME prices from RAM cache
+            VCIClient.ensure_background_refresh()
+            realtime_cache = VCIClient._price_cache
+            
             sector_map: dict[str, list] = {}
             for r in rows:
+                ticker = r['ticker']
                 s = r['viSector'] or 'Khác'
+                
+                # Get real-time price if available in RAM, otherwise fallback to SQLite
+                rt_item = realtime_cache.get(ticker, {})
+                price = rt_item.get('c') or r['marketPrice'] or 0
+                
+                # Calculate change percent based on real-time price vs reference
+                ref = rt_item.get('ref')
+                if ref and ref > 0:
+                    change = round((price - ref) / ref * 100, 4)
+                else:
+                    change = round(r['dailyPriceChangePercent'] or 0, 4)
+
                 if s not in sector_map:
                     sector_map[s] = []
                 sector_map[s].append({
-                    'ticker': r['ticker'],
+                    'ticker': ticker,
                     'cap': r['marketCap'],
-                    'change': round(r['dailyPriceChangePercent'] or 0, 4),
-                    'price': r['marketPrice'] or 0,
+                    'change': change,
+                    'price': price,
                 })
 
             sectors = []
