@@ -12,6 +12,8 @@ import os
 import random
 from typing import Optional, Dict, Any, List
 
+from backend.data_sources.bsc_ws import BSCWebSocket
+
 try:
     import socketio  # type: ignore
 except Exception:  # pragma: no cover
@@ -184,9 +186,11 @@ class VCIClient:
     def _background_refresh_loop(cls):
         """Infinite loop to keep the RAM cache fresh every 5 seconds"""
         print(">>> [VCI] Starting background price refresh thread...", flush=True)
+        BSCWebSocket.ensure_started()
         while True:
             try:
-                cls.update_bulk_cache()
+                if not BSCWebSocket.is_active():
+                    cls.update_bulk_cache()
             except Exception as e:
                 logger.error(f"Error in background price refresh: {e}")
             

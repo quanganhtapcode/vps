@@ -313,6 +313,51 @@ export function subscribeIndicesStream(options: {
     };
 }
 
+export function getPricesWsUrl(): string {
+    const override = process.env.NEXT_PUBLIC_BACKEND_WS_URL;
+    if (typeof window !== 'undefined') {
+        if (override) {
+            return `${override}${override.endsWith('/') ? '' : '/'}ws/market/prices`;
+        }
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            return 'ws://127.0.0.1:5000/ws/market/prices';
+        }
+        if (/(^|\.)stock\.quanganh\.org$/i.test(window.location.hostname)) {
+            return 'wss://api.quanganh.org/v1/valuation/ws/market/prices';
+        }
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${proto}//${window.location.host}/ws/market/prices`;
+    }
+    return 'ws://127.0.0.1:5000/ws/market/prices';
+}
+
+export function subscribePricesStream(options: {
+    onData: (data: any, type: string) => void;
+    onStatus?: (status: IndicesStreamStatus) => void;
+}): () => void {
+    const { onData, onStatus } = options;
+    const ws = new WebSocket(getPricesWsUrl());
+
+    ws.onopen = () => onStatus?.('open');
+    ws.onerror = () => onStatus?.('error');
+    ws.onclose = () => onStatus?.('closed');
+
+    ws.onmessage = (event) => {
+        try {
+            const payload = JSON.parse(String(event.data));
+            if (payload?.type?.startsWith('prices_') && payload?.data) {
+                onData(payload.data, payload.type);
+            }
+        } catch {
+            // ignore malformed payloads
+        }
+    };
+
+    return () => {
+        try { ws.close(); } catch {}
+    };
+}
+
 /**
  * Fetch market news
  */

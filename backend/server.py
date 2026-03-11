@@ -10,6 +10,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 import logging
 import json
 import time
+import queue
 from datetime import datetime
 from flask import Flask
 from flask_compress import Compress
@@ -23,6 +24,7 @@ from backend.routes.market import market_bp, init_market_routes
 from backend.routes.download_routes import download_bp
 from backend.routes.health_routes import health_bp
 from backend.data_sources.vci import VCIClient
+from backend.data_sources.bsc_ws import BSCWebSocket
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -185,6 +187,50 @@ def ws_market_indices(ws):
             time.sleep(0.5)
     except Exception as exc:
         logger.info(f"WS client disconnected: /ws/market/indices ({exc})")
+
+@sock.route('/ws/market/prices')
+def ws_market_prices(ws):
+    """Internal WS stream for frontend: pushes real-time price updates."""
+    logger.info("WS client connected: /ws/market/prices")
+    
+    # Send all current prices on initial connect
+    try:
+        current_prices = VCIClient.get_all_prices()
+        # filter and format
+        init_data = {}
+        for sym, data in current_prices.items():
+            if 'c' in data and 'ref' in data:
+                init_data[sym] = {
+                    'c': data['c'],
+                    'ref': data['ref'],
+                    'vo': data.get('vo', 0)
+                }
+        ws.send(json.dumps({'type': 'prices_init', 'data': init_data}, ensure_ascii=False))
+    except Exception:
+        pass
+
+    q = BSCWebSocket.register_client()
+    try:
+        while True:
+            # Send ping/pong handles automatically by flask_sock, but we can do it manually if needed.
+            # flask-sock ping interval is handled by underlying library, but we can send periodic ticks to prevent timeout if preferred
+            updates = q.get(timeout=10) # wait up to 10s for updates
+            if updates:
+                formatted = {}
+                for sym, data in updates.items():
+                    formatted[sym] = {
+                        'c': data['c'],
+                        'ref': data['ref'],
+                        'vo': float(data.get('vo', 0))
+                    }
+                ws.send(json.dumps({'type': 'prices_update', 'data': formatted}, ensure_ascii=False))
+    except queue.Empty:
+        # Just timeout, continue the loop. Allows checking if ws is still alive.
+        pass
+    except Exception as exc:
+        logger.info(f"WS client disconnected: /ws/market/prices ({exc})")
+    finally:
+        BSCWebSocket.unregister_client(q)
 
 if __name__ == "__main__":
     logger.info("Vietnamese Stock Valuation Backend – running on http://0.0.0.0:5000")
