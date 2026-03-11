@@ -388,7 +388,7 @@ class VCIClient:
                 'low': float(item.get('l') or 0),
                 'volume': float(item.get('vo') or 0),
                 'value': float(item.get('va') or 0),
-                'source': 'VCI_RAM'
+                'source': item.get('source', 'VCI_RAM')
             }
 
         # 2. Direct Fallback if not in cache (fresh boot or rare ticker)
