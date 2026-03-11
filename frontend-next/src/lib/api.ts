@@ -24,8 +24,8 @@ export const API = {
     LOTTERY: `${API_BASE}/market/lottery`,
 
     // Stock Data (VCI Source via vnstock)
-    STOCK: (symbol: string) => `${API_BASE}/stock/${symbol}`,
-    APP_DATA: (symbol: string) => `${API_BASE}/app-data/${symbol}`,
+    STOCK: (symbol: string) => `${API_BASE}/stock/${symbol}?fetch_price=true`,
+    APP_DATA: (symbol: string) => `${API_BASE}/app-data/${symbol}?fetch_price=true`,
     CURRENT_PRICE: (symbol: string) => `${API_BASE}/current-price/${symbol}`,
     PRICE: (symbol: string) => `${API_BASE}/price/${symbol}`,
     HISTORICAL_CHART: (symbol: string) => `${API_BASE}/historical-chart-data/${symbol}`,

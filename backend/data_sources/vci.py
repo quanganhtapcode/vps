@@ -36,7 +36,7 @@ class VCIClient:
     # Cache for bulk prices (stores the full data object for each symbol)
     _price_cache = {}
     _last_cache_update = 0
-    _CACHE_TTL = 15 # Allow slightly longer TTL for background refresh
+    _CACHE_TTL = 7 # Allow slightly longer TTL for background refresh
     
     # Cache for market indices - refreshed every 1s in background
     _indices_cache: List[Dict] = []
@@ -182,7 +182,7 @@ class VCIClient:
 
     @classmethod
     def _background_refresh_loop(cls):
-        """Infinite loop to keep the RAM cache fresh every 12 seconds"""
+        """Infinite loop to keep the RAM cache fresh every 5 seconds"""
         print(">>> [VCI] Starting background price refresh thread...", flush=True)
         while True:
             try:
@@ -190,8 +190,8 @@ class VCIClient:
             except Exception as e:
                 logger.error(f"Error in background price refresh: {e}")
             
-            # Sleep for 12 seconds between full updates
-            time.sleep(12)
+            # Sleep for 5 seconds between full updates
+            time.sleep(5)
 
     @classmethod
     def _indices_refresh_loop(cls):
