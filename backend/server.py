@@ -212,21 +212,23 @@ def ws_market_prices(ws):
     q = BSCWebSocket.register_client()
     try:
         while True:
-            # Send ping/pong handles automatically by flask_sock, but we can do it manually if needed.
-            # flask-sock ping interval is handled by underlying library, but we can send periodic ticks to prevent timeout if preferred
-            updates = q.get(timeout=10) # wait up to 10s for updates
-            if updates:
-                formatted = {}
-                for sym, data in updates.items():
-                    formatted[sym] = {
-                        'c': data['c'],
-                        'ref': data['ref'],
-                        'vo': float(data.get('vo', 0))
-                    }
-                ws.send(json.dumps({'type': 'prices_update', 'data': formatted}, ensure_ascii=False))
-    except queue.Empty:
-        # Just timeout, continue the loop. Allows checking if ws is still alive.
-        pass
+            try:
+                # Wait up to 5 seconds for trade updates
+                updates = q.get(timeout=5)
+                if updates:
+                    formatted = {}
+                    for sym, data in updates.items():
+                        formatted[sym] = {
+                            'c': data['c'],
+                            'ref': data['ref'],
+                            'vo': float(data.get('vo', 0))
+                        }
+                    ws.send(json.dumps({'type': 'prices_update', 'data': formatted}, ensure_ascii=False))
+            except queue.Empty:
+                # No trades in last 5s, send a heartbeat "tick" to keep WS connection alive
+                # and prevent Nginx/browser timeouts.
+                ws.send(json.dumps({'type': 'tick', 'serverTs': time.time()}))
+                continue
     except Exception as exc:
         logger.info(f"WS client disconnected: /ws/market/prices ({exc})")
     finally:
