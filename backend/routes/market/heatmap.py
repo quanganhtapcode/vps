@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify, request
 
 from .deps import cache_func, cache_ttl
 from .paths import screener_db_path
+from backend.data_sources.vci import VCIClient
 
 logger = logging.getLogger(__name__)
 
