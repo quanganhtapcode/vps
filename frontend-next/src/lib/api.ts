@@ -296,9 +296,12 @@ export function subscribeIndicesStream(options: {
     onStatus?: (status: IndicesStreamStatus) => void;
 }): () => void {
     const { onData, onStatus } = options;
-    if (!isTradingHours()) {
-        // Outside trading hours: no point keeping a live socket open
-        onStatus?.('closed');
+
+    // No trading-hours gate here: the backend keeps the socket alive with 30s
+    // keepalive pings regardless of session, and the VCI client manages its own
+    // poll rate. Blocking the WS on the client side just causes it to appear
+    // gone outside market hours.
+    if (typeof window === 'undefined') {
         return () => {};
     }
 
