@@ -959,8 +959,8 @@ _POLYMARKET_TTL = 300  # 5 minutes
 @stock_bp.route("/polymarket/events", methods=['GET'])
 def polymarket_events():
     """
-    Proxy for https://gamma-api.polymarket.com/events
-    Fetches economics-tagged active events and returns top-3 by volume.
+    Proxy for Polymarket Gamma API.
+    Fetches active economic events (Fed, rates, inflation, recession, GDP, S&P).
     """
     import urllib.request
     import urllib.error
@@ -970,37 +970,58 @@ def polymarket_events():
     if cached and now - cached['ts'] < _POLYMARKET_TTL:
         return jsonify(cached['data'])
 
-    url = (
-        'https://gamma-api.polymarket.com/events'
-        '?active=true&closed=false&limit=30&tag_slug=economics'
-    )
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            raw = resp.read().decode('utf-8')
-        events_raw = json.loads(raw)
-    except urllib.error.URLError as exc:
-        logger.warning(f"Polymarket fetch failed: {exc}")
-        return jsonify([])
-    except Exception as exc:
-        logger.warning(f"Polymarket parse error: {exc}")
-        return jsonify([])
+    # Economic keyword filter - must match question/title
+    KEYWORDS = [
+        'fed', 'federal reserve', 'fomc', 'rate cut', 'rate hike', 'interest rate',
+        'inflation', 'cpi', 'gdp', 'recession', 'unemployment', 'nonfarm', 'payroll',
+        's&p', 'sp500', 'dow', 'nasdaq', 'stock market', 'economy', 'tariff',
+        'debt ceiling', 'treasury', 'dollar', 'usd', 'yield curve',
+    ]
 
-    if not isinstance(events_raw, list):
-        return jsonify([])
+    def _fetch(tag_slug: str, limit: int = 30) -> list:
+        url = (
+            f'https://gamma-api.polymarket.com/events'
+            f'?active=true&closed=false&limit={limit}&tag_slug={tag_slug}'
+        )
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                return json.loads(resp.read().decode('utf-8'))
+        except Exception:
+            return []
+
+    def _vol(m: dict) -> float:
+        try:
+            return float(m.get('volume') or 0)
+        except Exception:
+            return 0.0
+
+    # Try economics + macro tags
+    raw: list = []
+    for tag in ('economics', 'finance', 'politics'):
+        raw.extend(_fetch(tag, 50))
+        if len(raw) >= 100:
+            break
+
+    # Deduplicate by event id
+    seen: set = set()
+    deduped: list = []
+    for ev in raw:
+        eid = str(ev.get('id', ''))
+        if eid and eid not in seen:
+            seen.add(eid)
+            deduped.append(ev)
 
     output = []
-    for ev in events_raw:
+    for ev in deduped:
         markets = ev.get('markets') or []
         if not markets:
             continue
-        # Pick highest-volume market
-        def _vol(m):
-            try:
-                return float(m.get('volume') or 0)
-            except Exception:
-                return 0.0
         top = max(markets, key=_vol)
+        question = str(top.get('question') or ev.get('title') or '').lower()
+        # Keep only events matching economic keywords
+        if not any(kw in question for kw in KEYWORDS):
+            continue
         try:
             prices = json.loads(top.get('outcomePrices') or '[0.5,0.5]')
         except Exception:
@@ -1009,8 +1030,8 @@ def polymarket_events():
         volume = _vol(top)
         output.append({
             'id': str(ev.get('id', '')),
-            'question': top.get('question', ev.get('title', '')),
-            'slug': ev.get('slug') or ev.get('id', ''),
+            'question': top.get('question') or ev.get('title', ''),
+            'slug': ev.get('slug') or str(ev.get('id', '')),
             'yesPrice': yes_price,
             'volume': volume,
         })
