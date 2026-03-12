@@ -481,6 +481,18 @@ class StockDataProvider:
                         ):
                             data['debt_to_equity'] = snap_row['de']
 
+                # Add shares_outstanding from ratio_wide (not in overview table)
+                if has_ratio_wide and 'outstanding_share' in ratio_wide_cols:
+                    cursor.execute(
+                        """SELECT outstanding_share FROM ratio_wide
+                           WHERE symbol = ? AND outstanding_share IS NOT NULL AND outstanding_share > 0
+                           ORDER BY year DESC, quarter DESC LIMIT 1""",
+                        (symbol,),
+                    )
+                    share_row = cursor.fetchone()
+                    if share_row and share_row['outstanding_share']:
+                        data['shares_outstanding'] = share_row['outstanding_share']
+
             conn.close()
 
             if data:

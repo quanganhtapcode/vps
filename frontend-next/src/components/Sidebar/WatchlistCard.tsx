@@ -39,14 +39,14 @@ export default function WatchlistCard() {
         watchlist.forEach(symbol => {
             const ctrl = new AbortController();
             controllers.push(ctrl);
-            fetch(`/api/stock/${symbol}`, { signal: ctrl.signal })
+            // Use current-price endpoint for live data (overview.current_price can be null)
+            fetch(`/api/current-price/${symbol}`, { signal: ctrl.signal })
                 .then(r => r.ok ? r.json() : null)
                 .then(res => {
-                    if (!res) return;
-                    const data = res.data || res;
-                    let price = data.current_price || data.price || 0;
+                    if (!res || !res.success) return;
+                    let price = res.current_price || 0;
                     if (price > 0 && price < 500) price *= 1000;
-                    const pct = data.price_change_percent || data.changePercent || data.pctChange || 0;
+                    const pct = res.price_change_percent || 0;
                     setItems(prev => prev.map(i =>
                         i.symbol === symbol ? { ...i, price, changePercent: pct, loading: false } : i
                     ));
