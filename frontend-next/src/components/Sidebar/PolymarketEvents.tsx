@@ -13,41 +13,20 @@ interface PolyEvent {
 }
 
 async function fetchEconomicEvents(): Promise<PolyEvent[]> {
-    const res = await fetch(
-        'https://gamma-api.polymarket.com/events?active=true&closed=false&limit=30&tag_slug=economics',
-        { cache: 'no-store' }
-    );
-    if (!res.ok) throw new Error('Polymarket fetch failed');
+    const res = await fetch('/api/polymarket/events', { cache: 'no-store' });
+    if (!res.ok) throw new Error('Polymarket proxy fetch failed');
 
-    const data = await res.json();
-    const events: any[] = Array.isArray(data) ? data : [];
+    const data: Array<{ id: string; question: string; slug: string; yesPrice: number; volume: number }> = await res.json();
+    if (!Array.isArray(data)) return [];
 
-    return events
-        .filter((e) => e.markets && e.markets.length > 0)
-        .map((e) => {
-            const topMarket = [...e.markets].sort(
-                (a: any, b: any) => parseFloat(b.volume || '0') - parseFloat(a.volume || '0')
-            )[0];
-
-            let prices: string[] = ['0.5', '0.5'];
-            try {
-                prices = JSON.parse(topMarket.outcomePrices || '["0.5","0.5"]');
-            } catch {}
-
-            const yesPrice = parseFloat(prices[0] ?? '0.5');
-            const volume = parseFloat(topMarket.volume || '0');
-
-            return {
-                id: String(e.id),
-                question: topMarket.question as string,
-                slug: e.slug || String(e.id),
-                yesPrice,
-                volume,
-                url: `https://polymarket.com/event/${e.slug || e.id}`,
-            };
-        })
-        .sort((a, b) => b.volume - a.volume)
-        .slice(0, 3);
+    return data.map((item) => ({
+        id: item.id,
+        question: item.question,
+        slug: item.slug,
+        yesPrice: item.yesPrice,
+        volume: item.volume,
+        url: `https://polymarket.com/event/${item.slug || item.id}`,
+    }));
 }
 
 function formatVolume(vol: number): string {

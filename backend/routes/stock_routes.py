@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import json
 import os
 import re
-from backend.extensions import get_provider
+from backend.extensions import get_provider, get_valuation_service
 from backend.utils import validate_stock_symbol
 from backend.db_path import resolve_stocks_db_path
 from backend.routes.stock.financial_dashboard import register as register_financial_dashboard_routes
@@ -931,163 +931,91 @@ def api_revenue_profit(symbol):
 @stock_bp.route("/valuation/<symbol>", methods=['GET', 'POST'])
 def api_valuation(symbol):
     """
-    Calculate valuation based on assumptions.
-    Simplified implementation to support the frontend UI.
+    Calculate valuation using ValuationService (proper DCF + PS + comparables).
     """
     try:
         is_valid, clean_symbol = validate_stock_symbol(symbol)
         if not is_valid:
             return jsonify({'success': False, 'error': clean_symbol}), 400
 
-        data = request.get_json(silent=True) or {}
+        request_data = request.get_json(silent=True) or {}
 
-        def to_float(value, default=0.0):
-            try:
-                if value is None or pd.isna(value):
-                    return default
-                return float(value)
-            except Exception:
-                return default
+        svc = get_valuation_service()
+        result = svc.calculate(clean_symbol, request_data)
 
-        provider = get_provider()
-
-        stock_data = provider.get_stock_data(clean_symbol, period='quarter')
-        if not stock_data or not stock_data.get('success'):
-            stock_data = provider.get_stock_data(clean_symbol, period='year')
-
-        current_price = to_float(data.get('currentPrice'), 0.0)
-        if current_price <= 0:
-            current_price = to_float(stock_data.get('current_price'), 0.0)
-
-        eps = to_float(stock_data.get('eps_ttm'))
-        if eps <= 0:
-            eps = to_float(stock_data.get('eps'))
-        if eps <= 0:
-            eps = to_float(stock_data.get('earnings_per_share'))
-
-        bvps = to_float(stock_data.get('bvps'))
-        if bvps <= 0:
-            bvps = to_float(stock_data.get('book_value_per_share'))
-        if bvps <= 0:
-            total_equity = to_float(stock_data.get('total_equity'))
-            shares_outstanding = to_float(stock_data.get('shares_outstanding'))
-            if total_equity > 0 and shares_outstanding > 0:
-                bvps = total_equity / shares_outstanding
-
-        def median(values: list[float]) -> float | None:
-            vals = [float(v) for v in values if v is not None]
-            if not vals:
-                return None
-            vals.sort()
-            n = len(vals)
-            mid = n // 2
-            if n % 2 == 1:
-                return vals[mid]
-            return (vals[mid - 1] + vals[mid]) / 2
-
-        # === Industry median multiples (TTM) ===
-        # Use full-industry distribution from the SQLite overview table (not just top-10 peers)
-        industry = None
-        peer_pe_values: list[float] = []
-        peer_pb_values: list[float] = []
-
-        try:
-            import sqlite3
-
-            db_path = getattr(provider, 'db_path', None)
-            if db_path:
-                conn = sqlite3.connect(db_path)
-                conn.row_factory = sqlite3.Row
-                cur = conn.cursor()
-
-                cur.execute("SELECT industry FROM overview WHERE symbol = ?", (clean_symbol,))
-                row = cur.fetchone()
-                industry = row['industry'] if row and row['industry'] else None
-
-                if not industry and hasattr(provider, '_get_industry_for_symbol'):
-                    industry = provider._get_industry_for_symbol(clean_symbol)
-
-                if industry and industry != 'Unknown':
-                    cur.execute(
-                        "SELECT pe, pb FROM overview WHERE industry = ? AND symbol != ?",
-                        (industry, clean_symbol),
-                    )
-                    rows = cur.fetchall() or []
-                    for r in rows:
-                        pe_val = to_float(r['pe'])
-                        pb_val = to_float(r['pb'])
-                        if 0 < pe_val <= 80:
-                            peer_pe_values.append(pe_val)
-                        if 0 < pb_val <= 20:
-                            peer_pb_values.append(pb_val)
-                conn.close()
-        except Exception as exc:
-            logger.warning(f"Industry median multiples fallback for {clean_symbol} failed: {exc}")
-
-        industry_median_pe = median(peer_pe_values)
-        industry_median_pb = median(peer_pb_values)
-
-        # Sensible fallbacks if industry data is missing
-        peer_pe = float(industry_median_pe) if industry_median_pe is not None else 15.0
-        peer_pb = float(industry_median_pb) if industry_median_pb is not None else 1.5
-
-        graham = 0.0
-        if eps > 0 and bvps > 0:
-            graham = float((22.5 * eps * bvps) ** 0.5)
-
-        justified_pe = float(eps * peer_pe) if eps > 0 else 0.0
-        justified_pb = float(bvps * peer_pb) if bvps > 0 else 0.0
-
-        growth = to_float(data.get('revenueGrowth'), 8.0) / 100
-        dcf_base = current_price if current_price > 0 else max(justified_pe, justified_pb, graham, 0)
-        dcf_value = float(dcf_base * (1 + growth)) if dcf_base > 0 else 0.0
-
-        valuations = {
-            'fcfe': dcf_value,
-            'fcff': dcf_value * 0.95,
-            'justified_pe': justified_pe,
-            'justified_pb': justified_pb,
-            'graham': graham,
-        }
-
-        weights = data.get('modelWeights', {}) or {}
-        if not any(to_float(w) > 0 for w in weights.values()):
-            weights = {
-                'fcfe': 20,
-                'fcff': 20,
-                'justified_pe': 20,
-                'justified_pb': 20,
-                'graham': 20,
-            }
-
-        total_val = 0.0
-        total_weight = 0.0
-        for key, weight in weights.items():
-            val = to_float(valuations.get(key))
-            w = to_float(weight)
-            if val > 0 and w > 0:
-                total_val += val * w
-                total_weight += w
-
-        weighted_avg = (total_val / total_weight) if total_weight > 0 else 0.0
-        valuations['weighted_average'] = weighted_avg
-
-        return jsonify({
-            'success': True,
-            'valuations': valuations,
-            'symbol': clean_symbol,
-            'inputs': {
-                'current_price': current_price,
-                'eps_ttm': eps,
-                'bvps': bvps,
-                'industry': industry,
-                'industry_median_pe_ttm_used': peer_pe,
-                'industry_median_pb_used': peer_pb,
-                'industry_pe_sample_size': len(peer_pe_values),
-                'industry_pb_sample_size': len(peer_pb_values),
-            },
-        })
+        return jsonify(result), (200 if result.get('success') else 404)
 
     except Exception as e:
         logger.error(f"Valuation error for {symbol}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Polymarket proxy  (avoids CORS when called from the browser)
+# ──────────────────────────────────────────────────────────────────────────────
+_polymarket_cache: dict = {}
+_POLYMARKET_TTL = 300  # 5 minutes
+
+@stock_bp.route("/polymarket/events", methods=['GET'])
+def polymarket_events():
+    """
+    Proxy for https://gamma-api.polymarket.com/events
+    Fetches economics-tagged active events and returns top-3 by volume.
+    """
+    import urllib.request
+    import urllib.error
+
+    now = _time.time()
+    cached = _polymarket_cache.get('events')
+    if cached and now - cached['ts'] < _POLYMARKET_TTL:
+        return jsonify(cached['data'])
+
+    url = (
+        'https://gamma-api.polymarket.com/events'
+        '?active=true&closed=false&limit=30&tag_slug=economics'
+    )
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode('utf-8')
+        events_raw = json.loads(raw)
+    except urllib.error.URLError as exc:
+        logger.warning(f"Polymarket fetch failed: {exc}")
+        return jsonify([])
+    except Exception as exc:
+        logger.warning(f"Polymarket parse error: {exc}")
+        return jsonify([])
+
+    if not isinstance(events_raw, list):
+        return jsonify([])
+
+    output = []
+    for ev in events_raw:
+        markets = ev.get('markets') or []
+        if not markets:
+            continue
+        # Pick highest-volume market
+        def _vol(m):
+            try:
+                return float(m.get('volume') or 0)
+            except Exception:
+                return 0.0
+        top = max(markets, key=_vol)
+        try:
+            prices = json.loads(top.get('outcomePrices') or '[0.5,0.5]')
+        except Exception:
+            prices = [0.5, 0.5]
+        yes_price = float(prices[0]) if prices else 0.5
+        volume = _vol(top)
+        output.append({
+            'id': str(ev.get('id', '')),
+            'question': top.get('question', ev.get('title', '')),
+            'slug': ev.get('slug') or ev.get('id', ''),
+            'yesPrice': yes_price,
+            'volume': volume,
+        })
+
+    output.sort(key=lambda x: x['volume'], reverse=True)
+    result = output[:3]
+    _polymarket_cache['events'] = {'ts': now, 'data': result}
+    return jsonify(result)
