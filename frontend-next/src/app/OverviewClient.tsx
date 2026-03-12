@@ -6,6 +6,7 @@ import PEChart from '@/components/PEChart';
 import NewsSection from '@/components/NewsSection';
 
 import { CryptoPrices, GoldPrice, Lottery, MarketPulse, WatchlistCard } from '@/components/Sidebar';
+import { HeatmapVN30 } from '@/components/HeatmapVN30';
 import {
     fetchAllIndices,
     subscribeIndicesStream,
@@ -14,8 +15,6 @@ import {
     fetchTopMovers,
     fetchForeignFlow,
     fetchGoldPrices,
-
-    formatRelativeTime,
     INDEX_MAP,
     MarketIndexData,
     NewsItem,
@@ -38,13 +37,13 @@ interface IndexData {
     change: number;
     percentChange: number;
     chartData: number[];
-    advances?: number;
-    declines?: number;
-    noChanges?: number;
-    ceilings?: number;
-    floors?: number;
-    totalShares?: number;
-    totalValue?: number;
+    advances: number | undefined;
+    declines: number | undefined;
+    noChanges: number | undefined;
+    ceilings: number | undefined;
+    floors: number | undefined;
+    totalShares: number | undefined;
+    totalValue: number | undefined;
 }
 
 interface OverviewClientProps {
@@ -136,7 +135,7 @@ export default function OverviewClient({
                     totalValue: data.Value,
                 };
             })
-            .filter(r => r !== null) as IndexData[];
+            .filter((r): r is IndexData => r !== null);
 
         setIndices(results);
         setLastUpdate(new Date());
@@ -153,7 +152,33 @@ export default function OverviewClient({
         }
     }, [mapMarketDataToIndices]);
 
-    // Load top movers & foreign flow
+    // Load gold prices (Client-side Refresh)
+    const loadGold = useCallback(async () => {
+        try {
+            const result = await fetchGoldPrices();
+            setGoldPrices(result.data);
+            if (result.updated_at) {
+                setGoldUpdatedAt(result.updated_at);
+            }
+        } catch (error) {
+            console.error('Error loading gold prices:', error);
+        }
+    }, []);
+
+    const loadNews = useCallback(async () => {
+        try {
+            setNewsLoading(true);
+            setNewsError(null);
+            const items = await fetchNews(1, 30);
+            setNews(items);
+        } catch (error) {
+            console.error('Error loading news:', error);
+            setNewsError('Unable to load market news');
+        } finally {
+            setNewsLoading(false);
+        }
+    }, []);
+
     const loadMovers = useCallback(async () => {
         try {
             setMoversLoading(true);
@@ -186,21 +211,39 @@ export default function OverviewClient({
         }
     }, []);
 
-    // Load gold prices (Client-side Refresh)
-    const loadGold = useCallback(async () => {
-        try {
-            const result = await fetchGoldPrices();
-            setGoldPrices(result.data);
-            if (result.updated_at) {
-                setGoldUpdatedAt(result.updated_at);
-            }
-        } catch (error) {
-            console.error('Error loading gold prices:', error);
+    useEffect(() => {
+        if (!initialGoldPrices || initialGoldPrices.length === 0) {
+            loadGold();
         }
-    }, []);
+    }, [initialGoldPrices, loadGold]);
 
-    // Load movers on mount
-    useEffect(() => { loadMovers(); loadForeign(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        if (!initialNews || initialNews.length === 0) {
+            loadNews();
+        }
+    }, [initialNews, loadNews]);
+
+    useEffect(() => {
+        if (!initialGainers || !initialLosers || initialGainers.length === 0 || initialLosers.length === 0) {
+            loadMovers();
+        }
+    }, [initialGainers, initialLosers, loadMovers]);
+
+    useEffect(() => {
+        if (!initialForeignBuys || !initialForeignSells || initialForeignBuys.length === 0 || initialForeignSells.length === 0) {
+            loadForeign();
+        }
+    }, [initialForeignBuys, initialForeignSells, loadForeign]);
+
+    // Periodic refresh for movers (every 60 s during trading hours)
+    useEffect(() => {
+        if (!isTradingHours()) return;
+        const interval = setInterval(() => {
+            loadMovers();
+            loadForeign();
+        }, 60000);
+        return () => clearInterval(interval);
+    }, [loadMovers, loadForeign]);
 
     // Realtime indices via internal websocket; fallback polling only when WS is down
     useEffect(() => {
@@ -240,16 +283,6 @@ export default function OverviewClient({
         };
     }, [loadIndices, initialIndices?.length ?? 0, mapMarketDataToIndices]);
 
-    // Periodic refresh for movers (every 60 s during trading hours)
-    useEffect(() => {
-        if (!isTradingHours()) return;
-        const interval = setInterval(() => {
-            loadMovers();
-            loadForeign();
-        }, 60000);
-        return () => clearInterval(interval);
-    }, [loadMovers, loadForeign]);
-
     // Auto refresh gold every 60 seconds
     useEffect(() => {
         const interval = setInterval(() => {
@@ -260,16 +293,10 @@ export default function OverviewClient({
 
     return (
         <div className={styles.container}>
-            {/* Last update time - only show on client */}
-            {isMounted && lastUpdate && (
-                <div className={styles.updateTime}>
-                    📅 Updated at: {formatRelativeTime(lastUpdate, 'vi-VN')}
-                </div>
-            )}
-
             <div className={styles.mainContent}>
                 {/* Left Column - Main Content */}
                 <div className={styles.leftColumn}>
+
                     {/* Indices Grid - 2x2 layout, no title */}
                     <div className={styles.indicesGrid}>
                         {/* Always render 4 cards — skeleton shows immediately, data fills in */}
@@ -298,6 +325,9 @@ export default function OverviewClient({
                     </div>
 
 
+
+                    {/* VN30 Heatmap */}
+                    <HeatmapVN30 />
 
                     {/* P/E Chart */}
                     <PEChart initialData={initialPEData} />

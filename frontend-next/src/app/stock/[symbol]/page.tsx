@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useTransition, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { formatNumber, formatDate, formatPercentChange, fetchStockPeers } from '@/lib/api';
+import { useWatchlist } from '@/lib/watchlistContext';
+import { RiStarFill, RiStarLine } from '@remixicon/react';
 import styles from './page.module.css';
 import OverviewTab from '@/components/StockDetail/OverviewTab';
 import FinancialsTab from '@/components/StockDetail/FinancialsTab';
@@ -416,25 +418,9 @@ export default function StockDetailPage() {
 
     const isUp = priceData ? priceData.change >= 0 : true;
 
-    // Watchlist Logic
-    const [isWatchlisted, setIsWatchlisted] = useState(false);
-    useEffect(() => {
-        if (!symbol) return;
-        const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
-        setIsWatchlisted(saved.includes(symbol));
-    }, [symbol]);
-
-    const toggleWatchlist = () => {
-        const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
-        let newSaved;
-        if (isWatchlisted) {
-            newSaved = saved.filter((s: string) => s !== symbol);
-        } else {
-            newSaved = [...saved, symbol];
-        }
-        localStorage.setItem('watchlist', JSON.stringify(newSaved));
-        setIsWatchlisted(!isWatchlisted);
-    };
+    // Watchlist Logic (via global context — syncs across sidebar)
+    const { toggle: toggleWatchlist, isWatched } = useWatchlist();
+    const isWatchlisted = isWatched(symbol);
 
     // Polling Price every 5 seconds
     useEffect(() => {
@@ -540,6 +526,16 @@ export default function StockDetailPage() {
                     <div className={styles.stockMetaCompact}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <h1 className="text-tremor-content-strong dark:text-dark-tremor-content-strong" style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>{symbol}</h1>
+                            <button
+                                type="button"
+                                onClick={() => toggleWatchlist(symbol)}
+                                title={isWatchlisted ? 'Xoá khỏi Watchlist' : 'Thêm vào Watchlist'}
+                                className="p-1 rounded-full transition-colors hover:bg-amber-50 dark:hover:bg-amber-950"
+                            >
+                                {isWatchlisted
+                                    ? <RiStarFill className="h-5 w-5 text-amber-400" />
+                                    : <RiStarLine className="h-5 w-5 text-tremor-content dark:text-dark-tremor-content hover:text-amber-400" />}
+                            </button>
                         </div>
                         <div className="text-tremor-content dark:text-dark-tremor-content" style={{ fontSize: '0.85rem', lineHeight: '1.4', marginTop: '2px' }}>
                             {stockInfo?.companyName}

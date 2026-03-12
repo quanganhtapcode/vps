@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import { TickerTape } from "@/components/TickerTape";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { siteConfig } from "@/app/siteConfig";
+import { WatchlistProvider } from "@/lib/watchlistContext";
 
 const inter = Inter({
   subsets: ["latin", "vietnamese"],
@@ -107,14 +108,16 @@ export default function RootLayout({
           defaultTheme="system"
           disableTransitionOnChange
         >
-          <Navbar />
-          <TickerTape />
-          <ErrorBoundary>
-            <main className="pt-[112px] md:pt-[140px] min-h-[calc(100vh-400px)]">{/* Adjusted padding for new TickerTape position */}
-              {children}
-            </main>
-          </ErrorBoundary>
-          <Footer />
+          <WatchlistProvider>
+            <Navbar />
+            <TickerTape />
+            <ErrorBoundary>
+              <main className="pt-[112px] md:pt-[140px] min-h-[calc(100vh-400px)]">{/* Adjusted padding for new TickerTape position */}
+                {children}
+              </main>
+            </ErrorBoundary>
+            <Footer />
+          </WatchlistProvider>
         </ThemeProvider>
       </body>
     </html>
