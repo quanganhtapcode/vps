@@ -1,164 +1,170 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import {
-    Card,
-} from '@tremor/react';
-import { RiTicketLine, RiHistoryLine, RiMapPin2Line, RiFireFill, RiStarFill } from '@remixicon/react';
+import { RiArrowDownSLine, RiArrowUpSLine } from '@remixicon/react';
 import { fetchLottery, LotteryResult } from '@/lib/api';
-import React from 'react';
 
 const REGIONS = [
-    { key: 'mb', label: 'Miền Bắc' },
-    { key: 'mt', label: 'Miền Trung' },
-    { key: 'mn', label: 'Miền Nam' },
+    { key: 'mb', label: 'Bắc' },
+    { key: 'mt', label: 'Trung' },
+    { key: 'mn', label: 'Nam' },
 ] as const;
 
 const prizeLabels: Record<string, string> = {
-    'DB': 'G.ĐB',
-    'G1': 'G.1',
-    'G2': 'G.2',
-    'G3': 'G.3',
-    'G4': 'G.4',
-    'G5': 'G.5',
-    'G6': 'G.6',
-    'G7': 'G.7',
-    'G8': 'G.8',
+    'DB': 'G.ĐB', 'G1': 'G.1', 'G2': 'G.2', 'G3': 'G.3',
+    'G4': 'G.4', 'G5': 'G.5', 'G6': 'G.6', 'G7': 'G.7', 'G8': 'G.8',
 };
 
+const NORTHERN_PRIZES = ['DB', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7'];
+const SOUTHERN_PRIZES = ['DB', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8'];
+
 export default function Lottery() {
+    const [open, setOpen] = useState(true);
     const [region, setRegion] = useState<'mb' | 'mn' | 'mt'>('mb');
     const [data, setData] = useState<LotteryResult | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [provIndex, setProvIndex] = useState(0);
 
     useEffect(() => {
-        async function load() {
-            setIsLoading(true);
-            try {
-                const res = await fetchLottery(region);
-                setData(res);
-            } catch (error) {
-                console.error('Error loading lottery:', error);
-            } finally {
-                setIsLoading(false);
-            }
-        }
-        load();
+        setProvIndex(0);
+        setIsLoading(true);
+        fetchLottery(region)
+            .then(setData)
+            .catch(console.error)
+            .finally(() => setIsLoading(false));
     }, [region]);
 
-    const northernPrizes = ['DB', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7'];
-
     return (
-        <div className="mt-4 space-y-4">
-            {/* Tabs Style */}
-            <div className="flex p-1 bg-gray-100/80 dark:bg-gray-800/50 rounded-xl gap-1">
-                {REGIONS.map((r) => (
-                    <button
-                        key={r.key}
-                        onClick={() => setRegion(r.key as any)}
-                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all duration-200 ${region === r.key
-                            ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                            }`}
-                    >
-                        {r.label}
-                    </button>
-                ))}
-            </div>
-
-            {/* Loading / Content */}
-            {isLoading ? (
-                <div className="flex justify-center py-20">
-                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-rose-500" />
+        <div className="mt-4">
+            {/* Header */}
+            <button
+                onClick={() => setOpen(o => !o)}
+                className="w-full flex items-center justify-between px-1 pb-2"
+            >
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-gray-800 dark:text-gray-100">🎰 Xổ số</span>
+                    {data?.pubDate && (
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">{data.pubDate}</span>
+                    )}
                 </div>
-            ) : data ? (
-                <div className="space-y-4">
-                    {/* For Northern Region (MB) */}
-                    {region === 'mb' && data.results && (
-                        <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
-                            <div className="grid grid-cols-[80px_1fr] divide-x divide-y divide-gray-200 dark:divide-gray-700">
-                                {northernPrizes.map((key) => {
-                                    const prizes = data.results![key as keyof typeof data.results];
-                                    if (!prizes || key === 'provinces') return null;
-                                    const isDB = key === 'DB';
-                                    const prizeArray = (Array.isArray(prizes) ? prizes : [prizes]) as string[];
+                {open
+                    ? <RiArrowUpSLine className="w-4 h-4 text-gray-400" />
+                    : <RiArrowDownSLine className="w-4 h-4 text-gray-400" />
+                }
+            </button>
 
-                                    return (
-                                        <React.Fragment key={key}>
-                                            <div className="flex items-center justify-center bg-gray-50/50 dark:bg-gray-800/30 p-2.5 text-[11px] font-bold text-gray-500 dark:text-gray-400">
-                                                {prizeLabels[key]}
-                                            </div>
-                                            <div className={`p-2.5 text-center flex flex-wrap justify-center gap-x-4 gap-y-2 font-bold ${isDB ? 'text-lg text-rose-500' : 'text-sm text-gray-700 dark:text-gray-200'
-                                                }`}>
-                                                {prizeArray.map((p, idx) => (
-                                                    <span key={idx} className={key === 'G3' ? 'w-full py-0.5' : ''}>
-                                                        {typeof p === 'string' ? p : String(p)}
-                                                        {idx < prizeArray.length - 1 && key !== 'G3' ? ' - ' : ''}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </React.Fragment>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* For Central & Southern (MT/MN) - TABLE LAYOUT */}
-                    {(region === 'mn' || region === 'mt') && data.results?.provinces && (
-                        <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-center border-collapse divide-y divide-gray-200 dark:divide-gray-700">
-                                    <thead>
-                                        <tr className="bg-gray-50/50 dark:bg-gray-800/30">
-                                            <th className="px-3 py-2.5 text-[11px] font-bold text-gray-500 dark:text-gray-400 w-16">Giải</th>
-                                            {data.results.provinces.map((prov: any, pIdx: number) => (
-                                                <th key={pIdx} className="px-3 py-2.5 text-[11px] font-bold text-gray-700 dark:text-gray-200 min-w-[100px]">
-                                                    {prov.name}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                        {['G8', 'G7', 'G6', 'G5', 'G4', 'G3', 'G2', 'G1', 'DB'].map((key) => {
-                                            const label = prizeLabels[key] || key;
-                                            const isDB = key === 'DB';
-                                            return (
-                                                <tr key={key} className="divide-x divide-gray-200 dark:divide-gray-700">
-                                                    <td className="px-2 py-3 text-[11px] font-bold text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-800/10">
-                                                        {label}
-                                                    </td>
-                                                    {data.results!.provinces!.map((prov: any, pIdx: number) => {
-                                                        const prizes = prov.prizes[key] as string[];
-                                                        return (
-                                                            <td key={pIdx} className={`px-2 py-3 font-bold ${isDB ? 'text-lg text-rose-500' : 'text-sm text-gray-700 dark:text-gray-200'}`}>
-                                                                <div className="flex flex-col gap-1">
-                                                                    {prizes?.map((p: string, idx: number) => (
-                                                                        <div key={idx}>{p}</div>
-                                                                    )) || '-'}
-                                                                </div>
-                                                            </td>
-                                                        );
-                                                    })}
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Date Footer */}
-                    <div className="text-center py-2">
-                        <span className="text-[11px] text-gray-600 dark:text-gray-400 italic">
-                            Kết quả ngày: {data.pubDate || new Date().toLocaleDateString('vi-VN')}
-                        </span>
+            {open && (
+                <div className="space-y-2">
+                    {/* Region tabs */}
+                    <div className="flex gap-1">
+                        {REGIONS.map((r) => (
+                            <button
+                                key={r.key}
+                                onClick={() => setRegion(r.key as 'mb' | 'mn' | 'mt')}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                    region === r.key
+                                        ? 'bg-rose-500 text-white shadow-sm'
+                                        : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-gray-800 dark:hover:text-gray-100'
+                                }`}
+                            >
+                                {r.label}
+                            </button>
+                        ))}
                     </div>
-                </div>
-            ) : (
-                <div className="py-20 text-center text-gray-600 dark:text-gray-400 text-xs italic">
-                    Không tìm thấy kết quả cho {REGIONS.find(r => r.key === region)?.label}.
+
+                    {isLoading ? (
+                        <div className="flex justify-center py-8">
+                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-rose-500" />
+                        </div>
+                    ) : data ? (
+                        <>
+                            {/* Northern (MB) — flat list */}
+                            {region === 'mb' && data.results && (
+                                <div className="space-y-0.5">
+                                    {NORTHERN_PRIZES.map((key) => {
+                                        const prizes = data.results[key as keyof typeof data.results];
+                                        if (!prizes || !Array.isArray(prizes)) return null;
+                                        const isDB = key === 'DB';
+                                        return (
+                                            <div
+                                                key={key}
+                                                className={`flex items-start gap-2 px-2 py-1 rounded-lg ${isDB ? 'bg-rose-50 dark:bg-rose-500/10' : ''}`}
+                                            >
+                                                <span className="w-8 shrink-0 text-[10px] font-bold text-gray-400 dark:text-gray-500 pt-0.5">
+                                                    {prizeLabels[key]}
+                                                </span>
+                                                <div className={`flex flex-wrap gap-x-2 gap-y-0.5 leading-tight ${
+                                                    isDB
+                                                        ? 'text-base font-extrabold text-rose-500'
+                                                        : 'text-xs font-semibold text-gray-700 dark:text-gray-200'
+                                                }`}>
+                                                    {prizes.map((p, i) => (
+                                                        <span key={i}>{typeof p === 'string' ? p : String(p)}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Central / Southern (MT/MN) — province tabs + flat list */}
+                            {(region === 'mn' || region === 'mt') && data.results?.provinces && (
+                                <div className="space-y-2">
+                                    {data.results.provinces.length > 1 && (
+                                        <div className="flex gap-1 overflow-x-auto pb-1 no-scrollbar">
+                                            {data.results.provinces.map((prov, i) => (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => setProvIndex(i)}
+                                                    className={`shrink-0 px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${
+                                                        provIndex === i
+                                                            ? 'bg-rose-500 text-white'
+                                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-gray-800 dark:hover:text-gray-100'
+                                                    }`}
+                                                >
+                                                    {prov.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {data.results.provinces[provIndex] && (
+                                        <div className="space-y-0.5">
+                                            {SOUTHERN_PRIZES.map((key) => {
+                                                const prizes = data.results.provinces![provIndex].prizes[key];
+                                                if (!prizes?.length) return null;
+                                                const isDB = key === 'DB';
+                                                return (
+                                                    <div
+                                                        key={key}
+                                                        className={`flex items-start gap-2 px-2 py-1 rounded-lg ${isDB ? 'bg-rose-50 dark:bg-rose-500/10' : ''}`}
+                                                    >
+                                                        <span className="w-8 shrink-0 text-[10px] font-bold text-gray-400 dark:text-gray-500 pt-0.5">
+                                                            {prizeLabels[key]}
+                                                        </span>
+                                                        <div className={`flex flex-wrap gap-x-2 gap-y-0.5 leading-tight ${
+                                                            isDB
+                                                                ? 'text-base font-extrabold text-rose-500'
+                                                                : 'text-xs font-semibold text-gray-700 dark:text-gray-200'
+                                                        }`}>
+                                                            {prizes.map((p, i) => (
+                                                                <span key={i}>{p}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <p className="text-center py-6 text-xs text-gray-400 italic">
+                            Không tìm thấy kết quả
+                        </p>
+                    )}
                 </div>
             )}
         </div>

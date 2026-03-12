@@ -5,7 +5,7 @@ import IndexCard from '@/components/IndexCard';
 import PEChart from '@/components/PEChart';
 import NewsSection from '@/components/NewsSection';
 
-import { CryptoPrices, GoldPrice, Lottery, MarketPulse, WatchlistCard } from '@/components/Sidebar';
+import { CryptoPrices, GoldPrice, Lottery, MarketPulse, WatchlistCard, PolymarketEvents } from '@/components/Sidebar';
 import {
     fetchAllIndices,
     subscribeIndicesStream,
@@ -336,7 +336,8 @@ export default function OverviewClient({
 
                     {/* Lottery Results */}
                     <Lottery />
-                </aside>
+                    {/* Polymarket Economic Events */}
+                    <PolymarketEvents />                </aside>
             </div>
         </div>
     );
