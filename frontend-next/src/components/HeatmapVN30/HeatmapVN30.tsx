@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { API_BASE, subscribePricesStream } from '@/lib/api';
+import { API_BASE, subscribePricesStream, isTradingHours } from '@/lib/api';
 
 //  Types 
 interface Stock { ticker: string; cap: number; change: number; price: number; name: string; sector: string }
@@ -145,6 +145,8 @@ export default function HeatmapVN30() {
 
   useEffect(() => { 
     load();
+    if (!isTradingHours()) return; // Prices don't change outside trading hours — no need to stream or poll
+
     let isMounted = true;
     let fallbackTimer: any;
 

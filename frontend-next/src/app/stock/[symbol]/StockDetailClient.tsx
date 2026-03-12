@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useTransition } from 'react';
 import { useParams } from 'next/navigation';
-import { formatNumber, formatDate, formatPercentChange, fetchStockPeers } from '@/lib/api';
+import { formatNumber, formatDate, formatPercentChange, fetchStockPeers, isTradingHours } from '@/lib/api';
 import styles from './page.module.css';
 import OverviewTab from '@/components/StockDetail/OverviewTab';
 import FinancialsTab from '@/components/StockDetail/FinancialsTab';
@@ -429,9 +429,9 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
         setIsWatchlisted(!isWatchlisted);
     };
 
-    // Polling Price every 3 seconds
+    // Polling Price every 3 seconds — only during trading hours (prices are static otherwise)
     useEffect(() => {
-        if (!symbol) return;
+        if (!symbol || !isTradingHours()) return;
 
         const interval = setInterval(() => {
             fetch(`/api/current-price/${symbol}`)

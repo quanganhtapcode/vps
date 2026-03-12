@@ -9,6 +9,7 @@ import { CryptoPrices, GoldPrice, Lottery, MarketPulse } from '@/components/Side
 import {
     fetchAllIndices,
     subscribeIndicesStream,
+    isTradingHours,
     fetchNews,
     fetchTopMovers,
     fetchForeignFlow,
@@ -170,9 +171,10 @@ export default function OverviewClient({
 
         const startFallback = () => {
             if (fallbackTimer) return;
+            // During trading hours refresh every 5 s; outside hours every 60 s
             fallbackTimer = setInterval(() => {
                 loadIndices();
-            }, 5000);
+            }, isTradingHours() ? 5000 : 60000);
         };
 
         const stopFallback = () => {

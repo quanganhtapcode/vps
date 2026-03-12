@@ -164,6 +164,22 @@ export interface PEChartData {
 
 export type IndicesStreamStatus = 'open' | 'closed' | 'error';
 
+/**
+ * True when Vietnam stock markets are open: weekdays 09:00–15:05 ICT (UTC+7).
+ * Calculated from UTC so client timezone doesn't matter.
+ */
+export function isTradingHours(): boolean {
+    if (typeof window === 'undefined') return false; // SSR: no streaming
+    const now = new Date();
+    // Shift to Vietnam time (UTC+7) without relying on client TZ
+    const vnMs = now.getTime() + now.getTimezoneOffset() * 60_000 + 7 * 3_600_000;
+    const vn = new Date(vnMs);
+    const day = vn.getDay(); // 0 = Sunday, 6 = Saturday
+    if (day === 0 || day === 6) return false;
+    const minutes = vn.getHours() * 60 + vn.getMinutes();
+    return minutes >= 9 * 60 && minutes <= 15 * 60 + 5; // 09:00 – 15:05
+}
+
 interface IndicesStreamPayload {
     type?: string;
     source?: string;
@@ -280,6 +296,11 @@ export function subscribeIndicesStream(options: {
     onStatus?: (status: IndicesStreamStatus) => void;
 }): () => void {
     const { onData, onStatus } = options;
+    if (!isTradingHours()) {
+        // Outside trading hours: no point keeping a live socket open
+        onStatus?.('closed');
+        return () => {};
+    }
     const ws = new WebSocket(getIndicesWsUrl());
 
     ws.onopen = () => {
@@ -336,6 +357,11 @@ export function subscribePricesStream(options: {
     onStatus?: (status: IndicesStreamStatus) => void;
 }): () => void {
     const { onData, onStatus } = options;
+    if (!isTradingHours()) {
+        // Outside trading hours: prices don't change, skip the socket
+        onStatus?.('closed');
+        return () => {};
+    }
     const ws = new WebSocket(getPricesWsUrl());
 
     ws.onopen = () => onStatus?.('open');
