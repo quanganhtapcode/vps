@@ -24,7 +24,6 @@ from backend.routes.market import market_bp, init_market_routes
 from backend.routes.download_routes import download_bp
 from backend.routes.health_routes import health_bp
 from backend.data_sources.vci import VCIClient
-from backend.data_sources.bsc_ws import BSCWebSocket
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -100,6 +99,10 @@ provider = init_provider()
 
 # Initialize market routes with dependencies
 init_market_routes(get_cached_market_data, MARKET_CACHE_TTL, GoldService)
+
+# Warm-up: start background price refresh thread immediately so RAM cache is
+# populated before the first HTTP request arrives (avoids cold-start latency).
+VCIClient.ensure_background_refresh()
 
 # Register Blueprints
 app.register_blueprint(stock_bp, url_prefix='/api')
@@ -191,47 +194,36 @@ def ws_market_indices(ws):
 def _handle_prices_ws(ws):
     """Internal WS stream for frontend: pushes real-time price updates."""
     logger.info("WS client connected: /ws/market/prices")
-    
-    # Send all current prices on initial connect
+
+    # Send full price snapshot on initial connect
     try:
         current_prices = VCIClient.get_all_prices()
-        # filter and format
-        init_data = {}
-        for sym, data in current_prices.items():
-            if 'c' in data and 'ref' in data:
-                init_data[sym] = {
-                    'c': data['c'],
-                    'ref': data['ref'],
-                    'vo': data.get('vo', 0)
-                }
+        init_data = {
+            sym: {'c': d.get('c'), 'ref': d.get('ref'), 'vo': d.get('vo', 0)}
+            for sym, d in current_prices.items()
+            if d.get('c') and d.get('ref')
+        }
         ws.send(json.dumps({'type': 'prices_init', 'data': init_data}, ensure_ascii=False))
     except Exception:
         pass
 
-    q = BSCWebSocket.register_client()
+    q = VCIClient.register_ws_client()
     try:
         while True:
             try:
-                # Wait up to 5 seconds for trade updates
                 updates = q.get(timeout=5)
                 if updates:
-                    formatted = {}
-                    for sym, data in updates.items():
-                        formatted[sym] = {
-                            'c': data['c'],
-                            'ref': data['ref'],
-                            'vo': float(data.get('vo', 0))
-                        }
+                    formatted = {
+                        sym: {'c': d.get('c'), 'ref': d.get('ref'), 'vo': float(d.get('vo', 0))}
+                        for sym, d in updates.items()
+                    }
                     ws.send(json.dumps({'type': 'prices_update', 'data': formatted}, ensure_ascii=False))
             except queue.Empty:
-                # No trades in last 5s, send a heartbeat "tick" to keep WS connection alive
-                # and prevent Nginx/browser timeouts.
                 ws.send(json.dumps({'type': 'tick', 'serverTs': time.time()}))
-                continue
     except Exception as exc:
         logger.info(f"WS client disconnected: /ws/market/prices ({exc})")
     finally:
-        BSCWebSocket.unregister_client(q)
+        VCIClient.unregister_ws_client(q)
 
 # Register under both paths: direct and Nginx-rewritten
 @sock.route('/ws/market/prices')

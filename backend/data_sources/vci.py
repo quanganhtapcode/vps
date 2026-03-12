@@ -10,6 +10,7 @@ import time
 import threading
 import os
 import random
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 
 try:
@@ -37,7 +38,10 @@ class VCIClient:
     _price_cache = {}
     _last_cache_update = 0
     _CACHE_TTL = 7 # Allow slightly longer TTL for background refresh
-    
+
+    # WebSocket push clients — queues that receive diffs after each poll
+    _ws_clients: set = set()
+
     # Cache for market indices - refreshed every 1s in background
     _indices_cache: List[Dict] = []
     _indices_last_update: float = 0
@@ -180,21 +184,40 @@ class VCIClient:
         raw = response.json() or []
         return cls._extract_index_items_from_payload(raw)
 
+    # Vietnam timezone (UTC+7)
+    _VN_TZ = timezone(timedelta(hours=7))
+
+    @classmethod
+    def _is_trading_hours(cls) -> bool:
+        """Return True if current Vietnam time is within active trading hours.
+        HOSE/HNX trade weekdays 09:00–15:00 ICT (UTC+7).
+        Includes a 5-minute buffer after close for ATC final prints.
+        """
+        now = datetime.now(cls._VN_TZ)
+        if now.weekday() >= 5:  # Saturday=5, Sunday=6
+            return False
+        t = now.hour * 60 + now.minute  # minutes since midnight
+        return 9 * 60 <= t <= 15 * 60 + 5  # 09:00 – 15:05
+
     @classmethod
     def _background_refresh_loop(cls):
-        """Infinite loop to keep the RAM cache fresh every 5 seconds"""
+        """Infinite loop: poll VCI every 3s during trading hours, idle otherwise."""
         print(">>> [VCI] Starting background price refresh thread...", flush=True)
-        from backend.data_sources.bsc_ws import BSCWebSocket
-        BSCWebSocket.ensure_started()
+        # Blocking warm-up so cache is ready before first HTTP request arrives
+        try:
+            cls.update_bulk_cache()
+        except Exception as e:
+            logger.error(f"[VCI] Initial warm-up failed: {e}")
         while True:
+            if not cls._is_trading_hours():
+                # Outside trading hours — sleep 60s, no VCI ping needed
+                time.sleep(60)
+                continue
             try:
-                if not BSCWebSocket.is_active():
-                    cls.update_bulk_cache()
+                cls.update_bulk_cache()
             except Exception as e:
-                logger.error(f"Error in background price refresh: {e}")
-            
-            # Sleep for 5 seconds between full updates
-            time.sleep(5)
+                logger.error(f"[VCI] Background price refresh error: {e}")
+            time.sleep(3)
 
     @classmethod
     def _indices_refresh_loop(cls):
@@ -376,9 +399,8 @@ class VCIClient:
         # 1. Try RAM Cache
         item = cls._price_cache.get(symbol)
         if item:
-            # Normalize field names to match what the app expects
             return {
-                'symbol': item.get('s'),
+                'symbol': item.get('s') or symbol,
                 'price': float(item.get('c') or item.get('ref') or item.get('op') or 0),
                 'ref_price': float(item.get('ref') or 0),
                 'ceiling': float(item.get('cei') or 0),
@@ -387,7 +409,10 @@ class VCIClient:
                 'high': float(item.get('h') or 0),
                 'low': float(item.get('l') or 0),
                 'volume': float(item.get('vo') or 0),
-                'value': float(item.get('va') or 0),
+                'value': float(item.get('tv') or item.get('va') or 0),
+                'change': float(item.get('ch') or 0),
+                'change_pct': float(item.get('chp') or 0),
+                'avg_price': float(item.get('avg') or 0),
                 'source': item.get('source', 'VCI_RAM')
             }
 
@@ -430,20 +455,62 @@ class VCIClient:
 
     @classmethod
     def update_bulk_cache(cls):
-        """Update the RAM cache with data from all exchanges"""
+        """Poll VCI for all exchanges, update RAM cache, broadcast diffs to WS clients."""
         from concurrent.futures import ThreadPoolExecutor
+        import queue as _queue
         groups = ['HOSE', 'HNX', 'UPCOM']
         new_cache = {}
-        
+
         with ThreadPoolExecutor(max_workers=3) as executor:
             results = executor.map(cls._fetch_group_prices, groups)
             for res in results:
                 new_cache.update(res)
-        
-        if new_cache:
-            cls._price_cache = new_cache
-            cls._last_cache_update = time.time()
-            print(f">>> [VCI] RAM Cache Updated: {len(new_cache)} symbols", flush=True)
+
+        if not new_cache:
+            return
+
+        # Compute diff: symbols whose price changed since last poll
+        old_cache = cls._price_cache
+        changed = {}
+        for sym, item in new_cache.items():
+            old = old_cache.get(sym)
+            if old is None or old.get('c') != item.get('c') or old.get('vo') != item.get('vo'):
+                changed[sym] = item
+
+        cls._price_cache = new_cache
+        cls._last_cache_update = time.time()
+
+        # Push diffs to registered WS clients
+        if changed and cls._ws_clients:
+            with cls._lock:
+                dead = set()
+                for q in cls._ws_clients:
+                    try:
+                        q.put_nowait(changed)
+                    except _queue.Full:
+                        pass
+                    except Exception:
+                        dead.add(q)
+                cls._ws_clients -= dead
+
+    @classmethod
+    def register_ws_client(cls) -> 'queue.Queue':
+        """Register a queue to receive price diffs after each poll."""
+        import queue as _queue
+        q = _queue.Queue(maxsize=100)
+        with cls._lock:
+            cls._ws_clients.add(q)
+        return q
+
+    @classmethod
+    def unregister_ws_client(cls, q) -> None:
+        with cls._lock:
+            cls._ws_clients.discard(q)
+
+    @classmethod
+    def get_all_prices(cls) -> Dict[str, Dict]:
+        """Return full price cache dict (zero latency — already in RAM)."""
+        return cls._price_cache
 
     @classmethod
     def get_multiple_prices(cls, symbols: List[str]) -> Dict[str, float]:
