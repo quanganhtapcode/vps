@@ -364,11 +364,11 @@ export default function OverviewClient({
                         updatedAt={goldUpdatedAt}
                     />
 
-                    {/* Lottery Results */}
-                    <Lottery />
-
                     {/* Polymarket Economic Events */}
                     <PolymarketEvents />
+
+                    {/* Lottery Results */}
+                    <Lottery />
                 </aside>
             </div>
         </div>
