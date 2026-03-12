@@ -171,6 +171,7 @@ def ws_market_indices(ws):
     """Internal WS stream for frontend: pushes market index updates when data changes."""
     logger.info("WS client connected: /ws/market/indices")
     last_fingerprint = None
+    last_ping = time.time()
     try:
         while True:
             payload = _build_indices_payload()
@@ -183,9 +184,15 @@ def ws_market_indices(ws):
                 fp_parts.append(f"{key}:{item.get('CurrentIndex', 0)}:{item.get('PrevIndex', 0)}")
             fingerprint = '|'.join(fp_parts)
 
+            now = time.time()
             if fingerprint != last_fingerprint:
                 ws.send(json.dumps(payload, ensure_ascii=False))
                 last_fingerprint = fingerprint
+                last_ping = now
+            elif now - last_ping >= 30:
+                # Keepalive ping: prevents Cloudflare/nginx from closing idle connection
+                ws.send(json.dumps({'type': 'ping', 'serverTs': now}))
+                last_ping = now
 
             time.sleep(0.5)
     except Exception as exc:

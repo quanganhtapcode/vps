@@ -301,36 +301,47 @@ export function subscribeIndicesStream(options: {
         onStatus?.('closed');
         return () => {};
     }
-    const ws = new WebSocket(getIndicesWsUrl());
 
-    ws.onopen = () => {
-        onStatus?.('open');
+    let ws: WebSocket | null = null;
+    let destroyed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryDelay = 2000; // ms, doubles with each failed attempt
+
+    const connect = () => {
+        if (destroyed) return;
+        ws = new WebSocket(getIndicesWsUrl());
+
+        ws.onopen = () => {
+            retryDelay = 2000; // reset backoff on successful connect
+            onStatus?.('open');
+        };
+        ws.onerror = () => { onStatus?.('error'); };
+        ws.onclose = () => {
+            if (destroyed) return;
+            onStatus?.('closed');
+            // Auto-reconnect with exponential backoff capped at 30 s
+            retryTimer = setTimeout(() => {
+                retryDelay = Math.min(retryDelay * 2, 30_000);
+                connect();
+            }, retryDelay);
+        };
+        ws.onmessage = (event) => {
+            try {
+                const payload = JSON.parse(String(event.data)) as IndicesStreamPayload;
+                if (payload?.type !== 'indices' || !payload?.data) return;
+                onData(payload.data, payload.source);
+            } catch {
+                // ignore malformed payloads
+            }
+        };
     };
 
-    ws.onerror = () => {
-        onStatus?.('error');
-    };
-
-    ws.onclose = () => {
-        onStatus?.('closed');
-    };
-
-    ws.onmessage = (event) => {
-        try {
-            const payload = JSON.parse(String(event.data)) as IndicesStreamPayload;
-            if (payload?.type !== 'indices' || !payload?.data) return;
-            onData(payload.data, payload.source);
-        } catch {
-            // ignore malformed payloads
-        }
-    };
+    connect();
 
     return () => {
-        try {
-            ws.close();
-        } catch {
-            // noop
-        }
+        destroyed = true;
+        if (retryTimer) clearTimeout(retryTimer);
+        try { ws?.close(); } catch {}
     };
 }
 

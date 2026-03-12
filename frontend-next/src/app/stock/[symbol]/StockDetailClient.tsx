@@ -599,7 +599,6 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
                         financials={financials}
                         news={news}
                         timeRange={timeRange}
-                        deferredTimeRange={deferredTimeRange}
                         setTimeRange={handleTimeRangeChange}
                         isDescExpanded={isDescExpanded}
                         setIsDescExpanded={setIsDescExpanded}

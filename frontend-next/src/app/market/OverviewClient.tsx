@@ -136,7 +136,7 @@ export default function OverviewClient({
                     totalValue: data.Value,
                 };
             })
-            .filter((r): r is IndexData => r !== null);
+            .filter(r => r !== null) as IndexData[];
 
         setIndices(results);
         setLastUpdate(new Date());

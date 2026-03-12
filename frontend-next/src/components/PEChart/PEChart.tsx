@@ -240,7 +240,7 @@ export default function PEChart({ initialData = [] }: PEChartProps) {
                                     // Chỉ hiển thị label ngày tháng cho những điểm cách xa nhau để tránh bị đè chữ
                                     if (!item || payload.index % Math.ceil(chartData.length / 6) !== 0) return null;
                                     return (
-                                        <text x={x} y={y + 20} fill="#9ca3af" fontSize={11} textAnchor="middle">
+                                        <text x={x} y={Number(y) + 20} fill="#9ca3af" fontSize={11} textAnchor="middle">
                                             {item.date}
                                         </text>
                                     );
