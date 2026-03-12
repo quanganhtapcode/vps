@@ -14,6 +14,7 @@ import {
     fetchTopMovers,
     fetchForeignFlow,
     fetchGoldPrices,
+
     formatRelativeTime,
     INDEX_MAP,
     MarketIndexData,
@@ -152,6 +153,39 @@ export default function OverviewClient({
         }
     }, [mapMarketDataToIndices]);
 
+    // Load top movers & foreign flow
+    const loadMovers = useCallback(async () => {
+        try {
+            setMoversLoading(true);
+            const [up, down] = await Promise.all([
+                fetchTopMovers('UP'),
+                fetchTopMovers('DOWN'),
+            ]);
+            setGainers(up);
+            setLosers(down);
+        } catch (error) {
+            console.error('Error loading top movers:', error);
+        } finally {
+            setMoversLoading(false);
+        }
+    }, []);
+
+    const loadForeign = useCallback(async () => {
+        try {
+            setForeignLoading(true);
+            const [buy, sell] = await Promise.all([
+                fetchForeignFlow('buy'),
+                fetchForeignFlow('sell'),
+            ]);
+            setForeignBuys(buy);
+            setForeignSells(sell);
+        } catch (error) {
+            console.error('Error loading foreign flow:', error);
+        } finally {
+            setForeignLoading(false);
+        }
+    }, []);
+
     // Load gold prices (Client-side Refresh)
     const loadGold = useCallback(async () => {
         try {
@@ -164,6 +198,9 @@ export default function OverviewClient({
             console.error('Error loading gold prices:', error);
         }
     }, []);
+
+    // Load movers on mount
+    useEffect(() => { loadMovers(); loadForeign(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Realtime indices via internal websocket; fallback polling only when WS is down
     useEffect(() => {
@@ -202,6 +239,16 @@ export default function OverviewClient({
             stopFallback();
         };
     }, [loadIndices, initialIndices?.length ?? 0, mapMarketDataToIndices]);
+
+    // Periodic refresh for movers (every 60 s during trading hours)
+    useEffect(() => {
+        if (!isTradingHours()) return;
+        const interval = setInterval(() => {
+            loadMovers();
+            loadForeign();
+        }, 60000);
+        return () => clearInterval(interval);
+    }, [loadMovers, loadForeign]);
 
     // Auto refresh gold every 60 seconds
     useEffect(() => {

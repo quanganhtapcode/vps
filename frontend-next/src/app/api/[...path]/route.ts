@@ -21,7 +21,6 @@ export async function GET(
     try {
         const { path } = await params;
         const apiPath = path.join('/');
-        const isRealtimeIndices = apiPath === 'market/vci-indices';
 
         // Get query string from the request URL
         const { searchParams } = new URL(request.url);
@@ -34,9 +33,9 @@ export async function GET(
                 'Content-Type': 'application/json',
                 'User-Agent': 'Next.js API Proxy',
             },
-            ...(process.env.NODE_ENV === 'development'
-                ? { cache: 'no-store' as const }
-                : { next: { revalidate: 30 } }),
+            // Always bypass Next.js/CDN cache — the Flask backend manages its own
+            // per-endpoint TTLs, so double-caching here only causes stale data.
+            cache: 'no-store',
         });
 
         if (!response.ok) {
@@ -65,9 +64,12 @@ export async function GET(
 
         return NextResponse.json(data, {
             headers: {
-                'Cache-Control': isRealtimeIndices
-                    ? 'no-store, no-cache, must-revalidate'
-                    : 'public, s-maxage=30, stale-while-revalidate=60',
+                // No CDN caching: the VPS backend already caches per-endpoint.
+                // stale-while-revalidate was causing Vercel edge nodes to serve
+                // up to 90 s of stale data (requiring multiple reloads to refresh).
+                'Cache-Control': 'no-store, no-cache, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
                 'X-Proxy-Backend': BACKEND_API,
                 ...(backendSource ? { 'X-Source': backendSource } : {}),
                 ...(backendTiming ? { 'Server-Timing': backendTiming } : {}),

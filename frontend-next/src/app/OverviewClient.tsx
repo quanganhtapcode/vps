@@ -235,6 +235,16 @@ export default function OverviewClient({
         }
     }, [initialForeignBuys, initialForeignSells, loadForeign]);
 
+    // Periodic refresh for movers (every 60 s during trading hours)
+    useEffect(() => {
+        if (!isTradingHours()) return;
+        const interval = setInterval(() => {
+            loadMovers();
+            loadForeign();
+        }, 60000);
+        return () => clearInterval(interval);
+    }, [loadMovers, loadForeign]);
+
     // Realtime indices via internal websocket; fallback polling only when WS is down
     useEffect(() => {
         let fallbackTimer: ReturnType<typeof setInterval> | null = null;
