@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { calculateValuation, fetchValuationSensitivity } from '@/lib/stockApi';
 import { Card, Title, Text, Metric, Button, Badge, Grid, Col, TextInput, Callout } from '@tremor/react';
-import { RiRefreshLine, RiStackLine, RiMoneyDollarCircleLine, RiBuildingLine, RiBarChartLine, RiBookOpenLine, RiScales3Line, RiErrorWarningFill, RiFileZipLine } from '@remixicon/react';
+import { RiRefreshLine, RiStackLine, RiMoneyDollarCircleLine, RiBuildingLine, RiBarChartLine, RiBookOpenLine, RiScales3Line, RiErrorWarningFill, RiFileZipLine, RiShoppingCart2Line } from '@remixicon/react';
 import { ReportGenerator } from '@/lib/reportGenerator';
 
 function classNames(...classes: Array<string | false | undefined | null>) {
@@ -43,11 +43,12 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
 
     // Models State
     const [models, setModels] = useState({
-        fcfe: { id: 'fcfe', name: 'FCFE', desc: 'Free Cash Flow to Equity', enabled: !isBank, weight: isBank ? 0 : 20, icon: RiMoneyDollarCircleLine },
-        fcff: { id: 'fcff', name: 'FCFF', desc: 'Free Cash Flow to Firm', enabled: !isBank, weight: isBank ? 0 : 20, icon: RiBuildingLine },
-        justified_pe: { id: 'justified_pe', name: 'P/E Comparables', desc: 'Relative P/E Valuation', enabled: true, weight: isBank ? 50 : 20, icon: RiBarChartLine },
-        justified_pb: { id: 'justified_pb', name: 'P/B Comparables', desc: 'Relative P/B Valuation', enabled: true, weight: isBank ? 50 : 20, icon: RiBookOpenLine },
-        graham: { id: 'graham', name: 'Graham', desc: 'Benjamin Graham Formula', enabled: !isBank, weight: isBank ? 0 : 20, icon: RiScales3Line }
+        fcfe: { id: 'fcfe', name: 'FCFE', desc: 'Free Cash Flow to Equity', enabled: !isBank, weight: isBank ? 0 : 15, icon: RiMoneyDollarCircleLine },
+        fcff: { id: 'fcff', name: 'FCFF', desc: 'Free Cash Flow to Firm', enabled: !isBank, weight: isBank ? 0 : 15, icon: RiBuildingLine },
+        justified_pe: { id: 'justified_pe', name: 'P/E Comparables', desc: 'Relative P/E Valuation', enabled: true, weight: isBank ? 40 : 20, icon: RiBarChartLine },
+        justified_pb: { id: 'justified_pb', name: 'P/B Comparables', desc: 'Relative P/B Valuation', enabled: true, weight: isBank ? 40 : 20, icon: RiBookOpenLine },
+        graham: { id: 'graham', name: 'Graham', desc: 'Benjamin Graham Formula', enabled: !isBank, weight: isBank ? 0 : 15, icon: RiScales3Line },
+        justified_ps: { id: 'justified_ps', name: 'P/S Comparables', desc: 'Price-to-Sales Valuation', enabled: true, weight: isBank ? 20 : 15, icon: RiShoppingCart2Line },
     });
 
     // Sync to latest market price, unless user explicitly edited it
@@ -101,7 +102,8 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
     const selectAllModels = () => {
         setModels(prev => {
             const newModels = { ...prev };
-            const weight = 100 / 5;
+            const totalCount = Object.keys(newModels).length;
+            const weight = 100 / totalCount;
             Object.keys(newModels).forEach(k => {
                 const m = newModels[k as keyof typeof models];
                 newModels[k as keyof typeof models] = { ...m, enabled: true, weight };
@@ -296,6 +298,7 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                 justified_pe: models.justified_pe.enabled ? models.justified_pe.weight : 0,
                 justified_pb: models.justified_pb.enabled ? models.justified_pb.weight : 0,
                 graham: models.graham.enabled ? models.graham.weight : 0,
+                justified_ps: models.justified_ps.enabled ? models.justified_ps.weight : 0,
             };
 
             await generator.exportReport(stockData || result.metrics || result, result, assumptions, modelWeights, symbol);
@@ -314,6 +317,7 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                 justified_pe: models.justified_pe.enabled ? models.justified_pe.weight : 0,
                 justified_pb: models.justified_pb.enabled ? models.justified_pb.weight : 0,
                 graham: models.graham.enabled ? models.graham.weight : 0,
+                justified_ps: models.justified_ps.enabled ? models.justified_ps.weight : 0,
             };
 
             const payload = {
@@ -690,7 +694,7 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                             Base WACC: <strong>{sensitivityData.base_wacc}%</strong> &nbsp;·&nbsp;
                             Base Growth: <strong>{sensitivityData.base_growth}%</strong>
                         </p>
-                        <table className="min-w-full text-xs border-collapse">
+                        <table className="min-w-full text-xs border-collapse" style={{ minWidth: '640px' }}>
                             <thead>
                                 <tr>
                                     <th className="p-2 text-right text-gray-500 border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">

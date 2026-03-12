@@ -104,6 +104,63 @@ class IndustryComparablesCache:
 _industry_cache = IndustryComparablesCache(ttl_seconds=3600)
 
 
+class IndustryPsCache:
+    """Cache of industry-median P/S ratios pulled from ratio_wide JOIN overview."""
+    def __init__(self, ttl_seconds: int = 3600):
+        self._ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
+        self._cache: dict[str, _IndustryCacheEntry] = {}
+
+    def get_ps_rows(self, db_path: str, industry: str) -> list[tuple[str, float]]:
+        now = time.time()
+        entry = self._cache.get(industry)
+        if entry and (now - entry.created_at) < self._ttl_seconds:
+            return entry.rows  # type: ignore[return-value]
+
+        with self._lock:
+            entry = self._cache.get(industry)
+            if entry and (now - entry.created_at) < self._ttl_seconds:
+                return entry.rows  # type: ignore[return-value]
+
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    """
+                    WITH latest AS (
+                        SELECT symbol, ps,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY symbol
+                                   ORDER BY year DESC,
+                                            CASE WHEN quarter IS NULL THEN -1 ELSE quarter END DESC
+                               ) AS rn
+                        FROM ratio_wide
+                        WHERE ps IS NOT NULL AND ps > 0 AND ps <= 200
+                    )
+                    SELECT l.symbol, l.ps
+                    FROM latest l
+                    JOIN overview ov ON l.symbol = ov.symbol
+                    WHERE l.rn = 1 AND ov.industry = ?
+                    """,
+                    (industry,),
+                )
+                rows: list[tuple[str, float]] = [
+                    (str(r['symbol']).upper(), _to_float(r['ps']))
+                    for r in cur.fetchall() or []
+                ]
+            except Exception:
+                rows = []
+            finally:
+                conn.close()
+
+            self._cache[industry] = _IndustryCacheEntry(now, rows)  # type: ignore[arg-type]
+            return rows
+
+
+_industry_ps_cache = IndustryPsCache(ttl_seconds=3600)
+
+
 class ScreeningIndustryComparablesCache:
     def __init__(self, ttl_seconds: int = 3600):
         self._ttl_seconds = ttl_seconds
@@ -237,6 +294,23 @@ def load_inputs_from_sqlite(db_path: str, symbol: str, current_price_override: f
     except Exception:
         snap = None
 
+    # P/S and share count from ratio_wide (latest available quarter or annual)
+    ratio_wide_row = None
+    try:
+        ratio_wide_row = cur.execute(
+            """
+            SELECT ps, market_cap, outstanding_share
+            FROM ratio_wide
+            WHERE symbol = ?
+            ORDER BY year DESC,
+                     CASE WHEN quarter IS NULL THEN -1 ELSE quarter END DESC
+            LIMIT 1
+            """,
+            (symbol,),
+        ).fetchone()
+    except Exception:
+        ratio_wide_row = None
+
     conn.close()
 
     if not ov:
@@ -321,6 +395,12 @@ def load_inputs_from_sqlite(db_path: str, symbol: str, current_price_override: f
             screening_industry_key = None
         screening_industry_name = screening_row['viSector'] or screening_row['enSector']
 
+    ps_company = _to_float(ratio_wide_row['ps']) if ratio_wide_row and ratio_wide_row['ps'] else 0.0
+    market_cap_raw = _to_float(ratio_wide_row['market_cap']) if ratio_wide_row and ratio_wide_row['market_cap'] else 0.0
+    outstanding_share = _to_float(ratio_wide_row['outstanding_share']) if ratio_wide_row and ratio_wide_row['outstanding_share'] else 0.0
+    # Implied price per share from ratio_wide market_cap and shares
+    implied_price_rw = (market_cap_raw / outstanding_share) if outstanding_share > 0 else 0.0
+
     return {
         'success': True,
         'symbol': symbol,
@@ -333,6 +413,8 @@ def load_inputs_from_sqlite(db_path: str, symbol: str, current_price_override: f
         'eps_source': eps_source,
         'bvps': float(bvps),
         'bvps_source': bvps_source,
+        'ps_company': float(ps_company),
+        'implied_price_rw': float(implied_price_rw),
     }
 
 
@@ -411,6 +493,26 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
     if eps > 0 and bvps > 0:
         graham = float((22.5 * eps * bvps) ** 0.5)
 
+    # ── P/S (Price-to-Sales) valuation ──────────────────────────────────────────
+    ps_company = float(inputs.get('ps_company', 0.0))
+    implied_price_rw = float(inputs.get('implied_price_rw', 0.0))
+    # Revenue per share derived from the company's own P/S ratio and implied price
+    # rev_per_share = price / ps  (because ps = price / rev_per_share)
+    price_for_ps = implied_price_rw if implied_price_rw > 0 else current_price
+    rev_per_share = (price_for_ps / ps_company) if (ps_company > 0 and price_for_ps > 0) else 0.0
+
+    ps_rows: list[tuple[str, float]] = []
+    try:
+        ps_rows = _industry_ps_cache.get_ps_rows(db_path, industry)
+    except Exception:
+        ps_rows = []
+
+    ps_values_all = [ps for sym, ps in ps_rows if sym != inputs['symbol'] and 0 < ps <= 200]
+    industry_median_ps = _median(ps_values_all)
+    ps_used = float(industry_median_ps) if industry_median_ps is not None else 3.0
+
+    justified_ps = float(rev_per_share * ps_used) if rev_per_share > 0 else 0.0
+
     fcfe_value, fcfe_details = _dcf_per_share(
         base_cashflow_per_share=float(eps),
         annual_growth=float(growth),
@@ -432,17 +534,19 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
         'justified_pe': float(justified_pe),
         'justified_pb': float(justified_pb),
         'graham': float(graham),
+        'justified_ps': float(justified_ps),
     }
 
     # Weighted average
     weights = request_data.get('modelWeights', {}) or {}
     if not any(_to_float(w) > 0 for w in weights.values()):
         weights = {
-            'fcfe': 20,
-            'fcff': 20,
+            'fcfe': 15,
+            'fcff': 15,
             'justified_pe': 20,
             'justified_pb': 20,
-            'graham': 20,
+            'graham': 15,
+            'justified_ps': 15,
         }
 
     total_val = 0.0
@@ -528,6 +632,14 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
                 'formula': 'bvps * pb_used',
                 'result': float(justified_pb),
             },
+            'justified_ps': {
+                'ps_company': float(ps_company),
+                'rev_per_share': float(rev_per_share),
+                'ps_used': float(ps_used),
+                'formula': 'rev_per_share * industry_median_ps',
+                'industry_ps_sample_size': int(len(ps_values_all)),
+                'result': float(justified_ps),
+            },
         },
         'list_limit': comparable_list_limit,
         'include_lists': bool(include_lists),
@@ -551,6 +663,10 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
             'industry_median_pb_used': float(pb_used),
             'industry_pe_sample_size': int(len(pe_values_all)),
             'industry_pb_sample_size': int(len(pb_values_all)),
+            'ps_company': float(ps_company),
+            'rev_per_share': float(rev_per_share),
+            'industry_median_ps_used': float(ps_used),
+            'industry_ps_sample_size': int(len(ps_values_all)),
         },
         'export': export,
     }

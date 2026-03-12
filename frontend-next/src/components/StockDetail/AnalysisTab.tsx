@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
     Card,
     Title,
@@ -223,13 +224,19 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory, isLoading =
                                 )}>
                                     <TableCell className="border-b border-tremor-border dark:border-dark-tremor-border">
                                         <div className="flex flex-col">
-                                            <span className={cx(
-                                                "font-bold text-tremor-default",
-                                                item.isCurrent ? "text-blue-600 dark:text-blue-400" : "text-tremor-content-strong dark:text-dark-tremor-content-strong"
-                                            )}>
-                                                {item.symbol}
-                                                {item.isCurrent && <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full dark:bg-blue-800 dark:text-blue-200 uppercase">Current</span>}
-                                            </span>
+                                            {item.isCurrent ? (
+                                                <span className="font-bold text-tremor-default text-blue-600 dark:text-blue-400">
+                                                    {item.symbol}
+                                                    <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full dark:bg-blue-800 dark:text-blue-200 uppercase">Current</span>
+                                                </span>
+                                            ) : (
+                                                <Link
+                                                    href={`/stock/${item.symbol}`}
+                                                    className="font-bold text-tremor-default text-tremor-content-strong dark:text-dark-tremor-content-strong hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors"
+                                                >
+                                                    {item.symbol}
+                                                </Link>
+                                            )}
                                             <span className="text-xs text-tremor-content-subtle truncate max-w-[150px]">{item.name}</span>
                                         </div>
                                     </TableCell>
