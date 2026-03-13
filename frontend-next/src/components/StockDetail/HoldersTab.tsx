@@ -181,7 +181,7 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
 
     return (
         <div className="space-y-4">
-            <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+            <div className="rounded-tremor-default border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
                 <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
                     <div className="flex flex-wrap items-center gap-2">
                         <button
@@ -205,12 +205,12 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder={activeView === 'insiders' ? 'Find insiders by name or position' : 'Find institutional holders'}
-                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950"
+                            className="w-full rounded-tremor-default border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950"
                         />
                     </div>
 
                     {!loading && !error && activeView === 'institutional' && institutional.length > 0 && institutional.length < 5 ? (
-                        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300">
+                        <div className="mt-3 rounded-tremor-default border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300">
                             Institutional disclosure is currently limited for this symbol. Check Insiders tab for more coverage.
                         </div>
                     ) : null}
@@ -226,7 +226,7 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                             type="button"
                             onClick={downloadCsv}
                             disabled={rows.length === 0}
-                            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                            className="rounded-tremor-default border border-gray-200 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:hover:bg-gray-800"
                         >
                             Download
                         </button>

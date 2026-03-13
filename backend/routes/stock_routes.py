@@ -104,6 +104,52 @@ def _query_previous_quantity(
         return None
 
 
+def _select_snapshot_date(
+    conn: sqlite3.Connection,
+    table: str,
+    symbol: str,
+    min_rows_for_complete: int,
+    max_candidates: int = 12,
+) -> tuple[str | None, str | None, int, int]:
+    """Return best snapshot date for holders data.
+
+    Strategy:
+    - Inspect latest N snapshot dates by recency.
+    - Prefer the newest date whose row count >= min_rows_for_complete.
+    - Fall back to strict latest date if none meets threshold.
+    """
+    if table not in ('shareholders', 'officers'):
+        return None, None, 0, 0
+
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT update_date, COUNT(*) AS c
+            FROM {table}
+            WHERE symbol = ?
+              AND update_date IS NOT NULL
+            GROUP BY update_date
+            ORDER BY update_date DESC
+            LIMIT ?
+            """,
+            (symbol, max_candidates),
+        ).fetchall() or []
+        if not rows:
+            return None, None, 0, 0
+
+        latest_date = rows[0]['update_date']
+        latest_count = int(rows[0]['c'] or 0)
+
+        for row in rows:
+            c = int(row['c'] or 0)
+            if c >= int(min_rows_for_complete):
+                return row['update_date'], latest_date, c, latest_count
+
+        return latest_date, latest_date, latest_count, latest_count
+    except Exception:
+        return None, None, 0, 0
+
+
 def _to_json_number(value, default: float = 0.0) -> float:
     try:
         if value is None:
@@ -1098,25 +1144,55 @@ def api_stock_holders(symbol):
         except Exception:
             current_price = 0.0
 
-        latest_holder_date = None
-        latest_officer_date = None
-        try:
-            row = cur.execute(
-                "SELECT MAX(update_date) AS d FROM shareholders WHERE symbol = ?",
-                (clean_symbol,),
-            ).fetchone()
-            latest_holder_date = row['d'] if row else None
-        except Exception:
-            latest_holder_date = None
+        latest_holder_date, latest_holder_raw, holder_row_count, holder_latest_count = _select_snapshot_date(
+            conn=conn,
+            table='shareholders',
+            symbol=clean_symbol,
+            min_rows_for_complete=5,
+            max_candidates=12,
+        )
 
-        try:
-            row = cur.execute(
-                "SELECT MAX(update_date) AS d FROM officers WHERE symbol = ?",
-                (clean_symbol,),
-            ).fetchone()
-            latest_officer_date = row['d'] if row else None
-        except Exception:
-            latest_officer_date = None
+        latest_officer_date, latest_officer_raw, officer_row_count, officer_latest_count = _select_snapshot_date(
+            conn=conn,
+            table='officers',
+            symbol=clean_symbol,
+            min_rows_for_complete=3,
+            max_candidates=12,
+        )
+
+        if current_price <= 0:
+            try:
+                provider = get_provider()
+                live_price = provider.get_current_price_with_change(clean_symbol)
+                if live_price and _to_json_number(live_price.get('current_price')) > 0:
+                    current_price = _to_json_number(live_price.get('current_price'))
+            except Exception:
+                pass
+
+        if current_price <= 0:
+            try:
+                row_cp = cur.execute(
+                    """
+                    SELECT market_cap, outstanding_share
+                    FROM ratio_wide
+                    WHERE symbol = ?
+                      AND outstanding_share IS NOT NULL
+                      AND outstanding_share > 0
+                      AND market_cap IS NOT NULL
+                      AND market_cap > 0
+                    ORDER BY year DESC,
+                             CASE WHEN quarter IS NULL THEN -1 ELSE quarter END DESC
+                    LIMIT 1
+                    """,
+                    (clean_symbol,),
+                ).fetchone()
+                if row_cp:
+                    market_cap = _to_json_number(row_cp['market_cap'])
+                    shares = _to_json_number(row_cp['outstanding_share'])
+                    if market_cap > 0 and shares > 0:
+                        current_price = market_cap / shares
+            except Exception:
+                pass
 
         institutional: list[dict] = []
         all_shareholders: list[dict] = []
@@ -1226,6 +1302,12 @@ def api_stock_holders(symbol):
             'current_price': float(current_price),
             'as_of_shareholders': latest_holder_date,
             'as_of_officers': latest_officer_date,
+            'as_of_shareholders_latest_raw': latest_holder_raw,
+            'as_of_officers_latest_raw': latest_officer_raw,
+            'shareholders_snapshot_rows': int(holder_row_count),
+            'shareholders_latest_rows': int(holder_latest_count),
+            'officers_snapshot_rows': int(officer_row_count),
+            'officers_latest_rows': int(officer_latest_count),
             'summary': summary,
             'institutional': institutional,
             'insiders': insiders,
