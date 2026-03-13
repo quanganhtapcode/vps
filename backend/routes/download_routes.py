@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request, redirect, send_file
 import logging
 import os
 import time
+import io
 from collections import defaultdict
 from functools import wraps
 from datetime import datetime
@@ -116,10 +117,25 @@ def download_financial_data(ticker):
         # Use validated/sanitized ticker
         ticker = result
         client_ip = get_client_ip()
+        proxy_mode = request.args.get('proxy', '').strip().lower() in {'1', 'true', 'yes'}
         
         # Try R2 first (primary storage)
         r2_client = get_r2_client()
         if r2_client.is_configured:
+            if proxy_mode:
+                # Same-origin proxy mode for browser fetch/XHR (avoids R2 CORS issues)
+                dl = r2_client.download_excel(ticker)
+                if dl.get('success') and dl.get('content'):
+                    logger.info(f"R2 proxy download for {ticker} to {client_ip}")
+                    return send_file(
+                        io.BytesIO(dl['content']),
+                        as_attachment=True,
+                        download_name=f'{ticker}.xlsx',
+                        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    )
+                if not dl.get('not_found'):
+                    logger.warning(f"R2 proxy download failed for {ticker}: {dl.get('error')}")
+
             # Redirect to pre-signed URL (user downloads directly from R2 CDN)
             # CORS is configured on R2 bucket to allow valuation.quanganh.org
             presigned_result = r2_client.get_presigned_url(ticker, expires_in=60)  # 15 minutes

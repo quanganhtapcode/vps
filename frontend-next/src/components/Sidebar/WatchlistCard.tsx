@@ -9,6 +9,16 @@ import { formatNumber } from '@/lib/api';
 import { getTickerData } from '@/lib/tickerCache';
 import { siteConfig } from '@/app/siteConfig';
 
+interface ExternalWatchlistPrice {
+    price: number;
+    changePercent: number;
+}
+
+interface WatchlistCardProps {
+    externalPrices?: Record<string, ExternalWatchlistPrice>;
+    useExternalOnly?: boolean;
+}
+
 interface WatchItem {
     symbol: string;
     name: string;
@@ -44,7 +54,7 @@ function StockLogo({ symbol }: { symbol: string }) {
     );
 }
 
-export default function WatchlistCard() {
+export default function WatchlistCard({ externalPrices = {}, useExternalOnly = false }: WatchlistCardProps) {
     const { watchlist, toggle, removeSymbol } = useWatchlist();
     const [items, setItems] = useState<WatchItem[]>([]);
     const [collapsed, setCollapsed] = useState(false);
@@ -84,6 +94,10 @@ export default function WatchlistCard() {
             });
         });
 
+        if (useExternalOnly || Object.keys(externalPrices).length > 0) {
+            return;
+        }
+
         const controllers: AbortController[] = [];
         watchlist.forEach(symbol => {
             const ctrl = new AbortController();
@@ -101,7 +115,21 @@ export default function WatchlistCard() {
                 .catch(() => setItems(prev => prev.map(i => i.symbol === symbol ? { ...i, loading: false } : i)));
         });
         return () => controllers.forEach(c => c.abort());
-    }, [watchlist, enrichWithMeta]);
+    }, [watchlist, enrichWithMeta, externalPrices]);
+
+    useEffect(() => {
+        if (watchlist.length === 0 || Object.keys(externalPrices).length === 0) return;
+        setItems(prev => prev.map(item => {
+            const snap = externalPrices[item.symbol];
+            if (!snap) return item;
+            return {
+                ...item,
+                price: snap.price,
+                changePercent: snap.changePercent,
+                loading: false,
+            };
+        }));
+    }, [watchlist, externalPrices]);
 
     const q = searchQuery.trim().toUpperCase();
     const searchResults = q.length >= 1

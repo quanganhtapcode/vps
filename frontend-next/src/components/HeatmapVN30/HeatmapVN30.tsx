@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { API_BASE, subscribePricesStream, isTradingHours } from '@/lib/api';
+import { API_BASE, subscribePricesStream, isTradingHours, PRICE_SYNC_INTERVAL_MS } from '@/lib/api';
 
 //  Types 
 interface Stock { ticker: string; cap: number; change: number; price: number; name: string; sector: string }
@@ -9,6 +9,11 @@ interface Sector { name: string; shortName: string; totalCap: number; avgChange:
 interface HeatmapData { sectors: Sector[] }
 interface TileRect { x: number; y: number; w: number; h: number }
 interface TileItem<T> { item: T; rect: TileRect }
+
+interface HeatmapVN30Props {
+  externalData?: HeatmapData | null;
+  useExternalOnly?: boolean;
+}
 
 //  Squarify Treemap 
 function worstAspect(rowAreas: number[], longSide: number): number {
@@ -95,7 +100,7 @@ const STOCK_GAP = 1.5;  // clearer separation
 const LABEL_H = 20;     // balanced header height
 
 //  Component 
-export default function HeatmapVN30() {
+export default function HeatmapVN30({ externalData = null, useExternalOnly = false }: HeatmapVN30Props) {
   const [data, setData] = useState<HeatmapData | null>(null);
   const [cw, setCw] = useState(800);
   const [ch, setCh] = useState(600); // Responsive height
@@ -143,7 +148,14 @@ export default function HeatmapVN30() {
     } catch { /* silent */ } finally { setLoading(false); }
   }, []);
 
+  useEffect(() => {
+    if (!externalData) return;
+    setData(externalData);
+    setLoading(false);
+  }, [externalData]);
+
   useEffect(() => { 
+    if (useExternalOnly) return;
     load();
     if (!isTradingHours()) return; // Prices don't change outside trading hours — no need to stream or poll
 
@@ -155,7 +167,7 @@ export default function HeatmapVN30() {
         if (status === 'error' || status === 'closed') {
           // If WS fails, ensure we have fallback polling
           if (!fallbackTimer && isMounted) {
-            fallbackTimer = setInterval(load, 5000);
+            fallbackTimer = setInterval(load, PRICE_SYNC_INTERVAL_MS);
           }
         } else if (status === 'open') {
           // Connected, stop polling
@@ -213,7 +225,7 @@ export default function HeatmapVN30() {
       unsub(); 
       if (fallbackTimer) clearInterval(fallbackTimer);
     }; 
-  }, [load]);
+  }, [load, useExternalOnly]);
 
   const svgBg = isDark ? '#0f1117' : '#ffffff';
   const labelBg = isDark ? '#0f1117' : '#ffffff';

@@ -7,11 +7,14 @@ import NewsSection from '@/components/NewsSection';
 
 import { CryptoPrices, GoldPrice, Lottery, MarketPulse, WatchlistCard, PolymarketEvents } from '@/components/Sidebar';
 import { HeatmapVN30 } from '@/components/HeatmapVN30';
+import { useWatchlist } from '@/lib/watchlistContext';
 import {
     fetchAllIndices,
     subscribeIndicesStream,
     isTradingHours,
-    fetchNews,
+    fetchOverviewRefresh,
+    PRICE_SYNC_INTERVAL_MS,
+    IDLE_REFRESH_INTERVAL_MS,
     fetchTopMovers,
     fetchForeignFlow,
     fetchGoldPrices,
@@ -72,41 +75,30 @@ export default function OverviewClient({
 
     // State for indices
     const [indices, setIndices] = useState<IndexData[]>(initialIndices);
-    // Indices are pre-loaded so not loading initially
-    const [indicesLoading, setIndicesLoading] = useState(false);
 
     // State for news
     const [news, setNews] = useState<NewsItem[]>(initialNews);
-    const [newsLoading, setNewsLoading] = useState(false);
+    const [newsLoading, setNewsLoading] = useState(initialNews.length === 0);
     const [newsError, setNewsError] = useState<string | null>(null);
+    const [livePEData, setLivePEData] = useState<PEChartData[]>(initialPEData);
+    const [liveHeatmapData, setLiveHeatmapData] = useState<any>(null);
+    const [watchlistPrices, setWatchlistPrices] = useState<Record<string, { price: number; changePercent: number }>>({});
 
     // State for top movers
     const [gainers, setGainers] = useState<TopMoverItem[]>(initialGainers);
     const [losers, setLosers] = useState<TopMoverItem[]>(initialLosers);
-    const [moversTab, setMoversTab] = useState<'UP' | 'DOWN'>('UP');
     const [moversLoading, setMoversLoading] = useState(false);
 
     // State for foreign flow
     const [foreignBuys, setForeignBuys] = useState<TopMoverItem[]>(initialForeignBuys);
     const [foreignSells, setForeignSells] = useState<TopMoverItem[]>(initialForeignSells);
-    const [foreignTab, setForeignTab] = useState<'buy' | 'sell'>('buy');
     const [foreignLoading, setForeignLoading] = useState(false);
 
     // State for gold prices
     const [goldPrices, setGoldPrices] = useState<GoldPriceItem[]>(initialGoldPrices);
     const [goldLoading, setGoldLoading] = useState(false);
     const [goldUpdatedAt, setGoldUpdatedAt] = useState<string>(initialGoldUpdated || new Date().toISOString());
-
-    // Last update time - only render on client to avoid hydration mismatch
-    const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-    const [isMounted, setIsMounted] = useState(false);
-
-    // Set initial time on client mount
-    useEffect(() => {
-        // eslint-disable-next-line
-        setLastUpdate(new Date());
-        setIsMounted(true);
-    }, []);
+    const { watchlist } = useWatchlist();
 
     const mapMarketDataToIndices = useCallback((marketData: Record<string, MarketIndexData>) => {
         const results = Object.entries(INDEX_MAP)
@@ -138,7 +130,6 @@ export default function OverviewClient({
             .filter((r): r is IndexData => r !== null);
 
         setIndices(results);
-        setLastUpdate(new Date());
     }, []);
 
     // Load indices data (Client-side Refresh)
@@ -165,19 +156,35 @@ export default function OverviewClient({
         }
     }, []);
 
-    const loadNews = useCallback(async () => {
+    const loadOverviewSnapshot = useCallback(async () => {
         try {
-            setNewsLoading(true);
             setNewsError(null);
-            const items = await fetchNews(1, 30);
-            setNews(items);
+            const snapshot = await fetchOverviewRefresh({
+                symbols: watchlist,
+                newsSize: 30,
+                heatmapLimit: 200,
+                heatmapExchange: 'HSX',
+            });
+
+            setNews(snapshot.news);
+            setLivePEData(snapshot.peData);
+            setLiveHeatmapData(snapshot.heatmap);
+
+            const nextPrices: Record<string, { price: number; changePercent: number }> = {};
+            Object.entries(snapshot.watchlistPrices || {}).forEach(([symbol, snap]) => {
+                nextPrices[symbol] = {
+                    price: snap?.price || 0,
+                    changePercent: snap?.changePercent || 0,
+                };
+            });
+            setWatchlistPrices(nextPrices);
         } catch (error) {
-            console.error('Error loading news:', error);
-            setNewsError('Unable to load market news');
+            console.error('Error loading overview snapshot:', error);
+            setNewsError('Unable to refresh overview data');
         } finally {
             setNewsLoading(false);
         }
-    }, []);
+    }, [watchlist]);
 
     const loadMovers = useCallback(async () => {
         try {
@@ -218,10 +225,25 @@ export default function OverviewClient({
     }, [initialGoldPrices, loadGold]);
 
     useEffect(() => {
-        if (!initialNews || initialNews.length === 0) {
-            loadNews();
-        }
-    }, [initialNews, loadNews]);
+        let isCancelled = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+
+        const schedule = () => {
+            if (isCancelled) return;
+            const delay = isTradingHours() ? PRICE_SYNC_INTERVAL_MS : IDLE_REFRESH_INTERVAL_MS;
+            timer = setTimeout(async () => {
+                await loadOverviewSnapshot();
+                schedule();
+            }, delay);
+        };
+
+        loadOverviewSnapshot().finally(schedule);
+
+        return () => {
+            isCancelled = true;
+            if (timer) clearTimeout(timer);
+        };
+    }, [loadOverviewSnapshot]);
 
     useEffect(() => {
         if (!initialGainers || !initialLosers || initialGainers.length === 0 || initialLosers.length === 0) {
@@ -251,10 +273,10 @@ export default function OverviewClient({
 
         const startFallback = () => {
             if (fallbackTimer) return;
-            // During trading hours refresh every 5 s; outside hours every 60 s
+            // During trading hours refresh every 3 s; outside hours every 60 s
             fallbackTimer = setInterval(() => {
                 loadIndices();
-            }, isTradingHours() ? 5000 : 60000);
+            }, isTradingHours() ? PRICE_SYNC_INTERVAL_MS : IDLE_REFRESH_INTERVAL_MS);
         };
 
         const stopFallback = () => {
@@ -327,10 +349,10 @@ export default function OverviewClient({
 
 
                     {/* VN30 Heatmap */}
-                    <HeatmapVN30 />
+                    <HeatmapVN30 externalData={liveHeatmapData} useExternalOnly />
 
                     {/* P/E Chart */}
-                    <PEChart initialData={initialPEData} />
+                    <PEChart initialData={initialPEData} externalData={livePEData} useExternalOnly />
 
                     {/* News Section */}
                     <NewsSection
@@ -343,7 +365,7 @@ export default function OverviewClient({
                 {/* Right Column - Sidebar */}
                 <aside className={styles.rightColumn}>
                     {/* Watchlist */}
-                    <WatchlistCard />
+                    <WatchlistCard externalPrices={watchlistPrices} useExternalOnly />
 
                     {/* Market Pulse (Combined Top Movers & Foreign Flow) */}
                     <MarketPulse

@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
-import { getExcelExportUrl } from './stockApi';
+import { API_BASE } from './api';
 
 /**
  * Report Generator Module
@@ -263,12 +263,10 @@ export class ReportGenerator {
             const buf = await wb.xlsx.writeBuffer();
             zip.file(`${symbol}_Valuation_Model_${dateStr}.xlsx`, buf);
 
-            // Attach source financial statements file from R2 only (no SQLite fallback workbook).
-            const dlUrl = await getExcelExportUrl(symbol);
-            if (!dlUrl) {
-                throw new Error('Khong lay duoc file Financial Statements tu R2');
-            }
-            const resp = await fetch(dlUrl, { cache: 'no-store' });
+            // Attach source financial statements file via same-origin proxy to avoid browser CORS on R2 URLs.
+            const resp = await fetch(`${API_BASE}/download/${encodeURIComponent(symbol)}?proxy=1`, {
+                cache: 'no-store',
+            });
             if (!resp.ok) {
                 throw new Error(`R2 file download failed (${resp.status})`);
             }

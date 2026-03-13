@@ -6,11 +6,14 @@ import PEChart from '@/components/PEChart';
 import NewsSection from '@/components/NewsSection';
 
 import { CryptoPrices, GoldPrice, Lottery, MarketPulse, WatchlistCard, PolymarketEvents } from '@/components/Sidebar';
+import { useWatchlist } from '@/lib/watchlistContext';
 import {
     fetchAllIndices,
     subscribeIndicesStream,
     isTradingHours,
-    fetchNews,
+    PRICE_SYNC_INTERVAL_MS,
+    IDLE_REFRESH_INTERVAL_MS,
+    fetchOverviewRefresh,
     fetchTopMovers,
     fetchForeignFlow,
     fetchGoldPrices,
@@ -78,8 +81,10 @@ export default function OverviewClient({
 
     // State for news
     const [news, setNews] = useState<NewsItem[]>(initialNews);
-    const [newsLoading, setNewsLoading] = useState(false);
+    const [newsLoading, setNewsLoading] = useState(initialNews.length === 0);
     const [newsError, setNewsError] = useState<string | null>(null);
+    const [livePEData, setLivePEData] = useState<PEChartData[]>(initialPEData);
+    const [watchlistPrices, setWatchlistPrices] = useState<Record<string, { price: number; changePercent: number }>>({});
 
     // State for top movers
     const [gainers, setGainers] = useState<TopMoverItem[]>(initialGainers);
@@ -97,6 +102,7 @@ export default function OverviewClient({
     const [goldPrices, setGoldPrices] = useState<GoldPriceItem[]>(initialGoldPrices);
     const [goldLoading, setGoldLoading] = useState(false);
     const [goldUpdatedAt, setGoldUpdatedAt] = useState<string>(initialGoldUpdated || new Date().toISOString());
+    const { watchlist } = useWatchlist();
 
     // Last update time - only render on client to avoid hydration mismatch
     const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -170,6 +176,35 @@ export default function OverviewClient({
         }
     }, []);
 
+    const loadOverviewSnapshot = useCallback(async () => {
+        try {
+            setNewsError(null);
+            const snapshot = await fetchOverviewRefresh({
+                symbols: watchlist,
+                newsSize: 30,
+                heatmapLimit: 200,
+                heatmapExchange: 'HSX',
+            });
+
+            setNews(snapshot.news);
+            setLivePEData(snapshot.peData);
+
+            const nextPrices: Record<string, { price: number; changePercent: number }> = {};
+            Object.entries(snapshot.watchlistPrices || {}).forEach(([symbol, snap]) => {
+                nextPrices[symbol] = {
+                    price: snap?.price || 0,
+                    changePercent: snap?.changePercent || 0,
+                };
+            });
+            setWatchlistPrices(nextPrices);
+        } catch (error) {
+            console.error('Error loading overview snapshot:', error);
+            setNewsError('Unable to refresh overview data');
+        } finally {
+            setNewsLoading(false);
+        }
+    }, [watchlist]);
+
     const loadForeign = useCallback(async () => {
         try {
             setForeignLoading(true);
@@ -202,16 +237,38 @@ export default function OverviewClient({
     // Load movers on mount
     useEffect(() => { loadMovers(); loadForeign(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Shared overview refresh loop synchronized with backend price cadence.
+    useEffect(() => {
+        let isCancelled = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+
+        const schedule = () => {
+            if (isCancelled) return;
+            const delay = isTradingHours() ? PRICE_SYNC_INTERVAL_MS : IDLE_REFRESH_INTERVAL_MS;
+            timer = setTimeout(async () => {
+                await loadOverviewSnapshot();
+                schedule();
+            }, delay);
+        };
+
+        loadOverviewSnapshot().finally(schedule);
+
+        return () => {
+            isCancelled = true;
+            if (timer) clearTimeout(timer);
+        };
+    }, [loadOverviewSnapshot]);
+
     // Realtime indices via internal websocket; fallback polling only when WS is down
     useEffect(() => {
         let fallbackTimer: ReturnType<typeof setInterval> | null = null;
 
         const startFallback = () => {
             if (fallbackTimer) return;
-            // During trading hours refresh every 5 s; outside hours every 60 s
+            // During trading hours refresh every 3 s; outside hours every 60 s
             fallbackTimer = setInterval(() => {
                 loadIndices();
-            }, isTradingHours() ? 5000 : 60000);
+            }, isTradingHours() ? PRICE_SYNC_INTERVAL_MS : IDLE_REFRESH_INTERVAL_MS);
         };
 
         const stopFallback = () => {
@@ -300,7 +357,7 @@ export default function OverviewClient({
 
 
                     {/* P/E Chart */}
-                    <PEChart initialData={initialPEData} />
+                    <PEChart initialData={initialPEData} externalData={livePEData} useExternalOnly />
 
                     {/* News Section */}
                     <NewsSection
@@ -313,7 +370,7 @@ export default function OverviewClient({
                 {/* Right Column - Sidebar */}
                 <aside className={styles.rightColumn}>
                     {/* Watchlist */}
-                    <WatchlistCard />
+                    <WatchlistCard externalPrices={watchlistPrices} useExternalOnly />
 
                     {/* Market Pulse (Combined Top Movers & Foreign Flow) */}
                     <MarketPulse

@@ -37,6 +37,8 @@ const TIME_RANGES: { key: TimeRange; label: string; days: number }[] = [
 
 interface PEChartProps {
     initialData?: PEChartData[];
+    externalData?: PEChartData[];
+    useExternalOnly?: boolean;
 }
 
 interface ChartDataPoint {
@@ -79,7 +81,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     return null;
 };
 
-export default function PEChart({ initialData = [] }: PEChartProps) {
+export default function PEChart({ initialData = [], externalData = [], useExternalOnly = false }: PEChartProps) {
     const [data, setData] = useState<PEChartData[]>(initialData);
     const [timeRange, setTimeRange] = useState<TimeRange>('1Y');
     const [isLoading, setIsLoading] = useState(initialData.length === 0);
@@ -89,7 +91,13 @@ export default function PEChart({ initialData = [] }: PEChartProps) {
     }, []);
 
     useEffect(() => {
-        if (initialData.length > 0) return;
+        if (externalData.length > 0) {
+            setData(externalData);
+            setIsLoading(false);
+            return;
+        }
+
+        if (initialData.length > 0 || useExternalOnly) return;
 
         async function loadData() {
             try {
@@ -103,7 +111,7 @@ export default function PEChart({ initialData = [] }: PEChartProps) {
             }
         }
         loadData();
-    }, [initialData]);
+    }, [initialData, externalData, useExternalOnly]);
 
     const filterButtons = useMemo(() => [
         { key: '3M' as TimeRange, label: '3M', days: 90, tooltip: formatDateRange(90) },

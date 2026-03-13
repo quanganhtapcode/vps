@@ -12,6 +12,10 @@ export * from './stockApi';
 // Can be overridden via NEXT_PUBLIC_API_URL environment variable
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+// Sync price refresh cadence with backend VCI polling loop (3 seconds).
+export const PRICE_SYNC_INTERVAL_MS = 3000;
+export const IDLE_REFRESH_INTERVAL_MS = 60000;
+
 // API Endpoints
 export const API = {
     // Market Data
@@ -160,6 +164,23 @@ export interface PEChartData {
     date: Date;
     pe: number;
     vnindex: number;
+}
+
+export interface WatchlistPriceSnapshot {
+    price: number;
+    refPrice: number;
+    change: number;
+    changePercent: number;
+    volume?: number;
+}
+
+export interface OverviewRefreshData {
+    success: boolean;
+    serverTs: number;
+    watchlistPrices: Record<string, WatchlistPriceSnapshot>;
+    peChart: any;
+    news: NewsItem[];
+    heatmap: any;
 }
 
 export type IndicesStreamStatus = 'open' | 'closed' | 'error';
@@ -473,23 +494,62 @@ export async function fetchPEChart(): Promise<PEChartData[]> {
     }
 
     const response = await fetchAPI<PEChartResponse>(API.PE_CHART);
+    return parsePEChartPayload(response);
+}
 
-    if (response.Data?.DataChart) {
-        const data = response.Data.DataChart.map(p => ({
-            date: new Date(p.TimeStamp * 1000),
-            vnindex: p.Index,
-            pe: p.Pe,
-        })).reverse();
-
-        // Ensure ascending order (old -> new)
-        if (data.length > 1 && data[0].date > data[1].date) {
-            data.reverse();
-        }
-
-        return data;
+function parsePEChartPayload(response: any): PEChartData[] {
+    if (!response?.Data?.DataChart || !Array.isArray(response.Data.DataChart)) {
+        return [];
     }
 
-    return [];
+    const data = response.Data.DataChart.map((p: { TimeStamp: number; Index: number; Pe: number }) => ({
+        date: new Date(p.TimeStamp * 1000),
+        vnindex: p.Index,
+        pe: p.Pe,
+    })).reverse();
+
+    if (data.length > 1 && data[0].date > data[1].date) {
+        data.reverse();
+    }
+
+    return data;
+}
+
+export async function fetchOverviewRefresh(options?: {
+    symbols?: string[];
+    newsSize?: number;
+    heatmapLimit?: number;
+    heatmapExchange?: string;
+}): Promise<{
+    watchlistPrices: Record<string, WatchlistPriceSnapshot>;
+    peData: PEChartData[];
+    news: NewsItem[];
+    heatmap: any;
+}> {
+    const params = new URLSearchParams();
+    if (options?.symbols && options.symbols.length > 0) {
+        params.set('symbols', options.symbols.join(','));
+    }
+    if (options?.newsSize) {
+        params.set('news_size', String(options.newsSize));
+    }
+    if (options?.heatmapLimit) {
+        params.set('heatmap_limit', String(options.heatmapLimit));
+    }
+    if (options?.heatmapExchange) {
+        params.set('heatmap_exchange', String(options.heatmapExchange));
+    }
+
+    const query = params.toString();
+    const url = `${API_BASE}/market/overview-refresh${query ? `?${query}` : ''}`;
+    const response = await fetchAPI<OverviewRefreshData>(url);
+
+    return {
+        watchlistPrices: response.watchlistPrices || {},
+        peData: parsePEChartPayload(response.peChart || {}),
+        news: Array.isArray(response.news) ? response.news : [],
+        heatmap: response.heatmap || null,
+    };
 }
 
 /**
