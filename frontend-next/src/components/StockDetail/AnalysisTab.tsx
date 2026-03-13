@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
     Card,
@@ -41,17 +41,94 @@ interface AnalysisTabProps {
     isLoading?: boolean;
 }
 
+type MetricKey = 'marketCap' | 'pe' | 'pb' | 'roe' | 'roa' | 'netMargin' | 'profitGrowth';
+type MetricTone = 'best' | 'worst' | 'neutral';
+
+const PERCENT_METRICS = new Set<MetricKey>(['roe', 'roa', 'netMargin', 'profitGrowth']);
+const METRIC_DIRECTION: Record<MetricKey, 'higher' | 'lower'> = {
+    marketCap: 'higher',
+    pe: 'lower',
+    pb: 'lower',
+    roe: 'higher',
+    roa: 'higher',
+    netMargin: 'higher',
+    profitGrowth: 'higher',
+};
+
+function toNumberOrNull(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeMetricValue(key: MetricKey, value: unknown): number | null {
+    const parsed = toNumberOrNull(value);
+    if (parsed === null) return null;
+    if (PERCENT_METRICS.has(key) && Math.abs(parsed) < 1) return parsed * 100;
+    return parsed;
+}
+
+function formatPercentByKey(key: MetricKey, value: unknown, digits: number = 1): string {
+    const normalized = normalizeMetricValue(key, value);
+    if (normalized === null) return '-';
+    return `${normalized.toFixed(digits)}%`;
+}
+
+function normalizePeer(rawPeer: any): Peer {
+    return {
+        symbol: String(rawPeer?.symbol || '').toUpperCase(),
+        name: rawPeer?.name || rawPeer?.symbol || '-',
+        pe: toNumberOrNull(rawPeer?.pe),
+        pb: toNumberOrNull(rawPeer?.pb),
+        roe: toNumberOrNull(rawPeer?.roe),
+        roa: toNumberOrNull(rawPeer?.roa),
+        marketCap: toNumberOrNull(rawPeer?.marketCap ?? rawPeer?.market_cap),
+        netMargin: toNumberOrNull(rawPeer?.netMargin ?? rawPeer?.net_profit_margin),
+        profitGrowth: toNumberOrNull(
+            rawPeer?.profitGrowth
+            ?? rawPeer?.profit_growth
+            ?? rawPeer?.netProfitGrowth
+            ?? rawPeer?.net_profit_growth
+        ),
+        isCurrent: Boolean(rawPeer?.isCurrent),
+    };
+}
+
+function normalizePeers(rawPeers: any[] = []): Peer[] {
+    return rawPeers.map(normalizePeer);
+}
+
+function getMetricTone(
+    metricExtremes: Record<MetricKey, { best: number | null; worst: number | null }>,
+    key: MetricKey,
+    value: unknown,
+): MetricTone {
+    const normalized = normalizeMetricValue(key, value);
+    const extremes = metricExtremes[key];
+    if (normalized === null || extremes.best === null || extremes.worst === null) return 'neutral';
+    if (Math.abs(extremes.best - extremes.worst) < 1e-9) return 'neutral';
+    if (Math.abs(normalized - extremes.best) < 1e-9) return 'best';
+    if (Math.abs(normalized - extremes.worst) < 1e-9) return 'worst';
+    return 'neutral';
+}
+
+function metricToneClass(tone: MetricTone): string {
+    if (tone === 'best') return 'text-emerald-600 dark:text-emerald-400';
+    if (tone === 'worst') return 'text-rose-600 dark:text-rose-400';
+    return 'text-tremor-content-strong dark:text-dark-tremor-content-strong';
+}
+
 const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory, isLoading = false }: AnalysisTabProps) => {
-    const [peers, setPeers] = useState<Peer[]>(initialPeers?.data || initialPeers?.peers || []);
+    const [peers, setPeers] = useState<Peer[]>(normalizePeers(initialPeers?.data || initialPeers?.peers || []));
     const [peHistory, setPeHistory] = useState<any[]>([]);
     const [loading, setLoading] = useState(!initialPeers && !initialHistory);
-    const [medianPe, setMedianPe] = useState<number | null>(initialPeers?.medianPe || null);
+    const [medianPe, setMedianPe] = useState<number | null>(toNumberOrNull(initialPeers?.medianPe));
 
     // Synchronize state if props arrive after mount
     useEffect(() => {
         if ((initialPeers?.data || initialPeers?.peers) && peers.length === 0) {
-            setPeers(initialPeers.data || initialPeers.peers);
-            setMedianPe(initialPeers.medianPe);
+            setPeers(normalizePeers(initialPeers.data || initialPeers.peers));
+            setMedianPe(toNumberOrNull(initialPeers.medianPe));
             if (peHistory.length > 0) setLoading(false);
         }
     }, [initialPeers]);
@@ -92,8 +169,8 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory, isLoading =
                 ]);
 
                 if (peersRes.success) {
-                    setPeers(peersRes.data || peersRes.peers || []);
-                    setMedianPe(peersRes.medianPe);
+                    setPeers(normalizePeers(peersRes.data || peersRes.peers || []));
+                    setMedianPe(toNumberOrNull(peersRes.medianPe));
                 }
 
                 if (historyRes.success && historyRes.data) {
@@ -114,6 +191,31 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory, isLoading =
 
         fetchData();
     }, [symbol, sector, isLoading, initialHistory]);
+
+    const metricExtremes = useMemo(() => {
+        const metricKeys: MetricKey[] = ['marketCap', 'pe', 'pb', 'roe', 'roa', 'netMargin', 'profitGrowth'];
+        return metricKeys.reduce((acc, key) => {
+            const values = peers
+                .map((peer) => normalizeMetricValue(key, peer[key]))
+                .filter((value): value is number => value !== null);
+
+            if (values.length === 0) {
+                acc[key] = { best: null, worst: null };
+                return acc;
+            }
+
+            const minValue = Math.min(...values);
+            const maxValue = Math.max(...values);
+            const higherIsBetter = METRIC_DIRECTION[key] === 'higher';
+
+            acc[key] = {
+                best: higherIsBetter ? maxValue : minValue,
+                worst: higherIsBetter ? minValue : maxValue,
+            };
+
+            return acc;
+        }, {} as Record<MetricKey, { best: number | null; worst: number | null }>);
+    }, [peers]);
 
     if (loading) {
         return (
@@ -178,7 +280,7 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory, isLoading =
                                 Comparison with top {sector} peers ranked by Market Cap.
                             </p>
                         </div>
-                        {medianPe && (
+                        {medianPe !== null && (
                             <div className="mt-4 sm:mt-0">
                                 <span className="inline-flex items-center rounded-tremor-small bg-blue-50 px-3 py-1.5 text-tremor-default font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-400/10 dark:text-blue-400 dark:ring-blue-400/20">
                                     Industry Median P/E: {medianPe.toFixed(2)}
@@ -218,70 +320,91 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory, isLoading =
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {peers.map((item) => (
-                                <TableRow key={item.symbol} className={cx(
-                                    item.isCurrent ? "bg-blue-50/50 dark:bg-blue-900/10" : "hover:bg-gray-50/50 dark:hover:bg-gray-800/20"
-                                )}>
-                                    <TableCell className="border-b border-tremor-border dark:border-dark-tremor-border">
-                                        <div className="flex flex-col">
-                                            {item.isCurrent ? (
-                                                <span className="font-bold text-tremor-default text-blue-600 dark:text-blue-400">
-                                                    {item.symbol}
-                                                    <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full dark:bg-blue-800 dark:text-blue-200 uppercase">Current</span>
-                                                </span>
-                                            ) : (
-                                                <Link
-                                                    href={`/stock/${item.symbol}`}
-                                                    className="font-bold text-tremor-default text-tremor-content-strong dark:text-dark-tremor-content-strong hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors"
-                                                >
-                                                    {item.symbol}
-                                                </Link>
-                                            )}
-                                            <span className="text-xs text-tremor-content-subtle truncate max-w-[150px]">{item.name}</span>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-right font-bold text-tremor-content-emphasis dark:text-dark-tremor-content-emphasis border-b border-tremor-border dark:border-dark-tremor-border">
-                                        {item.marketCap ? `${formatNumber(item.marketCap / 1e9)}B` : '-'}
-                                    </TableCell>
-                                    <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border">
-                                        <span className={cx(
-                                            "font-medium",
-                                            item.pe && medianPe && item.pe < medianPe ? "text-emerald-600 dark:text-emerald-400" : "text-tremor-content-strong dark:text-dark-tremor-content-strong"
+                            {peers.map((item) => {
+                                const marketCap = toNumberOrNull(item.marketCap);
+                                const pe = toNumberOrNull(item.pe);
+                                const pb = toNumberOrNull(item.pb);
+                                const roe = toNumberOrNull(item.roe);
+                                const roa = toNumberOrNull(item.roa);
+                                const netMargin = toNumberOrNull(item.netMargin);
+                                const profitGrowth = toNumberOrNull(item.profitGrowth);
+
+                                const marketCapTone = getMetricTone(metricExtremes, 'marketCap', marketCap);
+                                const peTone = getMetricTone(metricExtremes, 'pe', pe);
+                                const pbTone = getMetricTone(metricExtremes, 'pb', pb);
+                                const roeTone = getMetricTone(metricExtremes, 'roe', roe);
+                                const roaTone = getMetricTone(metricExtremes, 'roa', roa);
+                                const netMarginTone = getMetricTone(metricExtremes, 'netMargin', netMargin);
+                                const growthTone = getMetricTone(metricExtremes, 'profitGrowth', profitGrowth);
+
+                                return (
+                                    <TableRow key={item.symbol} className={cx(
+                                        item.isCurrent ? "bg-blue-50/50 dark:bg-blue-900/10" : "hover:bg-gray-50/50 dark:hover:bg-gray-800/20"
+                                    )}>
+                                        <TableCell className="border-b border-tremor-border dark:border-dark-tremor-border">
+                                            <div className="flex flex-col">
+                                                {item.isCurrent ? (
+                                                    <span className="font-bold text-tremor-default text-blue-600 dark:text-blue-400">
+                                                        {item.symbol}
+                                                        <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full dark:bg-blue-800 dark:text-blue-200 uppercase">Current</span>
+                                                    </span>
+                                                ) : (
+                                                    <Link
+                                                        href={`/stock/${item.symbol}`}
+                                                        className="font-bold text-tremor-default text-tremor-content-strong dark:text-dark-tremor-content-strong hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors"
+                                                    >
+                                                        {item.symbol}
+                                                    </Link>
+                                                )}
+                                                <span className="text-xs text-tremor-content-subtle truncate max-w-[150px]">{item.name}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className={cx(
+                                            "text-right font-bold border-b border-tremor-border dark:border-dark-tremor-border",
+                                            metricToneClass(marketCapTone)
                                         )}>
-                                            {item.pe ? item.pe.toFixed(2) : '-'}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="text-right font-medium border-b border-tremor-border dark:border-dark-tremor-border text-tremor-content-strong dark:text-dark-tremor-content-strong">
-                                        {item.pb ? item.pb.toFixed(2) : '-'}
-                                    </TableCell>
-                                    <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border">
-                                        <span className={cx(
-                                            "font-medium",
-                                            item.roe && (item.roe > 0.15 || item.roe > 15) ? "text-emerald-600 dark:text-emerald-400" : "text-tremor-content-strong dark:text-dark-tremor-content-strong"
-                                        )}>
-                                            {item.roe ? `${(item.roe * (Math.abs(item.roe) < 1 ? 100 : 1)).toFixed(1)}%` : '-'}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border text-tremor-content-strong dark:text-dark-tremor-content-strong">
-                                        {item.roa ? `${(item.roa * (Math.abs(item.roa) < 1 ? 100 : 1)).toFixed(1)}%` : '-'}
-                                    </TableCell>
-                                    <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border text-tremor-content-strong dark:text-dark-tremor-content-strong">
-                                        {item.netMargin ? `${(item.netMargin * (Math.abs(item.netMargin) < 1 ? 100 : 1)).toFixed(1)}%` : '-'}
-                                    </TableCell>
-                                    <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border">
-                                        <span className={cx(
-                                            "inline-flex items-center rounded-tremor-small px-2 py-0.5 text-xs font-semibold ring-1 ring-inset",
-                                            (item.profitGrowth || 0) > 0
-                                                ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-400 dark:ring-emerald-400/20"
-                                                : (item.profitGrowth || 0) < 0
-                                                    ? "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-400/10 dark:text-rose-400 dark:ring-rose-400/20"
-                                                    : "bg-gray-50 text-gray-700 ring-gray-600/20 dark:bg-gray-400/10 dark:text-gray-400 dark:ring-gray-400/20"
-                                        )}>
-                                            {item.profitGrowth ? `${(item.profitGrowth * (Math.abs(item.profitGrowth) < 1 ? 100 : 1)).toFixed(1)}%` : '0%'}
-                                        </span>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
+                                            {marketCap !== null ? `${formatNumber(marketCap / 1e9)}B` : '-'}
+                                        </TableCell>
+                                        <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border">
+                                            <span className={cx("font-medium", metricToneClass(peTone))}>
+                                                {pe !== null ? pe.toFixed(2) : '-'}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border">
+                                            <span className={cx("font-medium", metricToneClass(pbTone))}>
+                                                {pb !== null ? pb.toFixed(2) : '-'}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border">
+                                            <span className={cx("font-medium", metricToneClass(roeTone))}>
+                                                {formatPercentByKey('roe', roe)}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border">
+                                            <span className={cx("font-medium", metricToneClass(roaTone))}>
+                                                {formatPercentByKey('roa', roa)}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border">
+                                            <span className={cx("font-medium", metricToneClass(netMarginTone))}>
+                                                {formatPercentByKey('netMargin', netMargin)}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-right border-b border-tremor-border dark:border-dark-tremor-border">
+                                            <span className={cx(
+                                                "inline-flex items-center rounded-tremor-small px-2 py-0.5 text-xs font-semibold ring-1 ring-inset",
+                                                growthTone === 'best'
+                                                    ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-400 dark:ring-emerald-400/20"
+                                                    : growthTone === 'worst'
+                                                        ? "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-400/10 dark:text-rose-400 dark:ring-rose-400/20"
+                                                        : "bg-gray-50 text-gray-700 ring-gray-600/20 dark:bg-gray-400/10 dark:text-gray-400 dark:ring-gray-400/20"
+                                            )}>
+                                                {formatPercentByKey('profitGrowth', profitGrowth)}
+                                            </span>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
                         </TableBody>
                     </Table>
                 </div>

@@ -580,17 +580,50 @@ class StockDataProvider:
             if not industry or industry == "Unknown":
                 conn.close()
                 return []
+
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ratio_snap'")
+            has_ratio_snap = cursor.fetchone() is not None
             
             # 2. Get top 10 stocks in same industry by market cap
             # Exclude current symbol
-            cursor.execute("""
-                SELECT s.symbol, c.name, s.industry, s.current_price, s.pe, s.pb, s.roe, s.roa, s.market_cap, s.net_profit_margin, s.profit_growth
-                FROM overview s
-                LEFT JOIN company c ON s.symbol = c.symbol
-                WHERE s.industry = ? AND s.symbol != ?
-                ORDER BY s.market_cap DESC
-                LIMIT 10
-            """, (industry, symbol))
+            if has_ratio_snap:
+                cursor.execute("""
+                    SELECT
+                        s.symbol,
+                        c.name,
+                        s.industry,
+                        s.current_price,
+                        s.pe,
+                        s.pb,
+                        s.roe,
+                        s.roa,
+                        s.market_cap,
+                        s.net_profit_margin,
+                        COALESCE(
+                            s.profit_growth,
+                            (
+                                SELECT rs.net_profit_growth
+                                FROM ratio_snap rs
+                                WHERE rs.symbol = s.symbol AND rs.net_profit_growth IS NOT NULL
+                                ORDER BY rs.year_report DESC, rs.length_report DESC
+                                LIMIT 1
+                            )
+                        ) AS profit_growth
+                    FROM overview s
+                    LEFT JOIN company c ON s.symbol = c.symbol
+                    WHERE s.industry = ? AND s.symbol != ?
+                    ORDER BY s.market_cap DESC
+                    LIMIT 10
+                """, (industry, symbol))
+            else:
+                cursor.execute("""
+                    SELECT s.symbol, c.name, s.industry, s.current_price, s.pe, s.pb, s.roe, s.roa, s.market_cap, s.net_profit_margin, s.profit_growth
+                    FROM overview s
+                    LEFT JOIN company c ON s.symbol = c.symbol
+                    WHERE s.industry = ? AND s.symbol != ?
+                    ORDER BY s.market_cap DESC
+                    LIMIT 10
+                """, (industry, symbol))
             
             peers = [dict(r) for r in cursor.fetchall()]
             conn.close()
