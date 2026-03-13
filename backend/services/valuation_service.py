@@ -16,6 +16,9 @@ class ValuationService:
     def calculate(self, symbol: str, request_data: dict) -> Dict[str, Any]:
         return calculate_valuation(self.db_path, symbol, request_data)
 
+    def calculate_sensitivity(self, symbol: str, request_data: dict) -> Dict[str, Any]:
+        return calculate_sensitivity(self.db_path, symbol, request_data)
+
 
 
 def _to_float(value, default: float = 0.0) -> float:
@@ -498,6 +501,209 @@ def _dcf_per_share(
     return result, details
 
 
+def _compute_weighted_average(valuations: dict, weights: dict) -> float:
+    total_val = 0.0
+    total_weight = 0.0
+    for key, weight in (weights or {}).items():
+        val = _to_float(valuations.get(key))
+        w = _to_float(weight)
+        if val > 0 and w > 0:
+            total_val += val * w
+            total_weight += w
+    return (total_val / total_weight) if total_weight > 0 else 0.0
+
+
+def _quality_grade(score: float) -> str:
+    s = _to_float(score)
+    if s >= 85:
+        return 'A'
+    if s >= 70:
+        return 'B'
+    if s >= 55:
+        return 'C'
+    if s >= 40:
+        return 'D'
+    return 'F'
+
+
+def _build_quality_score(inputs: dict, pe_count: int, pb_count: int, ps_count: int) -> dict:
+    checks: list[dict] = []
+
+    def add_check(name: str, passed: bool, points: int, detail: str = ''):
+        checks.append(
+            {
+                'name': name,
+                'passed': bool(passed),
+                'points': int(points if passed else 0),
+                'max_points': int(points),
+                'detail': detail,
+            }
+        )
+
+    eps_ok = _to_float(inputs.get('eps_ttm')) > 0
+    bvps_ok = _to_float(inputs.get('bvps')) > 0
+    shares_ok = _to_float(inputs.get('shares_outstanding')) > 0
+    screening_group_ok = bool(inputs.get('industry_screening_key'))
+
+    add_check('eps_ttm_available', eps_ok, 20, inputs.get('eps_source', 'missing'))
+    add_check('bvps_available', bvps_ok, 15, inputs.get('bvps_source', 'missing'))
+    add_check('shares_outstanding_available', shares_ok, 10, 'sqlite.ratio_wide.outstanding_share')
+    add_check('pe_peer_sample_ge_10', int(pe_count) >= 10, 15, f'count={int(pe_count)}')
+    add_check('pb_peer_sample_ge_10', int(pb_count) >= 10, 15, f'count={int(pb_count)}')
+    add_check('ps_peer_sample_ge_10', int(ps_count) >= 10, 15, f'count={int(ps_count)}')
+    add_check('screening_industry_group_available', screening_group_ok, 10, str(inputs.get('industry_screening_key') or ''))
+
+    total_points = int(sum(int(c.get('points', 0)) for c in checks))
+    max_points = int(sum(int(c.get('max_points', 0)) for c in checks))
+    pct = (100.0 * total_points / max_points) if max_points > 0 else 0.0
+
+    return {
+        'score': float(round(pct, 2)),
+        'grade': _quality_grade(pct),
+        'raw_points': total_points,
+        'max_points': max_points,
+        'checks': checks,
+    }
+
+
+def _calc_scenario(
+    name: str,
+    eps: float,
+    bvps: float,
+    rev_per_share: float,
+    pe_used: float,
+    pb_used: float,
+    ps_used: float,
+    graham: float,
+    weights: dict,
+    projection_years: int,
+    growth: float,
+    terminal_growth: float,
+    required_return: float,
+    wacc: float,
+    multiple_factor: float,
+    current_price: float,
+) -> dict:
+    fcfe_value, _ = _dcf_per_share(
+        base_cashflow_per_share=float(eps),
+        annual_growth=float(growth),
+        discount_rate=float(required_return),
+        terminal_growth_rate=float(terminal_growth),
+        years=int(projection_years),
+    )
+    fcff_value, _ = _dcf_per_share(
+        base_cashflow_per_share=float(eps),
+        annual_growth=float(growth),
+        discount_rate=float(wacc),
+        terminal_growth_rate=float(terminal_growth),
+        years=int(projection_years),
+    )
+
+    vals = {
+        'fcfe': float(fcfe_value),
+        'fcff': float(fcff_value),
+        'justified_pe': float(eps * pe_used * multiple_factor) if eps > 0 else 0.0,
+        'justified_pb': float(bvps * pb_used * multiple_factor) if bvps > 0 else 0.0,
+        'graham': float(graham),
+        'justified_ps': float(rev_per_share * ps_used * multiple_factor) if rev_per_share > 0 else 0.0,
+    }
+    weighted = _compute_weighted_average(vals, weights)
+    vals['weighted_average'] = float(weighted)
+
+    upside = 0.0
+    if _to_float(current_price) > 0 and weighted > 0:
+        upside = ((weighted - current_price) / current_price) * 100.0
+
+    return {
+        'name': name,
+        'assumptions': {
+            'growth': float(growth),
+            'terminal_growth': float(terminal_growth),
+            'required_return': float(required_return),
+            'wacc': float(wacc),
+            'multiple_factor': float(multiple_factor),
+        },
+        'valuations': vals,
+        'upside_pct': float(upside),
+    }
+
+
+def _build_default_scenarios(
+    eps: float,
+    bvps: float,
+    rev_per_share: float,
+    pe_used: float,
+    pb_used: float,
+    ps_used: float,
+    graham: float,
+    weights: dict,
+    projection_years: int,
+    growth: float,
+    terminal_growth: float,
+    required_return: float,
+    wacc: float,
+    current_price: float,
+) -> dict:
+    base = _calc_scenario(
+        name='base',
+        eps=eps,
+        bvps=bvps,
+        rev_per_share=rev_per_share,
+        pe_used=pe_used,
+        pb_used=pb_used,
+        ps_used=ps_used,
+        graham=graham,
+        weights=weights,
+        projection_years=projection_years,
+        growth=growth,
+        terminal_growth=terminal_growth,
+        required_return=required_return,
+        wacc=wacc,
+        multiple_factor=1.0,
+        current_price=current_price,
+    )
+
+    bull = _calc_scenario(
+        name='bull',
+        eps=eps,
+        bvps=bvps,
+        rev_per_share=rev_per_share,
+        pe_used=pe_used,
+        pb_used=pb_used,
+        ps_used=ps_used,
+        graham=graham,
+        weights=weights,
+        projection_years=projection_years,
+        growth=min(0.30, growth + 0.02),
+        terminal_growth=min(0.08, terminal_growth + 0.005),
+        required_return=max(0.05, required_return - 0.01),
+        wacc=max(0.05, wacc - 0.01),
+        multiple_factor=1.1,
+        current_price=current_price,
+    )
+
+    bear = _calc_scenario(
+        name='bear',
+        eps=eps,
+        bvps=bvps,
+        rev_per_share=rev_per_share,
+        pe_used=pe_used,
+        pb_used=pb_used,
+        ps_used=ps_used,
+        graham=graham,
+        weights=weights,
+        projection_years=projection_years,
+        growth=max(-0.10, growth - 0.02),
+        terminal_growth=max(0.0, terminal_growth - 0.005),
+        required_return=min(0.35, required_return + 0.01),
+        wacc=min(0.35, wacc + 0.01),
+        multiple_factor=0.9,
+        current_price=current_price,
+    )
+
+    return {'bear': bear, 'base': base, 'bull': bull}
+
+
 def load_inputs_from_sqlite(db_path: str, symbol: str, current_price_override: float | None = None) -> dict:
     symbol = symbol.upper()
     conn = sqlite3.connect(db_path)
@@ -841,16 +1047,32 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
             'justified_ps': 15,
         }
 
-    total_val = 0.0
-    total_weight = 0.0
-    for key, weight in weights.items():
-        val = _to_float(valuations.get(key))
-        w = _to_float(weight)
-        if val > 0 and w > 0:
-            total_val += val * w
-            total_weight += w
-    weighted_avg = (total_val / total_weight) if total_weight > 0 else 0.0
+    weighted_avg = _compute_weighted_average(valuations, weights)
     valuations['weighted_average'] = float(weighted_avg)
+
+    scenarios = _build_default_scenarios(
+        eps=float(eps),
+        bvps=float(bvps),
+        rev_per_share=float(rev_per_share),
+        pe_used=float(pe_used),
+        pb_used=float(pb_used),
+        ps_used=float(ps_used),
+        graham=float(graham),
+        weights=weights,
+        projection_years=int(projection_years),
+        growth=float(growth),
+        terminal_growth=float(terminal_growth),
+        required_return=float(required_return),
+        wacc=float(wacc),
+        current_price=float(current_price),
+    )
+
+    quality = _build_quality_score(
+        inputs=inputs,
+        pe_count=len(pe_values_all),
+        pb_count=len(pb_values_all),
+        ps_count=len(ps_values_all),
+    )
 
     pe_values_export = pe_values_all[:comparable_list_limit]
     pb_values_export = pb_values_all[:comparable_list_limit]
@@ -954,6 +1176,8 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
         },
         'list_limit': comparable_list_limit,
         'include_lists': bool(include_lists),
+        'scenarios': scenarios,
+        'quality': quality,
         'inputs_sources': {
             'eps_ttm': inputs['eps_source'],
             'bvps': inputs['bvps_source'],
@@ -966,6 +1190,8 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
         'success': True,
         'symbol': inputs['symbol'],
         'valuations': valuations,
+        'scenarios': scenarios,
+        'quality': quality,
         'inputs': {
             'current_price': float(current_price),
             'eps_ttm': float(eps),
@@ -984,4 +1210,70 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
             'eps_history_yearly': inputs.get('eps_history_yearly', []),
         },
         'export': export,
+    }
+
+
+def calculate_sensitivity(db_path: str, symbol: str, request_data: dict) -> dict:
+    current_price_override = _to_float(request_data.get('currentPrice'))
+    inputs = load_inputs_from_sqlite(
+        db_path=db_path,
+        symbol=symbol,
+        current_price_override=current_price_override if current_price_override > 0 else None,
+    )
+    if not inputs.get('success'):
+        return inputs
+
+    eps = float(inputs.get('eps_ttm') or 0.0)
+    if eps <= 0:
+        return {
+            'success': False,
+            'symbol': str(symbol).upper(),
+            'error': 'EPS not available for sensitivity calculation',
+        }
+
+    base_wacc = _to_float(request_data.get('baseWacc'), 10.5) / 100.0
+    base_growth = _to_float(request_data.get('baseGrowth'), 8.0) / 100.0
+    terminal_growth = _to_float(request_data.get('terminalGrowth'), 3.0) / 100.0
+    projection_years = int(_to_float(request_data.get('projectionYears'), 5))
+    projection_years = max(1, min(projection_years, 20))
+
+    # +/-2 percentage points around base assumptions.
+    wacc_axis = [
+        round((base_wacc + delta) * 100.0, 2)
+        for delta in (-0.02, -0.01, 0.0, 0.01, 0.02)
+    ]
+    growth_axis = [
+        round((base_growth + delta) * 100.0, 2)
+        for delta in (-0.02, -0.01, 0.0, 0.01, 0.02)
+    ]
+
+    matrix: list[list[float]] = []
+    for wacc_pct in wacc_axis:
+        row: list[float] = []
+        wacc = max(0.04, min(0.40, wacc_pct / 100.0))
+        for growth_pct in growth_axis:
+            growth = max(-0.20, min(0.35, growth_pct / 100.0))
+            tg = max(0.0, min(0.10, terminal_growth))
+            val, _details = _dcf_per_share(
+                base_cashflow_per_share=float(eps),
+                annual_growth=float(growth),
+                discount_rate=float(wacc),
+                terminal_growth_rate=float(tg),
+                years=int(projection_years),
+            )
+            row.append(float(round(_to_float(val), 4)))
+        matrix.append(row)
+
+    return {
+        'success': True,
+        'symbol': inputs['symbol'],
+        'wacc_axis': wacc_axis,
+        'growth_axis': growth_axis,
+        'matrix': matrix,
+        'eps_used': float(eps),
+        'base_wacc': round(base_wacc * 100.0, 2),
+        'base_growth': round(base_growth * 100.0, 2),
+        'terminal_growth': round(terminal_growth * 100.0, 2),
+        'projection_years': int(projection_years),
+        'source': 'valuation_service._dcf_per_share',
     }

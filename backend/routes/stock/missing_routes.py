@@ -23,7 +23,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from backend.db_path import resolve_stocks_db_path
-from backend.extensions import get_provider, get_stock_service, get_financial_service
+from backend.extensions import get_provider, get_stock_service, get_financial_service, get_valuation_service
 from backend.utils import validate_stock_symbol
 
 logger = logging.getLogger(__name__)
@@ -463,94 +463,17 @@ def register(stock_bp: Blueprint) -> None:
     # ------------------------------------------------------------------ #
     @stock_bp.route("/valuation/<symbol>/sensitivity", methods=["GET", "POST"])
     def api_valuation_sensitivity(symbol: str):
-        """
-        Return a sensitivity matrix for DCF valuation.
-
-        Rows    → Required Return / WACC:  base-4% … base+4%  (step 1 pt)
-        Columns → EPS/Revenue Growth:      base-4% … base+4%  (step 1 pt)
-        Cell    → Intrinsic Value estimate (Gordon Growth Model simplified)
-
-        POST body (all optional, falls back to sensible defaults):
-          { "baseWacc": 10.5, "baseGrowth": 8, "terminalGrowth": 3,
-            "currentPrice": 50000, "modelWeights": {...} }
-        """
+        """Return DCF sensitivity matrix (WACC-growth grid)."""
         is_valid, clean_symbol = validate_stock_symbol(symbol)
         if not is_valid:
-            return jsonify({"error": clean_symbol}), 400
+            return jsonify({"success": False, "error": clean_symbol}), 400
 
         body: dict = {}
         if request.method == "POST":
             body = request.get_json(silent=True) or {}
-
-        def _f(val, default: float) -> float:
-            try:
-                v = float(val)
-                return v if v == v else default  # NaN check
-            except Exception:
-                return default
-
-        base_wacc = _f(body.get("baseWacc"), 10.5)
-        base_growth = _f(body.get("baseGrowth"), 8.0)
-        terminal_growth = _f(body.get("terminalGrowth"), 3.0)
-
-        # Fetch EPS from DB
-        eps = 0.0
         try:
-            provider = get_provider()
-            stock_data = provider.get_stock_data(clean_symbol, period="year")
-            eps = _f(stock_data.get("eps_ttm") or stock_data.get("eps") or
-                     stock_data.get("earnings_per_share"), 0.0)
+            result = get_valuation_service().calculate_sensitivity(clean_symbol, body)
+            return jsonify(result), (200 if result.get("success") else 404)
         except Exception as exc:
-            logger.warning(f"sensitivity: could not load stock data for {clean_symbol}: {exc}")
-
-        if eps <= 0:
-            return jsonify({
-                "success": False,
-                "error": "EPS không khả dụng – không thể tính độ nhạy DCF",
-                "symbol": clean_symbol,
-            }), 422
-
-        projection_years = int(body.get("projectionYears") or 5)
-
-        # Build the wacc and growth axes (±4 percentage-points, step 1)
-        waccs = [round(base_wacc + delta, 1) for delta in range(-4, 5)]   # 9 points
-        growths = [round(base_growth + delta, 1) for delta in range(-4, 5)]  # 9 points
-
-        def _dcf(eps_val: float, g_pct: float, r_pct: float, t_pct: float, years: int) -> float:
-            """Simple 2-stage DCF per share using EPS as proxy for FCFE."""
-            g = g_pct / 100
-            r = r_pct / 100
-            t = t_pct / 100
-            if r <= g:
-                return 0.0
-            pv = 0.0
-            cf = eps_val
-            for yr in range(1, years + 1):
-                cf *= (1 + g)
-                pv += cf / (1 + r) ** yr
-            # Terminal value (Gordon Growth)
-            if r > t:
-                terminal = (cf * (1 + t)) / (r - t)
-                pv += terminal / (1 + r) ** years
-            return round(pv, 2)
-
-        matrix: list[list] = []
-        for g in growths:
-            row: list = []
-            for w in waccs:
-                val = _dcf(eps, g, w, terminal_growth, projection_years)
-                row.append(val)
-            matrix.append(row)
-
-        return jsonify({
-            "success": True,
-            "symbol": clean_symbol,
-            "eps_used": eps,
-            "base_wacc": base_wacc,
-            "base_growth": base_growth,
-            "terminal_growth": terminal_growth,
-            "projection_years": projection_years,
-            "wacc_axis": waccs,       # column headers
-            "growth_axis": growths,   # row headers
-            "matrix": matrix,         # matrix[growth_idx][wacc_idx]
-        })
+            logger.error(f"sensitivity endpoint error {clean_symbol}: {exc}")
+            return jsonify({"success": False, "error": str(exc)}), 500
