@@ -63,41 +63,21 @@ function normalizePercentValue(value: any): number {
     return Math.abs(n) > 1 ? n / 100 : n;
 }
 
-function flattenToRows(value: any, prefix = '', rows: Array<[string, string | number | boolean]> = []) {
-    if (value === null || value === undefined) {
-        rows.push([prefix, '']);
-        return rows;
-    }
+type StatementModelInputs = {
+    netIncome: number;
+    depreciation: number;
+    workingCapitalInvestment: number;
+    fixedCapitalInvestment: number;
+    netBorrowing: number;
+    interestAfterTax: number;
+    periodLabel?: string;
+};
 
-    if (typeof value !== 'object') {
-        rows.push([prefix, value as string | number | boolean]);
-        return rows;
-    }
-
-    if (Array.isArray(value)) {
-        if (value.length === 0) {
-            rows.push([prefix, '[]']);
-            return rows;
-        }
-        value.forEach((item, index) => {
-            flattenToRows(item, `${prefix}[${index}]`, rows);
-        });
-        return rows;
-    }
-
-    const entries = Object.entries(value);
-    if (entries.length === 0) {
-        rows.push([prefix, '{}']);
-        return rows;
-    }
-
-    entries.forEach(([key, val]) => {
-        const nextKey = prefix ? `${prefix}.${key}` : key;
-        flattenToRows(val, nextKey, rows);
-    });
-
-    return rows;
-}
+type StatementInputsPayload = {
+    fcfe: StatementModelInputs;
+    fcff: StatementModelInputs;
+    source: string;
+};
 
 // ─── Row layout constants for the "Inputs" sheet ─────────────────────────────
 // These are used by other sheets to write cross-sheet formula strings.
@@ -157,44 +137,85 @@ export class ReportGenerator {
         else console.log(`[${type.toUpperCase()}] ${message}`);
     }
 
-    private createValuationDataSheet(
-        sheet: ExcelJS.Worksheet,
-        stockData: any,
-        valuationResults: any,
-        assumptions: any,
-        modelWeights: any,
-        symbol: string,
-    ) {
-        sheet.columns = [
-            { header: 'Field', key: 'field', width: 56 },
-            { header: 'Value', key: 'value', width: 52 },
-        ];
+    private async fetchLatestFinancialReportRow(symbol: string, type: 'income' | 'cashflow'): Promise<any | null> {
+        const periods: Array<'quarter' | 'year'> = ['quarter', 'year'];
 
-        sheet.getCell('A1').value = `VALUATION DATA EXPORT — ${symbol}`;
-        sheet.getCell('A1').font = { bold: true, size: 14 };
-        sheet.getCell('A2').value = `Generated at: ${new Date().toISOString()}`;
-        sheet.getCell('A2').font = { italic: true, color: { argb: '64748B' } };
+        for (const period of periods) {
+            try {
+                const resp = await fetch(`/api/financial-report/${symbol}?type=${type}&period=${period}&limit=1`, {
+                    cache: 'no-store',
+                });
+                if (!resp.ok) continue;
+                const payload = await resp.json();
+                const rows = Array.isArray(payload)
+                    ? payload
+                    : (Array.isArray(payload?.data) ? payload.data : []);
+                if (rows.length > 0) return rows[0];
+            } catch {
+                // Try next period fallback
+            }
+        }
 
-        const payload = {
-            symbol,
-            assumptions: assumptions || {},
-            modelWeights: modelWeights || {},
-            stockData: stockData || {},
-            valuationResults: valuationResults || {},
+        return null;
+    }
+
+    private async loadStatementInputs(symbol: string, taxRatePercent: number): Promise<StatementInputsPayload | null> {
+        const incomeRow = await this.fetchLatestFinancialReportRow(symbol, 'income');
+        const cashflowRow = await this.fetchLatestFinancialReportRow(symbol, 'cashflow');
+
+        if (!incomeRow && !cashflowRow) return null;
+
+        const netIncome = toNumber(
+            incomeRow?.net_profit_parent_company
+            ?? incomeRow?.net_profit_parent_company_post
+            ?? incomeRow?.net_profit,
+            0,
+        );
+        const depreciation = toNumber(cashflowRow?.depreciation_fixed_assets, 0);
+        const receivablesChange = toNumber(cashflowRow?.increase_decrease_receivables, 0);
+        const inventoriesChange = toNumber(cashflowRow?.increase_decrease_inventory, 0);
+        const payablesChange = toNumber(cashflowRow?.increase_decrease_payables, 0);
+        const workingCapitalInvestment = receivablesChange + inventoriesChange - payablesChange;
+
+        const purchaseFixedAssets = toNumber(cashflowRow?.purchase_purchase_fixed_assets, 0);
+        const proceedsFixedAssets = toNumber(cashflowRow?.proceeds_from_disposal_fixed_assets, 0);
+        const fixedCapitalInvestment = Math.max(0, Math.abs(purchaseFixedAssets) - Math.max(0, proceedsFixedAssets));
+
+        const proceedsBorrowings = toNumber(cashflowRow?.proceeds_from_borrowings, 0);
+        const repaymentBorrowings = toNumber(cashflowRow?.repayments_of_borrowings, 0);
+        const netBorrowing = proceedsBorrowings + repaymentBorrowings;
+
+        const interestExpensePaid = Math.abs(toNumber(cashflowRow?.interest_expense_paid, 0));
+        const taxRate = Math.max(0, Math.min(1, taxRatePercent / 100));
+        const interestAfterTax = interestExpensePaid * (1 - taxRate);
+
+        const periodLabel = String(
+            incomeRow?.period
+            ?? cashflowRow?.period
+            ?? `${incomeRow?.year || cashflowRow?.year || ''}${incomeRow?.quarter || cashflowRow?.quarter ? `-Q${incomeRow?.quarter || cashflowRow?.quarter}` : ''}`
+        ).trim();
+
+        return {
+            fcfe: {
+                netIncome,
+                depreciation,
+                workingCapitalInvestment,
+                fixedCapitalInvestment,
+                netBorrowing,
+                interestAfterTax,
+                periodLabel,
+            },
+            fcff: {
+                netIncome,
+                depreciation,
+                workingCapitalInvestment,
+                fixedCapitalInvestment,
+                netBorrowing,
+                interestAfterTax,
+                periodLabel,
+            },
+            source: 'sqlite.financial_report endpoint',
         };
-
-        const flatRows = flattenToRows(payload).filter(([field]) => Boolean(field));
-        let rowIndex = 4;
-        flatRows.forEach(([field, value]) => {
-            sheet.getCell(rowIndex, 1).value = field;
-            sheet.getCell(rowIndex, 2).value = String(value ?? '');
-            rowIndex += 1;
-        });
-
-        const header = sheet.getRow(4 - 1);
-        header.getCell(1).value = 'Field';
-        header.getCell(2).value = 'Value';
-        header.font = { bold: true };
     }
 
     // ─── Public entry point ──────────────────────────────────────────────────
@@ -214,6 +235,8 @@ export class ReportGenerator {
             this.showStatus('Generating financial model…', 'info');
             const zip = new JSZip();
             const dateStr = new Date().toISOString().split('T')[0];
+            const taxRatePercent = toNumber(assumptions?.taxRate, 20);
+            const statementInputs = await this.loadStatementInputs(symbol, taxRatePercent);
 
             const wb = new ExcelJS.Workbook();
             wb.creator = 'quanganh.org';
@@ -221,7 +244,6 @@ export class ReportGenerator {
             wb.calcProperties.fullCalcOnLoad = true;
 
             // Sheet order matters – Inputs must be first so cross-sheet refs resolve
-            const wsData = wb.addWorksheet('Valuation Data', { views: [{ showGridLines: true }] });
             const wsInputs = wb.addWorksheet('Inputs', { views: [{ showGridLines: false }] });
             const wsFCFE = wb.addWorksheet('FCFE Model', { views: [{ showGridLines: false }] });
             const wsFCFF = wb.addWorksheet('FCFF Model', { views: [{ showGridLines: false }] });
@@ -230,8 +252,7 @@ export class ReportGenerator {
             const wsSummary = wb.addWorksheet('Summary', { views: [{ showGridLines: false }] });
             const wsPeers = wb.addWorksheet('Sector Peers', { views: [{ showGridLines: false }] });
 
-            this.createValuationDataSheet(wsData, stockData, valuationResults, assumptions, modelWeights, symbol);
-            this.createInputsSheet(wsInputs, stockData, valuationResults, assumptions, modelWeights, symbol);
+            this.createInputsSheet(wsInputs, stockData, valuationResults, assumptions, modelWeights, symbol, statementInputs);
             this.createFCFESheet(wsFCFE, valuationResults);
             this.createFCFFSheet(wsFCFF, valuationResults);
             this.createPESheet(wsPE, valuationResults);
@@ -242,34 +263,16 @@ export class ReportGenerator {
             const buf = await wb.xlsx.writeBuffer();
             zip.file(`${symbol}_Valuation_Model_${dateStr}.xlsx`, buf);
 
-            // Optionally attach raw financial statement data from R2
-            let attachedFinancialWorkbook = false;
-            try {
-                const dlUrl = await getExcelExportUrl(symbol);
-                if (dlUrl) {
-                    const resp = await fetch(dlUrl);
-                    if (resp.ok) {
-                        zip.file(`${symbol}_Financial_Statements.xlsx`, await resp.arrayBuffer());
-                        attachedFinancialWorkbook = true;
-                    }
-                }
-            } catch { /* optional – do not fail the whole export */ }
-
-            if (!attachedFinancialWorkbook) {
-                const fallbackFinancialWb = new ExcelJS.Workbook();
-                fallbackFinancialWb.creator = 'quanganh.org';
-                fallbackFinancialWb.created = new Date();
-                const fallbackSheet = fallbackFinancialWb.addWorksheet('Stock Data');
-                fallbackSheet.columns = [
-                    { header: 'Field', key: 'field', width: 52 },
-                    { header: 'Value', key: 'value', width: 52 },
-                ];
-                flattenToRows(stockData || {}, 'stock').forEach(([field, value]) => {
-                    fallbackSheet.addRow({ field, value: String(value ?? '') });
-                });
-                const fallbackBuf = await fallbackFinancialWb.xlsx.writeBuffer();
-                zip.file(`${symbol}_Financial_Statements.xlsx`, fallbackBuf);
+            // Attach source financial statements file from R2 only (no SQLite fallback workbook).
+            const dlUrl = await getExcelExportUrl(symbol);
+            if (!dlUrl) {
+                throw new Error('Khong lay duoc file Financial Statements tu R2');
             }
+            const resp = await fetch(dlUrl, { cache: 'no-store' });
+            if (!resp.ok) {
+                throw new Error(`R2 file download failed (${resp.status})`);
+            }
+            zip.file(`${symbol}_Financial_Statements.xlsx`, await resp.arrayBuffer());
 
             const blob = await zip.generateAsync({ type: 'blob' });
             saveAs(blob, `${symbol}_Valuation_Package_${dateStr}.zip`);
@@ -291,7 +294,8 @@ export class ReportGenerator {
         valuationResults: any,
         assumptions: any,
         modelWeights: any,
-        symbol: string
+        symbol: string,
+        statementInputs?: StatementInputsPayload | null,
     ) {
         const set = (row: number, label: string, value: any, fmt?: string, note?: string) => {
             labelValue(sheet, row, label);
@@ -425,12 +429,19 @@ export class ReportGenerator {
             ?? valuationResults.fcfe?.inputs
             ?? valuationResults?.export?.calculation?.dcf_fcfe?.inputs
             ?? {};
+        const sFcfe = statementInputs?.fcfe;
 
-        set(I.fcfe_netIncome, 'Net Income (VND)', fi.netIncome ?? valuationResults?.export?.calculation?.dcf_fcfe?.details?.base_cashflow_per_share ?? 0, '#,##0');
-        set(I.fcfe_depreciation, 'Depreciation & Amortisation (VND)', fi.depreciation ?? 0, '#,##0');
-        set(I.fcfe_workingCapital, 'ΔWorking Capital Investment (VND)', fi.workingCapitalInvestment ?? 0, '#,##0');
-        set(I.fcfe_capex, 'Capital Expenditure / CapEx (VND)', fi.fixedCapitalInvestment ?? 0, '#,##0');
-        set(I.fcfe_netBorrowing, 'Net Borrowing (VND)', fi.netBorrowing ?? 0, '#,##0');
+        set(
+            I.fcfe_netIncome,
+            'Net Income (VND)',
+            sFcfe?.netIncome ?? fi.netIncome ?? valuationResults?.export?.calculation?.dcf_fcfe?.details?.base_cashflow_per_share ?? 0,
+            '#,##0',
+            sFcfe?.periodLabel ? `SQLite period: ${sFcfe.periodLabel}` : undefined,
+        );
+        set(I.fcfe_depreciation, 'Depreciation & Amortisation (VND)', sFcfe?.depreciation ?? fi.depreciation ?? 0, '#,##0');
+        set(I.fcfe_workingCapital, 'ΔWorking Capital Investment (VND)', sFcfe?.workingCapitalInvestment ?? fi.workingCapitalInvestment ?? 0, '#,##0');
+        set(I.fcfe_capex, 'Capital Expenditure / CapEx (VND)', sFcfe?.fixedCapitalInvestment ?? fi.fixedCapitalInvestment ?? 0, '#,##0');
+        set(I.fcfe_netBorrowing, 'Net Borrowing (VND)', sFcfe?.netBorrowing ?? fi.netBorrowing ?? 0, '#,##0');
 
         // ── FCFF Inputs ───────────────────────────────────────────────────
         sectionHeader(sheet, 40, '  FCFF RAW INPUTS (from latest financial statements)', 5);
@@ -442,12 +453,13 @@ export class ReportGenerator {
             ?? valuationResults.fcff?.inputs
             ?? valuationResults?.export?.calculation?.dcf_fcff?.inputs
             ?? {};
+        const sFcff = statementInputs?.fcff;
 
-        set(I.fcff_netIncome, 'Net Income (VND)', ffi.netIncome ?? valuationResults?.export?.calculation?.dcf_fcff?.details?.base_cashflow_per_share ?? 0, '#,##0');
-        set(I.fcff_interestAfterTax, 'Interest × (1 − Tax) (VND)', ffi.interestAfterTax ?? 0, '#,##0');
-        set(I.fcff_depreciation, 'Depreciation & Amortisation (VND)', ffi.depreciation ?? 0, '#,##0');
-        set(I.fcff_workingCapital, 'ΔWorking Capital Investment (VND)', ffi.workingCapitalInvestment ?? 0, '#,##0');
-        set(I.fcff_capex, 'Capital Expenditure / CapEx (VND)', ffi.fixedCapitalInvestment ?? 0, '#,##0');
+        set(I.fcff_netIncome, 'Net Income (VND)', sFcff?.netIncome ?? ffi.netIncome ?? valuationResults?.export?.calculation?.dcf_fcff?.details?.base_cashflow_per_share ?? 0, '#,##0');
+        set(I.fcff_interestAfterTax, 'Interest × (1 − Tax) (VND)', sFcff?.interestAfterTax ?? ffi.interestAfterTax ?? 0, '#,##0');
+        set(I.fcff_depreciation, 'Depreciation & Amortisation (VND)', sFcff?.depreciation ?? ffi.depreciation ?? 0, '#,##0');
+        set(I.fcff_workingCapital, 'ΔWorking Capital Investment (VND)', sFcff?.workingCapitalInvestment ?? ffi.workingCapitalInvestment ?? 0, '#,##0');
+        set(I.fcff_capex, 'Capital Expenditure / CapEx (VND)', sFcff?.fixedCapitalInvestment ?? ffi.fixedCapitalInvestment ?? 0, '#,##0');
 
         // ── Graham ────────────────────────────────────────────────────────
         sectionHeader(sheet, 49, '  GRAHAM FORMULA VALUE', 5);
