@@ -52,6 +52,53 @@ function setNote(sheet: ExcelJS.Worksheet, row: number, note: string, col = 3) {
     c.font = { italic: true, color: { argb: '94A3B8' }, size: 9 };
 }
 
+function toNumber(value: any, fallback = 0): number {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizePercentValue(value: any): number {
+    const n = toNumber(value, 0);
+    if (n === 0) return 0;
+    return Math.abs(n) > 1 ? n / 100 : n;
+}
+
+function flattenToRows(value: any, prefix = '', rows: Array<[string, string | number | boolean]> = []) {
+    if (value === null || value === undefined) {
+        rows.push([prefix, '']);
+        return rows;
+    }
+
+    if (typeof value !== 'object') {
+        rows.push([prefix, value as string | number | boolean]);
+        return rows;
+    }
+
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            rows.push([prefix, '[]']);
+            return rows;
+        }
+        value.forEach((item, index) => {
+            flattenToRows(item, `${prefix}[${index}]`, rows);
+        });
+        return rows;
+    }
+
+    const entries = Object.entries(value);
+    if (entries.length === 0) {
+        rows.push([prefix, '{}']);
+        return rows;
+    }
+
+    entries.forEach(([key, val]) => {
+        const nextKey = prefix ? `${prefix}.${key}` : key;
+        flattenToRows(val, nextKey, rows);
+    });
+
+    return rows;
+}
+
 // ─── Row layout constants for the "Inputs" sheet ─────────────────────────────
 // These are used by other sheets to write cross-sheet formula strings.
 const I = {
@@ -110,6 +157,46 @@ export class ReportGenerator {
         else console.log(`[${type.toUpperCase()}] ${message}`);
     }
 
+    private createValuationDataSheet(
+        sheet: ExcelJS.Worksheet,
+        stockData: any,
+        valuationResults: any,
+        assumptions: any,
+        modelWeights: any,
+        symbol: string,
+    ) {
+        sheet.columns = [
+            { header: 'Field', key: 'field', width: 56 },
+            { header: 'Value', key: 'value', width: 52 },
+        ];
+
+        sheet.getCell('A1').value = `VALUATION DATA EXPORT — ${symbol}`;
+        sheet.getCell('A1').font = { bold: true, size: 14 };
+        sheet.getCell('A2').value = `Generated at: ${new Date().toISOString()}`;
+        sheet.getCell('A2').font = { italic: true, color: { argb: '64748B' } };
+
+        const payload = {
+            symbol,
+            assumptions: assumptions || {},
+            modelWeights: modelWeights || {},
+            stockData: stockData || {},
+            valuationResults: valuationResults || {},
+        };
+
+        const flatRows = flattenToRows(payload).filter(([field]) => Boolean(field));
+        let rowIndex = 4;
+        flatRows.forEach(([field, value]) => {
+            sheet.getCell(rowIndex, 1).value = field;
+            sheet.getCell(rowIndex, 2).value = String(value ?? '');
+            rowIndex += 1;
+        });
+
+        const header = sheet.getRow(4 - 1);
+        header.getCell(1).value = 'Field';
+        header.getCell(2).value = 'Value';
+        header.font = { bold: true };
+    }
+
     // ─── Public entry point ──────────────────────────────────────────────────
     async exportReport(
         stockData: any,
@@ -131,8 +218,10 @@ export class ReportGenerator {
             const wb = new ExcelJS.Workbook();
             wb.creator = 'quanganh.org';
             wb.created = new Date();
+            wb.calcProperties.fullCalcOnLoad = true;
 
             // Sheet order matters – Inputs must be first so cross-sheet refs resolve
+            const wsData = wb.addWorksheet('Valuation Data', { views: [{ showGridLines: true }] });
             const wsInputs = wb.addWorksheet('Inputs', { views: [{ showGridLines: false }] });
             const wsFCFE = wb.addWorksheet('FCFE Model', { views: [{ showGridLines: false }] });
             const wsFCFF = wb.addWorksheet('FCFF Model', { views: [{ showGridLines: false }] });
@@ -141,6 +230,7 @@ export class ReportGenerator {
             const wsSummary = wb.addWorksheet('Summary', { views: [{ showGridLines: false }] });
             const wsPeers = wb.addWorksheet('Sector Peers', { views: [{ showGridLines: false }] });
 
+            this.createValuationDataSheet(wsData, stockData, valuationResults, assumptions, modelWeights, symbol);
             this.createInputsSheet(wsInputs, stockData, valuationResults, assumptions, modelWeights, symbol);
             this.createFCFESheet(wsFCFE, valuationResults);
             this.createFCFFSheet(wsFCFF, valuationResults);
@@ -153,15 +243,33 @@ export class ReportGenerator {
             zip.file(`${symbol}_Valuation_Model_${dateStr}.xlsx`, buf);
 
             // Optionally attach raw financial statement data from R2
+            let attachedFinancialWorkbook = false;
             try {
                 const dlUrl = await getExcelExportUrl(symbol);
                 if (dlUrl) {
                     const resp = await fetch(dlUrl);
                     if (resp.ok) {
                         zip.file(`${symbol}_Financial_Statements.xlsx`, await resp.arrayBuffer());
+                        attachedFinancialWorkbook = true;
                     }
                 }
             } catch { /* optional – do not fail the whole export */ }
+
+            if (!attachedFinancialWorkbook) {
+                const fallbackFinancialWb = new ExcelJS.Workbook();
+                fallbackFinancialWb.creator = 'quanganh.org';
+                fallbackFinancialWb.created = new Date();
+                const fallbackSheet = fallbackFinancialWb.addWorksheet('Stock Data');
+                fallbackSheet.columns = [
+                    { header: 'Field', key: 'field', width: 52 },
+                    { header: 'Value', key: 'value', width: 52 },
+                ];
+                flattenToRows(stockData || {}, 'stock').forEach(([field, value]) => {
+                    fallbackSheet.addRow({ field, value: String(value ?? '') });
+                });
+                const fallbackBuf = await fallbackFinancialWb.xlsx.writeBuffer();
+                zip.file(`${symbol}_Financial_Statements.xlsx`, fallbackBuf);
+            }
 
             const blob = await zip.generateAsync({ type: 'blob' });
             saveAs(blob, `${symbol}_Valuation_Package_${dateStr}.zip`);
@@ -213,27 +321,47 @@ export class ReportGenerator {
         set(5, 'Symbol', symbol);
         set(6, 'Company Name', stockData.companyName || stockData.company_name || symbol);
 
-        // Prefer real-time price from valuation result; fall back to stockData fields (with <500 scaling for raw VND in thousands)
-        const rawCp = stockData.current_price ?? stockData.price ?? stockData.close ?? 0;
+        // Prefer valuation inputs (fresh from backend), then fall back to overview fields.
+        const rawCp =
+            valuationResults?.export?.market?.current_price
+            ?? valuationResults?.inputs?.current_price
+            ?? stockData.current_price
+            ?? stockData.price
+            ?? stockData.close
+            ?? 0;
         const scaledCp = rawCp > 0 && rawCp < 500 ? rawCp * 1000 : rawCp;
-        const cp = (valuationResults?.market_comparison?.current_price ?? 0) > 0
-            ? valuationResults.market_comparison.current_price
-            : scaledCp;
-        const eps = stockData.eps_ttm ?? stockData.eps ?? 0;
-        const bvps = stockData.bvps ?? stockData.book_value ?? 0;
+        const cp = toNumber(scaledCp, 0);
+
+        const eps = toNumber(
+            valuationResults?.inputs?.eps_ttm
+            ?? stockData.eps_ttm
+            ?? stockData.eps,
+            0,
+        );
+        const bvps = toNumber(
+            valuationResults?.inputs?.bvps
+            ?? stockData.bvps
+            ?? stockData.book_value,
+            0,
+        );
+
+        const peRatio = toNumber(stockData.pe_ratio ?? stockData.pe ?? stockData.PE, 0);
+        const pbRatio = toNumber(stockData.pb_ratio ?? stockData.pb ?? stockData.PB, 0);
+        const roePct = normalizePercentValue(stockData.roe ?? stockData.ROE ?? 0);
+        const roaPct = normalizePercentValue(stockData.roa ?? stockData.ROA ?? 0);
+        const marketCapBn =
+            toNumber(stockData.market_cap, 0) > 0
+                ? toNumber(stockData.market_cap, 0) / 1e9
+                : toNumber(stockData.marketCap, 0) / 1e9;
 
         set(I.currentPrice, 'Current Market Price (VND)', cp, '#,##0', 'Live price');
         set(I.eps, 'EPS TTM (VND)', eps, '#,##0', 'Trailing 12-month EPS');
         set(I.bvps, 'BVPS (VND)', bvps, '#,##0', 'Latest quarterly BVPS');
-        set(I.pe, 'P/E Ratio (trailing)', stockData.pe_ratio ?? stockData.pe ?? 0, '0.00');
-        set(I.pb, 'P/B Ratio (trailing)', stockData.pb_ratio ?? stockData.pb ?? 0, '0.00');
-        set(I.roe, 'ROE (%)', (stockData.roe ?? 0) / 100, '0.00%');
-        set(I.roa, 'ROA (%)', (stockData.roa ?? 0) / 100, '0.00%');
-        set(I.marketCap, 'Market Cap (Billion VND)',
-            stockData.market_cap != null
-                ? stockData.market_cap / 1e9
-                : (stockData.marketCap ?? 0) / 1e9,
-            '#,##0.0');
+        set(I.pe, 'P/E Ratio (trailing)', peRatio, '0.00');
+        set(I.pb, 'P/B Ratio (trailing)', pbRatio, '0.00');
+        set(I.roe, 'ROE (%)', roePct, '0.00%');
+        set(I.roa, 'ROA (%)', roaPct, '0.00%');
+        set(I.marketCap, 'Market Cap (Billion VND)', marketCapBn, '#,##0.0');
 
         // ── DCF Assumptions ───────────────────────────────────────────────
         sectionHeader(sheet, 16, '  DCF / GROWTH ASSUMPTIONS', 5);
@@ -264,12 +392,26 @@ export class ReportGenerator {
         // ── Comparable Multiples ──────────────────────────────────────────
         sectionHeader(sheet, 24, '  COMPARABLE VALUATION MULTIPLES', 5);
         // Derive P/E and P/B multiples from backend fair values and base metrics
-        const peVal = valuationResults?.valuations?.justified_pe ?? 0;
-        const pbVal = valuationResults?.valuations?.justified_pb ?? 0;
+        const peVal = toNumber(valuationResults?.valuations?.justified_pe, 0);
+        const pbVal = toNumber(valuationResults?.valuations?.justified_pb, 0);
         const sdEps  = stockData?.eps_ttm ?? stockData?.eps ?? 0;
         const sdBvps = stockData?.bvps ?? stockData?.book_value ?? 0;
-        const peMultipleDerived = (peVal > 0 && sdEps > 0) ? peVal / sdEps : (a.peRatio ?? 15);
-        const pbMultipleDerived = (pbVal > 0 && sdBvps > 0) ? pbVal / sdBvps : (a.pbRatio ?? 2);
+        const peUsedFromExport = toNumber(
+            valuationResults?.export?.calculation?.justified_pe?.pe_used
+            ?? valuationResults?.inputs?.industry_median_pe_ttm_used,
+            0,
+        );
+        const pbUsedFromExport = toNumber(
+            valuationResults?.export?.calculation?.justified_pb?.pb_used
+            ?? valuationResults?.inputs?.industry_median_pb_used,
+            0,
+        );
+        const peMultipleDerived = peUsedFromExport > 0
+            ? peUsedFromExport
+            : ((peVal > 0 && toNumber(sdEps, 0) > 0) ? peVal / toNumber(sdEps, 1) : (a.peRatio ?? 15));
+        const pbMultipleDerived = pbUsedFromExport > 0
+            ? pbUsedFromExport
+            : ((pbVal > 0 && toNumber(sdBvps, 0) > 0) ? pbVal / toNumber(sdBvps, 1) : (a.pbRatio ?? 2));
         setAssumption(I.peMultiple, 'P/E Multiple Used', peMultipleDerived, '0.00', 'Justified or sector median');
         setAssumption(I.pbMultiple, 'P/B Multiple Used', pbMultipleDerived, '0.00', 'Justified or sector median');
 
@@ -280,9 +422,11 @@ export class ReportGenerator {
         sheet.getCell('A31').font = { italic: true, color: { argb: '475569' }, size: 9 };
 
         const fi = valuationResults.fcfe_details?.inputs
-            ?? valuationResults.fcfe?.inputs ?? {};
+            ?? valuationResults.fcfe?.inputs
+            ?? valuationResults?.export?.calculation?.dcf_fcfe?.inputs
+            ?? {};
 
-        set(I.fcfe_netIncome, 'Net Income (VND)', fi.netIncome ?? 0, '#,##0');
+        set(I.fcfe_netIncome, 'Net Income (VND)', fi.netIncome ?? valuationResults?.export?.calculation?.dcf_fcfe?.details?.base_cashflow_per_share ?? 0, '#,##0');
         set(I.fcfe_depreciation, 'Depreciation & Amortisation (VND)', fi.depreciation ?? 0, '#,##0');
         set(I.fcfe_workingCapital, 'ΔWorking Capital Investment (VND)', fi.workingCapitalInvestment ?? 0, '#,##0');
         set(I.fcfe_capex, 'Capital Expenditure / CapEx (VND)', fi.fixedCapitalInvestment ?? 0, '#,##0');
@@ -295,9 +439,11 @@ export class ReportGenerator {
         sheet.getCell('A41').font = { italic: true, color: { argb: '475569' }, size: 9 };
 
         const ffi = valuationResults.fcff_details?.inputs
-            ?? valuationResults.fcff?.inputs ?? {};
+            ?? valuationResults.fcff?.inputs
+            ?? valuationResults?.export?.calculation?.dcf_fcff?.inputs
+            ?? {};
 
-        set(I.fcff_netIncome, 'Net Income (VND)', ffi.netIncome ?? 0, '#,##0');
+        set(I.fcff_netIncome, 'Net Income (VND)', ffi.netIncome ?? valuationResults?.export?.calculation?.dcf_fcff?.details?.base_cashflow_per_share ?? 0, '#,##0');
         set(I.fcff_interestAfterTax, 'Interest × (1 − Tax) (VND)', ffi.interestAfterTax ?? 0, '#,##0');
         set(I.fcff_depreciation, 'Depreciation & Amortisation (VND)', ffi.depreciation ?? 0, '#,##0');
         set(I.fcff_workingCapital, 'ΔWorking Capital Investment (VND)', ffi.workingCapitalInvestment ?? 0, '#,##0');
@@ -1007,7 +1153,23 @@ export class ReportGenerator {
     // ═══════════════════════════════════════════════════════════════════════
     private createSectorPeersSheet(sheet: ExcelJS.Worksheet, valuationResults: any) {
         const sp = valuationResults.sector_peers ?? {};
-        const peers: any[] = sp.peers_detail ?? [];
+        const comparables = valuationResults?.export?.comparables ?? {};
+
+        const detailedPeers: any[] = comparables?.peers_detailed ?? sp.peers_detail ?? [];
+        let peers: any[] = detailedPeers;
+
+        if (peers.length === 0) {
+            const peValues = Array.isArray(comparables?.pe_ttm?.values) ? comparables.pe_ttm.values : [];
+            const pbValues = Array.isArray(comparables?.pb?.values) ? comparables.pb.values : [];
+            peers = peValues.map((pe: number, idx: number) => ({
+                symbol: `Peer ${idx + 1}`,
+                market_cap: null,
+                pe_ratio: pe,
+                pb_ratio: pbValues[idx] ?? null,
+                roe: null,
+                sector: comparables?.industry ?? sp.sector ?? '',
+            }));
+        }
 
         sheet.mergeCells('A1:G1');
         const t = sheet.getCell('A1');
@@ -1022,9 +1184,9 @@ export class ReportGenerator {
         r++;
 
         const summaryData: [string, any, string][] = [
-            ['Sector', sp.sector ?? 'N/A', ''],
-            ['Median P/E', sp.median_pe ?? 0, '0.00'],
-            ['Median P/B', sp.median_pb ?? 0, '0.00'],
+            ['Sector', comparables?.industry ?? sp.sector ?? 'N/A', ''],
+            ['Median P/E', comparables?.pe_ttm?.used ?? sp.median_pe ?? 0, '0.00'],
+            ['Median P/B', comparables?.pb?.used ?? sp.median_pb ?? 0, '0.00'],
             ['Peers Count', peers.length, '0'],
         ];
         summaryData.forEach(([lbl, val, fmt]) => {

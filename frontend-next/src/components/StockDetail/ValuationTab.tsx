@@ -20,6 +20,7 @@ interface ValuationTabProps {
 
 const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initialData, isBank, stockData }) => {
     const [loading, setLoading] = useState(false);
+    const [exportLoading, setExportLoading] = useState(false);
     const [result, setResult] = useState<any>(initialData || null);
     const [manualPrice, setManualPrice] = useState<number>(currentPrice || 0);
     const [userEditedPrice, setUserEditedPrice] = useState<boolean>(false);
@@ -287,47 +288,51 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
         URL.revokeObjectURL(url);
     };
 
-    const handleThoroughExport = async () => {
-        if (!result) return;
+    const getModelWeights = useCallback(() => ({
+        fcfe: models.fcfe.enabled ? models.fcfe.weight : 0,
+        fcff: models.fcff.enabled ? models.fcff.weight : 0,
+        justified_pe: models.justified_pe.enabled ? models.justified_pe.weight : 0,
+        justified_pb: models.justified_pb.enabled ? models.justified_pb.weight : 0,
+        graham: models.graham.enabled ? models.graham.weight : 0,
+        justified_ps: models.justified_ps.enabled ? models.justified_ps.weight : 0,
+    }), [models]);
 
+    const buildValuationPayload = useCallback(() => ({
+        ...assumptions,
+        modelWeights: getModelWeights(),
+        currentPrice: manualPrice,
+        includeComparableLists: true,
+    }), [assumptions, getModelWeights, manualPrice]);
+
+    const handleFullExport = async () => {
+        setExportLoading(true);
         try {
-            const generator = new ReportGenerator();
-            const modelWeights = {
-                fcfe: models.fcfe.enabled ? models.fcfe.weight : 0,
-                fcff: models.fcff.enabled ? models.fcff.weight : 0,
-                justified_pe: models.justified_pe.enabled ? models.justified_pe.weight : 0,
-                justified_pb: models.justified_pb.enabled ? models.justified_pb.weight : 0,
-                graham: models.graham.enabled ? models.graham.weight : 0,
-                justified_ps: models.justified_ps.enabled ? models.justified_ps.weight : 0,
-            };
+            const fresh = await calculateValuation(symbol, buildValuationPayload());
+            const exportResult = fresh?.success ? fresh : result;
 
-            await generator.exportReport(stockData || result.metrics || result, result, assumptions, modelWeights, symbol);
+            if (fresh?.success) {
+                setResult(fresh);
+            }
+
+            if (!exportResult) {
+                alert('Chưa có dữ liệu định giá để xuất. Vui lòng Analyze trước.');
+                return;
+            }
+
+            const generator = new ReportGenerator();
+            await generator.exportReport(stockData || exportResult.metrics || exportResult, exportResult, assumptions, getModelWeights(), symbol);
         } catch (error) {
             console.error('Export error:', error);
             alert('Lỗi xuất báo cáo: ' + (error as any).message);
+        } finally {
+            setExportLoading(false);
         }
     };
 
     const handleCalculate = async () => {
         setLoading(true);
         try {
-            const modelWeights = {
-                fcfe: models.fcfe.enabled ? models.fcfe.weight : 0,
-                fcff: models.fcff.enabled ? models.fcff.weight : 0,
-                justified_pe: models.justified_pe.enabled ? models.justified_pe.weight : 0,
-                justified_pb: models.justified_pb.enabled ? models.justified_pb.weight : 0,
-                graham: models.graham.enabled ? models.graham.weight : 0,
-                justified_ps: models.justified_ps.enabled ? models.justified_ps.weight : 0,
-            };
-
-            const payload = {
-                ...assumptions,
-                modelWeights,
-                currentPrice: manualPrice,
-                includeComparableLists: true
-            };
-
-            const data = await calculateValuation(symbol, payload);
+            const data = await calculateValuation(symbol, buildValuationPayload());
             if (data && data.success) {
                 setResult(data);
             }
@@ -413,10 +418,13 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                     <Button variant="secondary" onClick={handleReset} icon={RiRefreshLine} className="flex-1 sm:flex-none">
                         Reset
                     </Button>
-                    <Button variant="secondary" onClick={handleExport} icon={RiBarChartLine} className="flex-1 sm:flex-none">
-                        Basic CSV
-                    </Button>
-                    <Button variant="secondary" onClick={handleThoroughExport} icon={RiFileZipLine} className="flex-1 sm:flex-none">
+                    <Button
+                        variant="secondary"
+                        onClick={handleFullExport}
+                        icon={RiFileZipLine}
+                        loading={exportLoading}
+                        className="flex-1 sm:flex-none"
+                    >
                         Full Report
                     </Button>
                     <Button onClick={handleCalculate} loading={loading} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 border-none text-white font-semibold">
