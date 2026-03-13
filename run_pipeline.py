@@ -155,6 +155,13 @@ def step_create_compat_views() -> bool:
         mod = importlib.util.module_from_spec(spec)  # type: ignore
         spec.loader.exec_module(mod)  # type: ignore
         mod.create_views(DB_PATH)
+        try:
+            from backend.updater.valuation_datamart import refresh_valuation_datamart
+
+            rows = refresh_valuation_datamart(DB_PATH)
+            logger.info(f"✅ Finished: valuation_datamart refreshed ({rows} symbols)")
+        except Exception as datamart_ex:
+            logger.warning(f"⚠ valuation_datamart refresh skipped/failed: {datamart_ex}")
         logger.info("✅ Finished: Compatibility views refreshed")
         return True
     except Exception as e:

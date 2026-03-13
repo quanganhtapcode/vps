@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API_BASE } from '@/lib/api';
 
-type HolderView = 'institutional' | 'insiders' | 'politicians';
+type HolderView = 'institutional' | 'insiders';
 
 interface InstitutionalHolder {
     manager: string;
@@ -38,7 +38,6 @@ interface HoldersPayload {
     };
     institutional?: InstitutionalHolder[];
     insiders?: InsiderHolder[];
-    politicians?: any[];
 }
 
 interface HoldersTabProps {
@@ -110,7 +109,23 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
 
     const institutional = data?.institutional || [];
     const insiders = data?.insiders || [];
-    const politicians = data?.politicians || [];
+
+    useEffect(() => {
+        const iCount = institutional.length;
+        const inCount = insiders.length;
+
+        if (inCount > iCount && inCount > 0) {
+            setActiveView('insiders');
+            return;
+        }
+        if (iCount > 0) {
+            setActiveView('institutional');
+            return;
+        }
+        if (inCount > 0) {
+            setActiveView('insiders');
+        }
+    }, [institutional.length, insiders.length]);
 
     const rows = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -118,7 +133,6 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
 
         if (activeView === 'institutional') base = institutional;
         if (activeView === 'insiders') base = insiders;
-        if (activeView === 'politicians') base = politicians;
 
         if (!q) return base;
 
@@ -127,13 +141,11 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
             const pos = String(item?.position || '').toLowerCase();
             return name.includes(q) || pos.includes(q);
         });
-    }, [activeView, institutional, insiders, politicians, query]);
+    }, [activeView, institutional, insiders, query]);
 
     const filings = activeView === 'institutional'
         ? (data?.summary?.institutional_count ?? institutional.length)
-        : activeView === 'insiders'
-            ? (data?.summary?.insider_count ?? insiders.length)
-            : politicians.length;
+        : (data?.summary?.insider_count ?? insiders.length);
 
     const totalValue = activeView === 'institutional'
         ? (data?.summary?.institutional_total_value ?? institutional.reduce((s, x) => s + Number(x.value || 0), 0))
@@ -177,21 +189,14 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                             onClick={() => setActiveView('institutional')}
                             className={`rounded-full px-3 py-1 text-sm ${activeView === 'institutional' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}
                         >
-                            Institutional
+                            Institutional ({institutional.length})
                         </button>
                         <button
                             type="button"
                             onClick={() => setActiveView('insiders')}
                             className={`rounded-full px-3 py-1 text-sm ${activeView === 'insiders' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}
                         >
-                            Insiders
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setActiveView('politicians')}
-                            className={`rounded-full px-3 py-1 text-sm ${activeView === 'politicians' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}
-                        >
-                            Politicians
+                            Insiders ({insiders.length})
                         </button>
                     </div>
 
@@ -199,10 +204,16 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                         <input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder={`Find ${activeView} holders`}
+                            placeholder={activeView === 'insiders' ? 'Find insiders by name or position' : 'Find institutional holders'}
                             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950"
                         />
                     </div>
+
+                    {!loading && !error && activeView === 'institutional' && institutional.length > 0 && institutional.length < 5 ? (
+                        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300">
+                            Institutional disclosure is currently limited for this symbol. Check Insiders tab for more coverage.
+                        </div>
+                    ) : null}
 
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
@@ -214,6 +225,7 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                         <button
                             type="button"
                             onClick={downloadCsv}
+                            disabled={rows.length === 0}
                             className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
                         >
                             Download
