@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from vnstock import Vnstock, Listing, Company, Quote
 from backend.data_sources import VCIClient
 from backend.data_sources.sqlite_db import SQLiteDB
-from backend.db_path import resolve_stocks_db_path
+from backend.db_path import resolve_stocks_db_path, resolve_vci_screening_db_path
 import logging
 
 logger = logging.getLogger(__name__)
@@ -627,10 +627,54 @@ class StockDataProvider:
             
             peers = [dict(r) for r in cursor.fetchall()]
             conn.close()
+
+            # 3. Prefer fresher metrics from VCI screening when available.
+            # screening_data currently has: ttmPe, ttmPb, ttmRoe, npatmiGrowthYoyQm1, netMargin, marketCap.
+            # It does NOT have ROA, so ROA remains from overview fallback.
+            screening_map = {}
+            try:
+                screening_db = resolve_vci_screening_db_path()
+                if screening_db and os.path.exists(screening_db) and peers:
+                    sconn = sqlite3.connect(screening_db)
+                    sconn.row_factory = sqlite3.Row
+                    scur = sconn.cursor()
+
+                    symbols = [str(p.get('symbol', '')).upper() for p in peers if p.get('symbol')]
+                    if symbols:
+                        placeholders = ','.join(['?'] * len(symbols))
+                        scur.execute(
+                            f"""
+                            SELECT ticker, ttmPe, ttmPb, ttmRoe, npatmiGrowthYoyQm1, netMargin, marketCap
+                            FROM screening_data
+                            WHERE UPPER(ticker) IN ({placeholders})
+                            """,
+                            symbols,
+                        )
+                        screening_map = {str(r['ticker']).upper(): dict(r) for r in scur.fetchall()}
+                    sconn.close()
+            except Exception as screening_error:
+                logger.warning(f"Unable to load screening_data fallback for peers: {screening_error}")
             
             # Normalize keys to camelCase for frontend
             result = []
             for p in peers:
+                sym = str(p.get('symbol', '')).upper()
+                srow = screening_map.get(sym)
+
+                if srow:
+                    if srow.get('ttmPe') is not None:
+                        p['pe'] = srow.get('ttmPe')
+                    if srow.get('ttmPb') is not None:
+                        p['pb'] = srow.get('ttmPb')
+                    if srow.get('ttmRoe') is not None:
+                        p['roe'] = srow.get('ttmRoe')
+                    if srow.get('netMargin') is not None:
+                        p['net_profit_margin'] = srow.get('netMargin')
+                    if srow.get('npatmiGrowthYoyQm1') is not None:
+                        p['profit_growth'] = srow.get('npatmiGrowthYoyQm1')
+                    if srow.get('marketCap') is not None:
+                        p['market_cap'] = srow.get('marketCap')
+
                 # Ensure price is normalized if needed (though DB should be raw)
                 p['price'] = p['current_price']
                 p['marketCap'] = p['market_cap']
