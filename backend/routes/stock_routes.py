@@ -16,6 +16,7 @@ from backend.services.source_priority import (
     apply_source_priority,
     get_screening_metrics,
 )
+from backend.cache_utils import cache_get_ns, cache_set_ns
 from backend.routes.stock.financial_dashboard import register as register_financial_dashboard_routes
 from backend.routes.stock.missing_routes import register as register_missing_routes
 from vnstock import Vnstock, Quote, Company
@@ -28,24 +29,14 @@ register_financial_dashboard_routes(stock_bp)
 register_missing_routes(stock_bp)
 
 # ===================== IN-MEMORY CACHE =====================
-import time as _time
-_cache = {}  # key -> (timestamp, data)
+_CACHE_NAMESPACE = 'stock_routes'
 _CACHE_TTL = 600  # 10 minutes
 
 def _cache_get(key):
-    entry = _cache.get(key)
-    if entry and (_time.time() - entry[0]) < _CACHE_TTL:
-        return entry[1]
-    return None
+    return cache_get_ns(_CACHE_NAMESPACE, key)
 
-def _cache_set(key, data):
-    _cache[key] = (_time.time(), data)
-    # Evict old entries if cache grows too large (>500 entries)
-    if len(_cache) > 500:
-        cutoff = _time.time() - _CACHE_TTL
-        keys_to_del = [k for k, (t, _) in _cache.items() if t < cutoff]
-        for k in keys_to_del:
-            del _cache[k]
+def _cache_set(key, data, ttl: int = _CACHE_TTL):
+    cache_set_ns(_CACHE_NAMESPACE, key, data, ttl=ttl)
 
 
 def _holder_group(name: str) -> str:

@@ -1,11 +1,11 @@
 import logging
 import os
 import sqlite3
-import time
 from typing import Callable
 
 import numpy as np
 
+from backend.cache_utils import cache_get_ns, cache_set_ns
 from backend.db_path import resolve_vci_screening_db_path
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 VCI_METRICS_SOURCE = "vci_screening.sqlite"
 SOURCE_PRIORITY_LABEL = "vci_screening -> vietnam_stocks -> vnstock"
 
-_local_cache: dict[str, tuple[float, dict | None]] = {}
+_LOCAL_CACHE_NAMESPACE = "source_priority"
 _LOCAL_CACHE_TTL_SECONDS = 600
 
 
@@ -47,32 +47,17 @@ def _normalize_percent_value(value) -> float | None:
         return None
 
 
-def _local_cache_get(key: str):
-    payload = _local_cache.get(key)
-    if not payload:
-        return None
-    ts, value = payload
-    if (time.time() - ts) > _LOCAL_CACHE_TTL_SECONDS:
-        _local_cache.pop(key, None)
-        return None
-    return value
-
-
-def _local_cache_set(key: str, value):
-    _local_cache[key] = (time.time(), value)
-
-
 def _cache_get(cache_get: CacheGet | None, key: str):
     if cache_get:
         return cache_get(key)
-    return _local_cache_get(key)
+    return cache_get_ns(_LOCAL_CACHE_NAMESPACE, key)
 
 
 def _cache_set(cache_set: CacheSet | None, key: str, value):
     if cache_set:
         cache_set(key, value)
         return
-    _local_cache_set(key, value)
+    cache_set_ns(_LOCAL_CACHE_NAMESPACE, key, value, ttl=_LOCAL_CACHE_TTL_SECONDS)
 
 
 def _load_screening_rows(symbols: list[str]) -> dict[str, dict]:

@@ -54,6 +54,15 @@ Chạy pipeline thủ công:
 python run_pipeline.py
 ```
 
+Benchmark endpoint nóng (p50/p95/p99 + report JSON):
+
+```bash
+python benchmark_hot_endpoints.py --base-url http://127.0.0.1:8000 --runs 20 --warmup 3 --include-health
+
+# Production base URL that already includes /v1/valuation:
+python benchmark_hot_endpoints.py --base-url https://api.quanganh.org/v1/valuation --api-prefix auto --runs 20 --warmup 3 --include-health
+```
+
 ---
 
 ## Cấu hình (.env)
@@ -93,6 +102,42 @@ Xem chi tiết vận hành: [MAINTENANCE_GUIDE.md](MAINTENANCE_GUIDE.md)
 
 # Kèm upload DB mới:
 .\automation\deploy.ps1 -CommitMessage "update" -IncludeDatabase
+
+# Tune benchmark gate (ngưỡng p95/p99 + degradation):
+.\automation\deploy.ps1 -CommitMessage "update" -PerfRuns 8 -PerfP95HardLimitMs 320 -PerfP99HardLimitMs 650 -PerfMaxDegradationPct 30
+
+# Dùng profile ngưỡng tự động theo môi trường (auto | production | staging | local | custom)
+.\automation\deploy.ps1 -CommitMessage "update" -PerfProfile auto
+
+# Bỏ qua performance gate (không khuyến khích):
+.\automation\deploy.ps1 -CommitMessage "update" -SkipPerfGate
+
+# Tắt thông báo Telegram cho lần deploy hiện tại:
+.\automation\deploy.ps1 -CommitMessage "update" -SkipTelegramNotify
+```
+
+Lịch sử pass/fail của performance gate được append vào:
+
+```text
+logs/perf/deploy_perf_history.jsonl
+```
+
+Xem nhanh xu hướng deploy latency:
+
+```bash
+python scripts/summarize_deploy_perf_history.py --last 30
+```
+
+Deploy script sẽ gửi thông báo Telegram pass/fail (kèm tóm tắt perf nếu có) thông qua env trên VPS:
+
+```text
+/var/www/valuation/.telegram_uptime.env
+```
+
+Script dùng để gửi tin nhắn thủ công:
+
+```bash
+echo "Test deploy notification" | /var/www/valuation/scripts/send_telegram_message.sh --env-file /var/www/valuation/.telegram_uptime.env
 ```
 
 ---

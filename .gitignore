@@ -59,6 +59,8 @@ stocks.db
 # Local debug / artifacts
 inspect_db_output.txt
 fmc_news.json
+logs/cache_namespace_versions.json
+logs/perf/
 
 # SQLite caches + backups
 fetch_sqlite/backups/

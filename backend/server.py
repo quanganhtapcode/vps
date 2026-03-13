@@ -12,7 +12,7 @@ import json
 import time
 import queue
 from datetime import datetime
-from flask import Flask
+from flask import Flask, g, request
 from flask_compress import Compress
 from flask_sock import Sock
 
@@ -24,6 +24,7 @@ from backend.routes.market import market_bp, init_market_routes
 from backend.routes.download_routes import download_bp
 from backend.routes.health_routes import health_bp
 from backend.data_sources.vci import VCIClient
+from backend.telemetry import record_request_latency
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -111,8 +112,27 @@ app.register_blueprint(download_bp)
 app.register_blueprint(health_bp)
 
 # CORS Handling
+@app.before_request
+def _before_request_timer():
+    g._request_started_at = time.perf_counter()
+
+
 @app.after_request
 def after_request(response):
+    started = getattr(g, '_request_started_at', None)
+    if started is not None:
+        elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
+        route_rule = request.url_rule.rule if request.url_rule is not None else request.path
+        route_key = f"{request.method} {route_rule}"
+        record_request_latency(route_key, elapsed_ms)
+
+        timing_value = f"app;dur={elapsed_ms:.2f}"
+        existing_timing = response.headers.get('Server-Timing')
+        if existing_timing:
+            response.headers['Server-Timing'] = f"{existing_timing}, {timing_value}"
+        else:
+            response.headers['Server-Timing'] = timing_value
+
     header = response.headers
     header['Access-Control-Allow-Origin'] = '*'
     header['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'

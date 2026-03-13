@@ -14,6 +14,99 @@ const BACKEND_API =
         ? (process.env.BACKEND_API_URL_LOCAL || 'http://127.0.0.1:8000/api')
         : (process.env.BACKEND_API_URL || 'https://api.quanganh.org/v1/valuation');
 
+type ProxyCachePolicy = {
+    mode: 'realtime' | 'short' | 'medium' | 'long';
+    revalidateSeconds: number;
+    responseCacheControl: string;
+};
+
+const REALTIME_PATH_PREFIXES = [
+    'current-price/',
+    'price/',
+    'batch-price',
+    'market/vci-indices',
+    'market/top-movers',
+    'market/heatmap',
+];
+
+const SHORT_CACHE_PATH_PREFIXES = [
+    'valuation/',
+    'market/news',
+    'news/',
+    'events/',
+    'holders/',
+    'stock/holders/',
+];
+
+const MEDIUM_CACHE_PATH_PREFIXES = [
+    'historical-chart-data/',
+    'stock/history/',
+    'stock/',
+    'app-data/',
+    'market/pe-chart',
+    'market/lottery',
+];
+
+const LONG_CACHE_PATH_PREFIXES = [
+    'company/profile/',
+    'tickers',
+    'health',
+];
+
+function pathMatches(path: string, prefixes: string[]): boolean {
+    return prefixes.some((prefix) => path === prefix || path.startsWith(prefix));
+}
+
+function resolveCachePolicy(apiPath: string, searchParams: URLSearchParams): ProxyCachePolicy {
+    const normalized = (apiPath || '').toLowerCase();
+
+    if (searchParams.get('cache') === 'no-store' || searchParams.get('nocache') === '1') {
+        return {
+            mode: 'realtime',
+            revalidateSeconds: 0,
+            responseCacheControl: 'no-store, no-cache, must-revalidate',
+        };
+    }
+
+    if (pathMatches(normalized, REALTIME_PATH_PREFIXES)) {
+        return {
+            mode: 'realtime',
+            revalidateSeconds: 0,
+            responseCacheControl: 'no-store, no-cache, must-revalidate',
+        };
+    }
+
+    if (pathMatches(normalized, SHORT_CACHE_PATH_PREFIXES)) {
+        return {
+            mode: 'short',
+            revalidateSeconds: 30,
+            responseCacheControl: 'public, s-maxage=30, stale-while-revalidate=60',
+        };
+    }
+
+    if (pathMatches(normalized, LONG_CACHE_PATH_PREFIXES)) {
+        return {
+            mode: 'long',
+            revalidateSeconds: 600,
+            responseCacheControl: 'public, s-maxage=600, stale-while-revalidate=1200',
+        };
+    }
+
+    if (pathMatches(normalized, MEDIUM_CACHE_PATH_PREFIXES)) {
+        return {
+            mode: 'medium',
+            revalidateSeconds: 120,
+            responseCacheControl: 'public, s-maxage=120, stale-while-revalidate=300',
+        };
+    }
+
+    return {
+        mode: 'short',
+        revalidateSeconds: 45,
+        responseCacheControl: 'public, s-maxage=45, stale-while-revalidate=90',
+    };
+}
+
 export async function GET(
     request: Request,
     { params }: { params: Promise<{ path: string[] }> }
@@ -25,18 +118,24 @@ export async function GET(
         // Get query string from the request URL
         const { searchParams } = new URL(request.url);
         const queryString = searchParams.toString();
+        const cachePolicy = resolveCachePolicy(apiPath, searchParams);
 
         const fullUrl = `${BACKEND_API}/${apiPath}${queryString ? `?${queryString}` : ''}`;
 
-        const response = await fetch(fullUrl, {
+        const fetchOptions: RequestInit & { next?: { revalidate: number } } = {
             headers: {
                 'User-Agent': 'Next.js API Proxy',
                 'Accept': '*/*',
             },
-            // Always bypass Next.js/CDN cache — the Flask backend manages its own
-            // per-endpoint TTLs, so double-caching here only causes stale data.
-            cache: 'no-store',
-        });
+        };
+
+        if (cachePolicy.mode === 'realtime') {
+            fetchOptions.cache = 'no-store';
+        } else {
+            fetchOptions.next = { revalidate: cachePolicy.revalidateSeconds };
+        }
+
+        const response = await fetch(fullUrl, fetchOptions);
 
         if (!response.ok) {
             let backendError: any = null;
@@ -67,13 +166,15 @@ export async function GET(
 
             return NextResponse.json(data, {
                 headers: {
-                    // No CDN caching: the VPS backend already caches per-endpoint.
-                    // stale-while-revalidate was causing Vercel edge nodes to serve
-                    // up to 90 s of stale data (requiring multiple reloads to refresh).
-                    'Cache-Control': 'no-store, no-cache, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0',
+                    'Cache-Control': cachePolicy.responseCacheControl,
+                    ...(cachePolicy.mode === 'realtime'
+                        ? {
+                              'Pragma': 'no-cache',
+                              'Expires': '0',
+                          }
+                        : {}),
                     'X-Proxy-Backend': BACKEND_API,
+                    'X-Proxy-Cache-Policy': `${cachePolicy.mode}:${cachePolicy.revalidateSeconds}`,
                     ...(backendSource ? { 'X-Source': backendSource } : {}),
                     ...(backendTiming ? { 'Server-Timing': backendTiming } : {}),
                     ...(backendDb ? { 'X-DB': backendDb } : {}),
@@ -84,12 +185,15 @@ export async function GET(
 
         // Binary/file response path (downloads, etc.)
         const payload = await response.arrayBuffer();
-        const passthroughHeaders = new Headers({
-            'Cache-Control': 'no-store, no-cache, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'X-Proxy-Backend': BACKEND_API,
-        });
+        const passthroughHeaders = new Headers();
+
+        passthroughHeaders.set('Cache-Control', cachePolicy.responseCacheControl);
+        if (cachePolicy.mode === 'realtime') {
+            passthroughHeaders.set('Pragma', 'no-cache');
+            passthroughHeaders.set('Expires', '0');
+        }
+        passthroughHeaders.set('X-Proxy-Backend', BACKEND_API);
+        passthroughHeaders.set('X-Proxy-Cache-Policy', `${cachePolicy.mode}:${cachePolicy.revalidateSeconds}`);
 
         const contentType = response.headers.get('content-type');
         const contentDisposition = response.headers.get('content-disposition');

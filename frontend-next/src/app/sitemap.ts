@@ -1,8 +1,32 @@
 import { MetadataRoute } from 'next';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { siteConfig } from '@/app/siteConfig';
 
-// Static routes only — stock pages are too numerous for static sitemap
-export default function sitemap(): MetadataRoute.Sitemap {
+function normalizeSymbol(raw: unknown): string {
+  return String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+}
+
+async function loadStockSymbols(): Promise<string[]> {
+  try {
+    const filePath = path.join(process.cwd(), 'public', 'ticker_data.json');
+    const raw = await readFile(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    const tickers = Array.isArray(parsed?.tickers) ? parsed.tickers : [];
+    const deduped = new Set<string>();
+
+    for (const item of tickers) {
+      const sym = normalizeSymbol(item?.symbol);
+      if (sym) deduped.add(sym);
+    }
+
+    return Array.from(deduped);
+  } catch {
+    return [];
+  }
+}
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -18,5 +42,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${siteConfig.url}/disclaimer`,  lastModified: now, changeFrequency: 'yearly',  priority: 0.2 },
   ];
 
-  return staticRoutes;
+  const symbols = await loadStockSymbols();
+  const stockRoutes: MetadataRoute.Sitemap = symbols.map((symbol) => ({
+    url: `${siteConfig.url}/stock/${symbol}`,
+    lastModified: now,
+    changeFrequency: 'daily',
+    priority: 0.7,
+  }));
+
+  return [...staticRoutes, ...stockRoutes];
 }

@@ -86,6 +86,20 @@ def _load_symbols() -> list[str]:
     return []
 
 
+def _invalidate_cache_namespaces(namespaces: list[str], reason: str) -> None:
+    """Bump cache namespace versions so long-running API workers drop stale keys."""
+    _add_updater_to_path()
+    try:
+        from backend.cache_utils import cache_invalidate_namespaces
+
+        changed = cache_invalidate_namespaces(namespaces)
+        if changed:
+            detail = ", ".join(f"{k}={v}" for k, v in changed.items())
+            logger.info(f"🔄 Cache invalidated after {reason}: {detail}")
+    except Exception as ex:
+        logger.warning(f"⚠ Cache invalidation skipped after {reason}: {ex}")
+
+
 # ── Step 1: Financial Reports (BCTC) ─────────────────────────────────────────
 
 def step_update_financial_reports(symbols: list[str]) -> bool:
@@ -122,6 +136,11 @@ def step_update_financial_reports(symbols: list[str]) -> bool:
             f"✅ Finished: BCTC update "
             f"(updated={success_count}, skipped={skipped_count}, total={len(symbols)}, new_records={new_records})"
         )
+        if new_records > 0:
+            _invalidate_cache_namespaces(
+                namespaces=['stock_routes', 'source_priority', 'decorator'],
+                reason='financial update',
+            )
         return True
     except Exception as e:
         logger.error(f"❌ Failed: BCTC update — {e}\n{__import__('traceback').format_exc()}")
@@ -138,6 +157,11 @@ def step_update_company_info(symbols: list[str]) -> bool:
         logger.info(f">>> Starting: Company info update ({len(symbols)} symbols)")
         count = update_companies(symbols)
         logger.info(f"✅ Finished: Company info ({count} records updated)")
+        if count > 0:
+            _invalidate_cache_namespaces(
+                namespaces=['stock_routes', 'source_priority', 'decorator'],
+                reason='company update',
+            )
         return True
     except Exception as e:
         logger.error(f"❌ Failed: Company info update — {e}")
@@ -163,6 +187,10 @@ def step_create_compat_views() -> bool:
         except Exception as datamart_ex:
             logger.warning(f"⚠ valuation_datamart refresh skipped/failed: {datamart_ex}")
         logger.info("✅ Finished: Compatibility views refreshed")
+        _invalidate_cache_namespaces(
+            namespaces=['stock_routes', 'source_priority', 'decorator'],
+            reason='compat views/datamart refresh',
+        )
         return True
     except Exception as e:
         logger.error(f"❌ Failed: Compatibility views — {e}")

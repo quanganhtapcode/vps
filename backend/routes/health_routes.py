@@ -17,7 +17,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
+from backend.cache_utils import cache_stats, cache_invalidate_namespaces
+from backend.telemetry import get_latency_metrics
 
 health_bp = Blueprint("health", __name__)
 
@@ -245,6 +247,11 @@ def health() -> tuple:
     fetch_dir = _fetch_sqlite_dir()
 
     checks = {
+        "cache": {
+            "status": "ok",
+            **cache_stats(),
+        },
+        "latency": get_latency_metrics(top_n=15),
         "main_db": _check_main_db(),
         "pipeline_log": _check_pipeline_log(),
         "systemd_timer": _check_systemd_timer(),
@@ -284,6 +291,41 @@ def health() -> tuple:
     }
 
     return jsonify(payload), http_code
+
+
+@health_bp.route("/cache/invalidate", methods=["POST"])
+@health_bp.route("/api/cache/invalidate", methods=["POST"])
+def invalidate_cache_namespaces() -> tuple:
+    """Admin endpoint to invalidate cache namespaces without restarting workers."""
+    token_required = (os.getenv("CACHE_ADMIN_TOKEN") or "").strip()
+    if not token_required:
+        return jsonify({
+            "success": False,
+            "error": "Cache invalidation token is not configured",
+        }), 503
+
+    token_given = (request.headers.get("X-Cache-Admin-Token") or "").strip()
+    if token_given != token_required:
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    requested_namespaces = payload.get("namespaces")
+
+    if requested_namespaces is None:
+        requested_namespaces = ["stock_routes", "source_priority", "decorator"]
+    if not isinstance(requested_namespaces, list):
+        return jsonify({"success": False, "error": "'namespaces' must be a list"}), 400
+
+    namespaces = [str(ns).strip() for ns in requested_namespaces if str(ns).strip()]
+    if not namespaces:
+        return jsonify({"success": False, "error": "No valid namespaces provided"}), 400
+
+    result = cache_invalidate_namespaces(namespaces)
+    return jsonify({
+        "success": True,
+        "namespaces": namespaces,
+        "removed": result,
+    }), 200
 
 # Also register at /api/health so nginx /v1/valuation/health works
 health_bp.add_url_rule("/api/health", endpoint="api_health", view_func=health)

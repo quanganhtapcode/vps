@@ -101,15 +101,57 @@ cd "C:\Users\PC\Downloads\Hello"
 
 # Bỏ qua pre-deploy tests (không khuyến khích)
 .\automation\deploy.ps1 -SkipTests
+
+# Điều chỉnh performance gate (benchmark pre/post deploy)
+.\automation\deploy.ps1 -PerfRuns 8 -PerfP95HardLimitMs 320 -PerfP99HardLimitMs 650 -PerfMaxDegradationPct 30
+
+# Dùng profile ngưỡng tự động theo môi trường
+.\automation\deploy.ps1 -PerfProfile auto
+
+# Bỏ qua performance gate (không khuyến khích)
+.\automation\deploy.ps1 -SkipPerfGate
+
+# Tắt thông báo Telegram cho lần deploy hiện tại
+.\automation\deploy.ps1 -SkipTelegramNotify
 ```
 
 Deploy tự động:
 1. Chạy `test_local.ps1 -Quick`
-2. `git add . && git commit && git push`
-3. `scp` các folder `backend/`, `fetch_sqlite/`, `scripts/`, `automation/`
-4. Dọn `__pycache__`, fix line endings
-5. `systemctl restart valuation`
-6. Smoke test: `/health`, `/api/market/vci-indices`, `/api/stock/VCB`
+2. Chạy benchmark baseline (pre-deploy) bằng `benchmark_hot_endpoints.py`
+3. `git add . && git commit && git push`
+4. `scp` các folder `backend/`, `fetch_sqlite/`, `scripts/`, `automation/`
+5. Dọn `__pycache__`, fix line endings
+6. `systemctl restart valuation`
+7. Smoke test: `/health`, `/api/market/vci-indices`, `/api/stock/VCB`
+8. Chạy benchmark post-deploy và so sánh p95/p99 với baseline (fail-fast nếu vượt ngưỡng)
+9. Gửi Telegram thông báo pass/fail deploy (kèm summary p95/p99 nếu có benchmark)
+
+Deploy performance gate history được lưu ở:
+
+```text
+logs/perf/deploy_perf_history.jsonl
+```
+
+Xem nhanh xu hướng pass/fail và p95/p99 sau nhiều lần deploy:
+
+```bash
+python scripts/summarize_deploy_perf_history.py --last 30
+```
+
+Telegram deploy notification dùng env file:
+
+```text
+/var/www/valuation/.telegram_uptime.env
+```
+
+Gửi test thủ công trên VPS:
+
+```bash
+cd /var/www/valuation
+echo "Manual deploy notification test" | ./scripts/send_telegram_message.sh --env-file ./.telegram_uptime.env
+```
+
+Nếu env thiếu `TELEGRAM_BOT_TOKEN` hoặc `TELEGRAM_CHAT_ID`, deploy vẫn tiếp tục nhưng bỏ qua notify.
 
 ---
 
@@ -156,6 +198,20 @@ PYTHONPATH=/var/www/valuation .venv/bin/python3 scripts/create_compat_views.py
 $key = "$HOME\Desktop\key.pem"
 ssh -i $key root@203.55.176.10 "curl -s http://127.0.0.1:8000/health | python3 -m json.tool"
 ```
+
+### Benchmark p95/p99 endpoint nóng
+
+Chạy benchmark chuẩn hóa để đo hiệu quả cache/latency trước hoặc sau deploy:
+
+```bash
+cd /var/www/valuation
+source .venv/bin/activate
+python benchmark_hot_endpoints.py --base-url http://127.0.0.1:8000 --runs 25 --warmup 5 --workers 1 --include-health
+```
+
+Output:
+- Console summary per endpoint (p50/p95/p99, error rate, pass/warn theo SLO).
+- JSON report trong `logs/perf/benchmark_hot_endpoints_*.json`.
 
 ### Comprehensive check (trên VPS)
 
