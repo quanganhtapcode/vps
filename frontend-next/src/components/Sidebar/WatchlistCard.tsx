@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { Card } from '@tremor/react';
 import { RiEqualizerLine, RiCloseLine, RiArrowRightSLine, RiSearchLine } from '@remixicon/react';
 import { useWatchlist } from '@/lib/watchlistContext';
 import { formatNumber } from '@/lib/api';
@@ -110,21 +111,23 @@ export default function WatchlistCard() {
     const closeModal = () => { setModalOpen(false); setSearchQuery(''); };
 
     if (watchlist.length === 0 && !modalOpen) return (
-        <div className="rounded-tremor-default border border-tremor-border bg-tremor-background dark:border-dark-tremor-border dark:bg-dark-tremor-background px-4 py-3">
-            <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong">Watchlist</span>
-                <button type="button" onClick={() => setModalOpen(true)} className="p-1.5 rounded-md text-tremor-content hover:bg-tremor-background-muted dark:hover:bg-dark-tremor-background-muted transition-colors">
-                    <RiEqualizerLine className="h-4 w-4" />
-                </button>
+        <Card className="p-0 overflow-hidden border-tremor-border dark:border-dark-tremor-border shadow-sm">
+            <div className="px-4 py-3">
+                <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong">Watchlist</span>
+                    <button type="button" onClick={() => setModalOpen(true)} className="p-1.5 rounded-md text-tremor-content hover:bg-tremor-background-muted dark:hover:bg-dark-tremor-background-muted transition-colors">
+                        <RiEqualizerLine className="h-4 w-4" />
+                    </button>
+                </div>
+                <p className="text-xs text-tremor-content dark:text-dark-tremor-content mt-1">Nhấn icon để thêm cổ phiếu.</p>
             </div>
-            <p className="text-xs text-tremor-content dark:text-dark-tremor-content mt-1">Nhấn icon để thêm cổ phiếu.</p>
-        </div>
+        </Card>
     );
 
     return (
         <>
             {watchlist.length > 0 && (
-                <div className="rounded-tremor-default border border-tremor-border bg-tremor-background dark:border-dark-tremor-border dark:bg-dark-tremor-background overflow-hidden">
+                <Card className="p-0 overflow-hidden border-tremor-border dark:border-dark-tremor-border shadow-sm">
                     <div className="flex items-center gap-1 px-4 py-3">
                         <button type="button" onClick={() => setCollapsed(v => !v)} className="flex items-center gap-1 flex-1 min-w-0 text-left">
                             <span className="text-sm font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong">Watchlist</span>
@@ -165,7 +168,7 @@ export default function WatchlistCard() {
                             ))}
                         </div>
                     )}
-                </div>
+                </Card>
             )}
 
             {modalOpen && (
