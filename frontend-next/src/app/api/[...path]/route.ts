@@ -30,8 +30,8 @@ export async function GET(
 
         const response = await fetch(fullUrl, {
             headers: {
-                'Content-Type': 'application/json',
                 'User-Agent': 'Next.js API Proxy',
+                'Accept': '*/*',
             },
             // Always bypass Next.js/CDN cache — the Flask backend manages its own
             // per-endpoint TTLs, so double-caching here only causes stale data.
@@ -55,27 +55,57 @@ export async function GET(
             );
         }
 
-        const data = await response.json();
-
         const backendSource = response.headers.get('x-source');
         const backendTiming = response.headers.get('server-timing');
         const backendDb = response.headers.get('x-db');
         const backendCache = response.headers.get('x-cache');
+        const backendContentType = response.headers.get('content-type') || '';
 
-        return NextResponse.json(data, {
-            headers: {
-                // No CDN caching: the VPS backend already caches per-endpoint.
-                // stale-while-revalidate was causing Vercel edge nodes to serve
-                // up to 90 s of stale data (requiring multiple reloads to refresh).
-                'Cache-Control': 'no-store, no-cache, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0',
-                'X-Proxy-Backend': BACKEND_API,
-                ...(backendSource ? { 'X-Source': backendSource } : {}),
-                ...(backendTiming ? { 'Server-Timing': backendTiming } : {}),
-                ...(backendDb ? { 'X-DB': backendDb } : {}),
-                ...(backendCache ? { 'X-Cache': backendCache } : {}),
-            },
+        // JSON API response path (default)
+        if (backendContentType.toLowerCase().includes('application/json')) {
+            const data = await response.json();
+
+            return NextResponse.json(data, {
+                headers: {
+                    // No CDN caching: the VPS backend already caches per-endpoint.
+                    // stale-while-revalidate was causing Vercel edge nodes to serve
+                    // up to 90 s of stale data (requiring multiple reloads to refresh).
+                    'Cache-Control': 'no-store, no-cache, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                    'X-Proxy-Backend': BACKEND_API,
+                    ...(backendSource ? { 'X-Source': backendSource } : {}),
+                    ...(backendTiming ? { 'Server-Timing': backendTiming } : {}),
+                    ...(backendDb ? { 'X-DB': backendDb } : {}),
+                    ...(backendCache ? { 'X-Cache': backendCache } : {}),
+                },
+            });
+        }
+
+        // Binary/file response path (downloads, etc.)
+        const payload = await response.arrayBuffer();
+        const passthroughHeaders = new Headers({
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'X-Proxy-Backend': BACKEND_API,
+        });
+
+        const contentType = response.headers.get('content-type');
+        const contentDisposition = response.headers.get('content-disposition');
+        const contentLength = response.headers.get('content-length');
+
+        if (contentType) passthroughHeaders.set('Content-Type', contentType);
+        if (contentDisposition) passthroughHeaders.set('Content-Disposition', contentDisposition);
+        if (contentLength) passthroughHeaders.set('Content-Length', contentLength);
+        if (backendSource) passthroughHeaders.set('X-Source', backendSource);
+        if (backendTiming) passthroughHeaders.set('Server-Timing', backendTiming);
+        if (backendDb) passthroughHeaders.set('X-DB', backendDb);
+        if (backendCache) passthroughHeaders.set('X-Cache', backendCache);
+
+        return new NextResponse(payload, {
+            status: response.status,
+            headers: passthroughHeaders,
         });
     } catch (error) {
         console.error('API Proxy Error:', error);
