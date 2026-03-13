@@ -351,6 +351,94 @@ class FinancialUpdater(BaseUpdater):
 # ============================================================================
 
 class CompanyUpdater(BaseUpdater):
+    @staticmethod
+    def _to_int(value, default: int = 0) -> int:
+        try:
+            if value is None:
+                return default
+            return int(float(value))
+        except Exception:
+            return default
+
+    @staticmethod
+    def _to_float(value, default: float = 0.0) -> float:
+        try:
+            if value is None:
+                return default
+            return float(value)
+        except Exception:
+            return default
+
+    def _upsert_shareholders(self, symbol: str, df: pd.DataFrame) -> int:
+        if df is None or df.empty:
+            return 0
+
+        count = 0
+        for _, row in df.iterrows():
+            holder = str(row.get('share_holder') or '').strip()
+            if not holder:
+                continue
+
+            update_date = str(row.get('update_date') or '').strip() or datetime.now().strftime('%Y-%m-%d')
+            raw_id = str(row.get('id') or '').strip()
+            rec_id = raw_id or f"{symbol}_sh_{holder}_{update_date}"
+
+            self.conn.execute(
+                '''
+                INSERT OR REPLACE INTO shareholders
+                    (id, symbol, share_holder, quantity, share_own_percent, update_date)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ''',
+                (
+                    rec_id,
+                    symbol,
+                    holder,
+                    self._to_int(row.get('quantity')),
+                    self._to_float(row.get('share_own_percent')),
+                    update_date,
+                ),
+            )
+            count += 1
+
+        return count
+
+    def _upsert_officers(self, symbol: str, df: pd.DataFrame) -> int:
+        if df is None or df.empty:
+            return 0
+
+        count = 0
+        for _, row in df.iterrows():
+            name = str(row.get('officer_name') or '').strip()
+            if not name:
+                continue
+
+            update_date = str(row.get('update_date') or '').strip() or datetime.now().strftime('%Y-%m-%d')
+            raw_id = str(row.get('id') or '').strip()
+            rec_id = raw_id or f"{symbol}_of_{name}_{update_date}"
+
+            self.conn.execute(
+                '''
+                INSERT OR REPLACE INTO officers
+                    (id, symbol, officer_name, officer_position, position_short_name, update_date,
+                     officer_own_percent, quantity, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (
+                    rec_id,
+                    symbol,
+                    name,
+                    str(row.get('officer_position') or '').strip(),
+                    str(row.get('position_short_name') or '').strip(),
+                    update_date,
+                    self._to_float(row.get('officer_own_percent')),
+                    self._to_int(row.get('quantity')),
+                    'working',
+                ),
+            )
+            count += 1
+
+        return count
+
     def update_overview(self, symbol: str) -> int:
         if not self.vnstock:
             return 0
@@ -358,24 +446,43 @@ class CompanyUpdater(BaseUpdater):
         try:
             stock = self.vnstock.stock(symbol=symbol, source='VCI')
             df = stock.company.overview()
-            if df is None or df.empty:
-                return 0
-            row = df.iloc[0]
-            self.conn.execute("DELETE FROM company_overview WHERE symbol=?", (symbol,))
-            self.conn.execute(
-                '''INSERT INTO company_overview
-                   (symbol, history, company_profile, icb_name3, charter_capital, updated_at)
-                   VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)''',
-                (
-                    symbol,
-                    row.get('history'),
-                    row.get('company_profile'),
-                    row.get('icb_name3'),
-                    row.get('charter_capital'),
-                ),
-            )
+            changed = 0
+
+            if df is not None and not df.empty:
+                row = df.iloc[0]
+                self.conn.execute("DELETE FROM company_overview WHERE symbol=?", (symbol,))
+                self.conn.execute(
+                    '''INSERT INTO company_overview
+                       (symbol, history, company_profile, icb_name3, charter_capital, updated_at)
+                       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)''',
+                    (
+                        symbol,
+                        row.get('history'),
+                        row.get('company_profile'),
+                        row.get('icb_name3'),
+                        row.get('charter_capital'),
+                    ),
+                )
+                changed += 1
+
+            # Holders datasets are critical for the Holders tab accuracy.
+            try:
+                self.limiter.check()
+                sh_df = stock.company.shareholders()
+                changed += self._upsert_shareholders(symbol, sh_df)
+            except Exception as sh_exc:
+                logger.warning(f"shareholders update failed for {symbol}: {sh_exc}")
+
+            try:
+                self.limiter.check()
+                of_df = stock.company.officers()
+                changed += self._upsert_officers(symbol, of_df)
+            except Exception as of_exc:
+                logger.warning(f"officers update failed for {symbol}: {of_exc}")
+
             self.conn.commit()
-            return 1
+            return 1 if changed > 0 else 0
         except Exception as exc:
+            self.conn.rollback()
             logger.error(f"Error updating company info for {symbol}: {exc}")
             return 0

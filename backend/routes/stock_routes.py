@@ -1194,6 +1194,32 @@ def api_stock_holders(symbol):
             except Exception:
                 pass
 
+        def _choose_snapshot_from_items(items: list[dict], min_rows: int) -> tuple[str | None, str | None, int, int]:
+            counts: dict[str, int] = {}
+            latest_raw = None
+            for item in items:
+                d = str(item.get('update_date') or '').strip()
+                if not d:
+                    continue
+                counts[d] = counts.get(d, 0) + 1
+                if latest_raw is None or d > latest_raw:
+                    latest_raw = d
+
+            if not counts or latest_raw is None:
+                return None, None, 0, 0
+
+            latest_count = int(counts.get(latest_raw, 0))
+            selected = latest_raw
+            for d in sorted(counts.keys(), reverse=True):
+                if int(counts[d]) >= int(min_rows):
+                    selected = d
+                    break
+
+            return selected, latest_raw, int(counts.get(selected, 0)), latest_count
+
+        shareholders_source = 'sqlite'
+        officers_source = 'sqlite'
+
         institutional: list[dict] = []
         all_shareholders: list[dict] = []
         individuals: list[dict] = []
@@ -1236,6 +1262,55 @@ def api_stock_holders(symbol):
                     institutional.append(item)
                 else:
                     individuals.append(item)
+
+        # Live fallback if DB has no usable shareholder rows.
+        if not all_shareholders:
+            try:
+                live_stock = Vnstock().stock(symbol=clean_symbol, source='VCI')
+                sh_df = live_stock.company.shareholders()
+                if sh_df is not None and not sh_df.empty:
+                    live_items: list[dict] = []
+                    for _, row in sh_df.iterrows():
+                        live_items.append(
+                            {
+                                'manager': str(row.get('share_holder') or '').strip(),
+                                'shares': _to_json_number(row.get('quantity')),
+                                'ownership_percent': _to_json_number(row.get('share_own_percent')),
+                                'update_date': str(row.get('update_date') or '').strip(),
+                            }
+                        )
+
+                    selected, latest_raw, selected_count, latest_count = _choose_snapshot_from_items(
+                        live_items,
+                        min_rows=5,
+                    )
+                    if selected:
+                        latest_holder_date = selected
+                        latest_holder_raw = latest_raw
+                        holder_row_count = selected_count
+                        holder_latest_count = latest_count
+                        shareholders_source = 'live_vci_fallback'
+
+                        filtered = [x for x in live_items if str(x.get('update_date') or '') == selected]
+                        for x in sorted(filtered, key=lambda a: _to_json_number(a.get('shares')), reverse=True):
+                            manager = str(x.get('manager') or '').strip()
+                            shares = _to_json_number(x.get('shares'))
+                            own_pct = _to_json_number(x.get('ownership_percent'))
+                            item = {
+                                'manager': manager,
+                                'shares': shares,
+                                'ownership_percent': own_pct,
+                                'value': _to_json_number(shares * current_price),
+                                'change_percent': None,
+                                'update_date': selected,
+                            }
+                            all_shareholders.append(item)
+                            if _holder_group(manager) == 'institutional':
+                                institutional.append(item)
+                            else:
+                                individuals.append(item)
+            except Exception as live_sh_exc:
+                logger.debug(f"live shareholders fallback failed for {clean_symbol}: {live_sh_exc}")
 
         # Keep page useful if strict name classification is too sparse.
         if len(institutional) < 10 and all_shareholders:
@@ -1287,6 +1362,52 @@ def api_stock_holders(symbol):
                     }
                 )
 
+        # Live fallback if officers snapshot is absent in DB.
+        if not insiders:
+            try:
+                live_stock = Vnstock().stock(symbol=clean_symbol, source='VCI')
+                of_df = live_stock.company.officers()
+                if of_df is not None and not of_df.empty:
+                    live_items: list[dict] = []
+                    for _, row in of_df.iterrows():
+                        live_items.append(
+                            {
+                                'name': str(row.get('officer_name') or '').strip(),
+                                'position': str(row.get('officer_position') or '').strip(),
+                                'shares': _to_json_number(row.get('quantity')),
+                                'ownership_percent': _to_json_number(row.get('officer_own_percent')),
+                                'update_date': str(row.get('update_date') or '').strip(),
+                            }
+                        )
+
+                    selected, latest_raw, selected_count, latest_count = _choose_snapshot_from_items(
+                        live_items,
+                        min_rows=3,
+                    )
+                    if selected:
+                        latest_officer_date = selected
+                        latest_officer_raw = latest_raw
+                        officer_row_count = selected_count
+                        officer_latest_count = latest_count
+                        officers_source = 'live_vci_fallback'
+
+                        filtered = [x for x in live_items if str(x.get('update_date') or '') == selected]
+                        insiders = [
+                            {
+                                'name': x.get('name') or '',
+                                'position': x.get('position') or '',
+                                'shares': _to_json_number(x.get('shares')),
+                                'ownership_percent': _to_json_number(x.get('ownership_percent')),
+                                'value': _to_json_number(_to_json_number(x.get('shares')) * current_price),
+                                'change_percent': None,
+                                'update_date': selected,
+                            }
+                            for x in sorted(filtered, key=lambda a: _to_json_number(a.get('shares')), reverse=True)
+                            if str(x.get('name') or '').strip()
+                        ]
+            except Exception as live_of_exc:
+                logger.debug(f"live officers fallback failed for {clean_symbol}: {live_of_exc}")
+
         conn.close()
 
         summary = {
@@ -1308,6 +1429,10 @@ def api_stock_holders(symbol):
             'shareholders_latest_rows': int(holder_latest_count),
             'officers_snapshot_rows': int(officer_row_count),
             'officers_latest_rows': int(officer_latest_count),
+            'sources': {
+                'shareholders': shareholders_source,
+                'officers': officers_source,
+            },
             'summary': summary,
             'institutional': institutional,
             'insiders': insiders,

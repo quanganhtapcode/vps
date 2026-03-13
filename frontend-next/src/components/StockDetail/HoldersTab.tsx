@@ -30,6 +30,16 @@ interface HoldersPayload {
     current_price: number;
     as_of_shareholders?: string;
     as_of_officers?: string;
+    as_of_shareholders_latest_raw?: string;
+    as_of_officers_latest_raw?: string;
+    shareholders_snapshot_rows?: number;
+    shareholders_latest_rows?: number;
+    officers_snapshot_rows?: number;
+    officers_latest_rows?: number;
+    sources?: {
+        shareholders?: string;
+        officers?: string;
+    };
     summary?: {
         institutional_count?: number;
         insider_count?: number;
@@ -152,6 +162,12 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
         : rows.reduce((s: number, x: any) => s + Number(x.value || 0), 0);
 
     const asOf = activeView === 'insiders' ? data?.as_of_officers : data?.as_of_shareholders;
+    const latestRawAsOf = activeView === 'insiders' ? data?.as_of_officers_latest_raw : data?.as_of_shareholders_latest_raw;
+    const selectedRows = activeView === 'insiders' ? Number(data?.officers_snapshot_rows || 0) : Number(data?.shareholders_snapshot_rows || 0);
+    const latestRows = activeView === 'insiders' ? Number(data?.officers_latest_rows || 0) : Number(data?.shareholders_latest_rows || 0);
+    const sourceLabel = activeView === 'insiders'
+        ? (data?.sources?.officers || 'sqlite')
+        : (data?.sources?.shareholders || 'sqlite');
 
     const downloadCsv = () => {
         if (!rows.length) return;
@@ -220,6 +236,7 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                             <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Filings: {filings}</span>
                             <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Total Reported Value: {formatCompactCurrencyVnd(totalValue)} VND</span>
                             {asOf ? <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">As of: {asOf}</span> : null}
+                            <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Source: {sourceLabel}</span>
                         </div>
 
                         <button
@@ -231,6 +248,12 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                             Download
                         </button>
                     </div>
+
+                    {!loading && !error && asOf && latestRawAsOf && asOf !== latestRawAsOf ? (
+                        <div className="mt-3 rounded-tremor-default border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-300">
+                            Showing fuller snapshot ({selectedRows} rows) at {asOf} because latest raw snapshot ({latestRawAsOf}) has only {latestRows} rows.
+                        </div>
+                    ) : null}
                 </div>
 
                 <div className="overflow-x-auto">
