@@ -186,9 +186,52 @@ class StockDataProvider:
             cursor = conn.cursor()
             cursor.execute("SELECT industry FROM overview WHERE symbol = ?", (symbol_upper,))
             row = cursor.fetchone()
+
+            if row and row[0] and str(row[0]).strip() and str(row[0]).strip().lower() != 'unknown':
+                conn.close()
+                return str(row[0]).strip()
+
+            # Fallback to company.industry when overview is missing/blank
+            try:
+                cursor.execute("SELECT industry FROM company WHERE symbol = ?", (symbol_upper,))
+                company_row = cursor.fetchone()
+                if company_row and company_row[0] and str(company_row[0]).strip() and str(company_row[0]).strip().lower() != 'unknown':
+                    conn.close()
+                    return str(company_row[0]).strip()
+            except Exception:
+                pass
+
             conn.close()
-            return row[0] if row else "Unknown"
-        except:
+
+            # Final fallback: vci_screening.viSector
+            try:
+                screening_db = resolve_vci_screening_db_path()
+                if screening_db and os.path.exists(screening_db):
+                    sconn = sqlite3.connect(screening_db)
+                    scur = sconn.cursor()
+                    scur.execute(
+                        """
+                        SELECT viSector, enSector
+                        FROM screening_data
+                        WHERE UPPER(ticker) = ?
+                        LIMIT 1
+                        """,
+                        (symbol_upper,),
+                    )
+                    srow = scur.fetchone()
+                    sconn.close()
+                    if srow:
+                        vi_sector = srow[0]
+                        en_sector = srow[1]
+                        if vi_sector and str(vi_sector).strip():
+                            return str(vi_sector).strip()
+                        if en_sector and str(en_sector).strip():
+                            return str(en_sector).strip()
+            except Exception:
+                pass
+
+            return "Unknown"
+        except Exception:
             return "Unknown"
 
     def _get_organ_name_for_symbol(self, symbol: str) -> str:
@@ -293,12 +336,18 @@ class StockDataProvider:
                 # Ensure name is present (join with companies if needed, but overview has some info)
 
                 # Get additional company info (description)
-                cursor.execute("SELECT name, company_profile FROM company WHERE symbol = ?", (symbol,))
+                cursor.execute("SELECT name, company_profile, industry FROM company WHERE symbol = ?", (symbol,))
                 comp_row = cursor.fetchone()
 
                 if comp_row:
                     if not data.get('name'):
                         data['name'] = comp_row['name']
+
+                    if not data.get('industry') or not str(data.get('industry')).strip() or str(data.get('industry')).strip().lower() == 'unknown':
+                        data['industry'] = comp_row['industry']
+
+                    if not data.get('sector') or not str(data.get('sector')).strip() or str(data.get('sector')).strip().lower() == 'unknown':
+                        data['sector'] = data.get('industry')
 
                     # Populate overview.description
                     data['overview'] = {
@@ -306,6 +355,12 @@ class StockDataProvider:
                     }
                 else:
                     data['overview'] = {'description': "No description available."}
+
+                # Final industry normalization to prevent blank sector on stock detail
+                if not data.get('industry') or not str(data.get('industry')).strip() or str(data.get('industry')).strip().lower() == 'unknown':
+                    data['industry'] = self._get_industry_for_symbol(symbol)
+                if not data.get('sector') or not str(data.get('sector')).strip() or str(data.get('sector')).strip().lower() == 'unknown':
+                    data['sector'] = data.get('industry')
 
                 # Enrich banking metrics from normalized wide ratio table (if available)
                 cursor.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name='ratio_wide'")
@@ -572,6 +627,8 @@ class StockDataProvider:
             cursor.execute("SELECT industry FROM overview WHERE symbol = ?", (symbol,))
             row = cursor.fetchone()
             industry = row['industry'] if row and row['industry'] else None
+            if industry and isinstance(industry, str):
+                industry = industry.strip() or None
             
             if not industry:
                 # Fallback to metadata/listing
