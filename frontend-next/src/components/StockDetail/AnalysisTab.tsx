@@ -23,6 +23,7 @@ import { cx } from '@/lib/utils';
 interface Peer {
     symbol: string;
     name: string;
+    industry?: string | null;
     pe: number | null;
     pb: number | null;
     roe: number | null;
@@ -78,6 +79,7 @@ function normalizePeer(rawPeer: any): Peer {
     return {
         symbol: String(rawPeer?.symbol || '').toUpperCase(),
         name: rawPeer?.name || rawPeer?.symbol || '-',
+        industry: rawPeer?.industry || null,
         pe: toNumberOrNull(rawPeer?.pe),
         pb: toNumberOrNull(rawPeer?.pb),
         roe: toNumberOrNull(rawPeer?.roe),
@@ -217,6 +219,17 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory, isLoading =
         }, {} as Record<MetricKey, { best: number | null; worst: number | null }>);
     }, [peers]);
 
+    const displayIndustry = useMemo(() => {
+        const rawSector = String(sector || '').trim();
+        if (rawSector && rawSector.toLowerCase() !== 'unknown') return rawSector;
+
+        const peerIndustry = peers
+            .map((peer) => String(peer.industry || '').trim())
+            .find((value) => value && value.toLowerCase() !== 'unknown');
+
+        return peerIndustry || 'Unknown';
+    }, [sector, peers]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center p-12">
@@ -277,7 +290,7 @@ const AnalysisTab = ({ symbol, sector, initialPeers, initialHistory, isLoading =
                                 Industry Comparison
                             </h3>
                             <p className="mt-1 text-tremor-default leading-6 text-tremor-content dark:text-dark-tremor-content">
-                                Comparison with top {sector} peers ranked by Market Cap.
+                                Comparison with top {displayIndustry} peers ranked by Market Cap.
                             </p>
                         </div>
                         {medianPe !== null && (

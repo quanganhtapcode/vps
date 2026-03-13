@@ -238,6 +238,21 @@ export default function StockDetailClient({ symbol: initialSymbol }: { symbol?: 
                     });
                     setRawOverviewData(data);
 
+                    const resolvedSector = [data.sector, data.industry, baseInfo.sector]
+                        .map((v: any) => String(v || '').trim())
+                        .find((v: string) => v && v.toLowerCase() !== 'unknown') || baseInfo.sector;
+                    const resolvedExchange = String(data.exchange || baseInfo.exchange || '').trim() || 'N/A';
+                    const resolvedName = String(data.name || data.company_name || baseInfo.companyName || symbol).trim() || symbol;
+
+                    setStockInfo(prev => ({
+                        ...(prev || baseInfo),
+                        symbol,
+                        companyName: resolvedName,
+                        sector: resolvedSector,
+                        exchange: resolvedExchange,
+                        overview: prev?.overview,
+                    }));
+
                     // Update description from DB if available (faster than fallback fetch)
                     if (data.overview?.description) {
                         setStockInfo(prev => ({
