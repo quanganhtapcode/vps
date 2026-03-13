@@ -24,6 +24,10 @@ UPDATER_DIR = BASE_DIR / "backend" / "updater"
 if not os.environ.get("VIETNAM_STOCK_DB_PATH"):
     os.environ["VIETNAM_STOCK_DB_PATH"] = str(BASE_DIR / "vietnam_stocks.db")
 
+# Keep BCTC freshness high by default unless explicitly overridden.
+if not os.environ.get("SKIP_IF_UPDATED_WITHIN_DAYS"):
+    os.environ["SKIP_IF_UPDATED_WITHIN_DAYS"] = "3"
+
 DB_PATH = os.environ["VIETNAM_STOCK_DB_PATH"]
 
 # ── Logging ─────────────────────────────────────────────────────────────────
@@ -175,13 +179,14 @@ def main() -> int:
         logger.error("Stopping pipeline: BCTC fetch failed")
         return 1
 
-    # Step 2 — company info (weekly, Sunday only; skip on other days unless forced)
+    # Step 2 — company info (mid-week + weekly; skip on other days unless forced)
     today = datetime.now().weekday()  # 6 = Sunday
     force_company = os.getenv("FORCE_COMPANY_UPDATE", "").lower() in ("1", "true", "yes")
-    if today == 6 or force_company:
+    # Wednesday (2) + Sunday (6) keeps profiles fresher without heavy API churn.
+    if today in (2, 6) or force_company:
         step_update_company_info(symbols)
     else:
-        logger.info("Skipping company info update (runs on Sundays; set FORCE_COMPANY_UPDATE=1 to override)")
+        logger.info("Skipping company info update (runs on Wed/Sun; set FORCE_COMPANY_UPDATE=1 to override)")
 
     # Step 3 — compat views (always)
     step_create_compat_views()

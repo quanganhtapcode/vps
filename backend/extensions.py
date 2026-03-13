@@ -12,11 +12,14 @@ financial_repo = None
 valuation_service = None
 financial_service = None
 stock_service = None
+_resolved_db_path = None
 
 def init_provider():
-    global stock_provider, financial_repo, valuation_service, financial_service, stock_service
-    
-    db_path = resolve_stocks_db_path()
+    global stock_provider, financial_repo, valuation_service, financial_service, stock_service, _resolved_db_path
+
+    if not _resolved_db_path:
+        _resolved_db_path = resolve_stocks_db_path()
+    db_path = _resolved_db_path
     
     # Legacy provider
     if stock_provider is None:

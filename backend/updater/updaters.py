@@ -99,7 +99,7 @@ class RateLimiter:
 
 # How many days since last update before we re-fetch a symbol's financials
 SKIP_IF_UPDATED_WITHIN_DAYS = int(
-    os.environ.get("SKIP_IF_UPDATED_WITHIN_DAYS", "30")
+    os.environ.get("SKIP_IF_UPDATED_WITHIN_DAYS", "3")
 )
 
 

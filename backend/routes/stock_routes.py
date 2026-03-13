@@ -7,9 +7,10 @@ from datetime import datetime, timedelta
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from backend.extensions import get_provider, get_valuation_service
 from backend.utils import validate_stock_symbol
-from backend.db_path import resolve_stocks_db_path
+from backend.db_path import resolve_stocks_db_path, resolve_vci_screening_db_path
 from backend.routes.stock.financial_dashboard import register as register_financial_dashboard_routes
 from backend.routes.stock.missing_routes import register as register_missing_routes
 from vnstock import Vnstock, Quote, Company
@@ -108,6 +109,153 @@ def _to_json_number(value, default: float = 0.0) -> float:
         return v
     except Exception:
         return default
+
+
+def _normalize_percent_value(value) -> float | None:
+    try:
+        if value is None:
+            return None
+        v = float(value)
+        if np.isnan(v) or np.isinf(v):
+            return None
+        # screening_data may store percent as 16.5 while other sources store 0.165.
+        if abs(v) <= 1:
+            return float(v * 100.0)
+        return float(v)
+    except Exception:
+        return None
+
+
+def _get_screening_metrics(symbol: str) -> dict | None:
+    symbol_u = str(symbol or '').upper().strip()
+    if not symbol_u:
+        return None
+
+    cache_key = f"screening_metrics_{symbol_u}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    db_path = resolve_vci_screening_db_path()
+    if not db_path or not os.path.exists(db_path):
+        _cache_set(cache_key, None)
+        return None
+
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='screening_data'")
+        if cur.fetchone() is None:
+            _cache_set(cache_key, None)
+            return None
+
+        cols = {
+            str(r[1])
+            for r in cur.execute("PRAGMA table_info(screening_data)").fetchall() or []
+            if len(r) > 1
+        }
+
+        wanted = ['ticker', 'ttmPe', 'ttmPb', 'ttmRoe', 'marketCap']
+        selected = [c for c in wanted if c in cols]
+        if 'ticker' not in selected:
+            _cache_set(cache_key, None)
+            return None
+
+        row = cur.execute(
+            f"SELECT {', '.join(selected)} FROM screening_data WHERE UPPER(ticker) = ? LIMIT 1",
+            (symbol_u,),
+        ).fetchone()
+        if not row:
+            _cache_set(cache_key, None)
+            return None
+
+        payload = {
+            'pe': _to_json_number(row['ttmPe']) if 'ttmPe' in row.keys() else 0.0,
+            'pb': _to_json_number(row['ttmPb']) if 'ttmPb' in row.keys() else 0.0,
+            'roe': _normalize_percent_value(row['ttmRoe']) if 'ttmRoe' in row.keys() else None,
+            'market_cap': _to_json_number(row['marketCap']) if 'marketCap' in row.keys() else 0.0,
+            'source': 'vci_screening.sqlite',
+        }
+        _cache_set(cache_key, payload)
+        return payload
+    except Exception as exc:
+        logger.debug(f"screening_data lookup failed for {symbol_u}: {exc}")
+        _cache_set(cache_key, None)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def _apply_source_priority(data: dict, symbol: str) -> dict:
+    """Apply SQLite source priority: vci_screening -> vietnam_stocks -> vnstock."""
+    if not isinstance(data, dict):
+        return data
+
+    out = dict(data)
+    screening = _get_screening_metrics(symbol)
+    if not screening:
+        out.setdefault('source_priority', 'vci_screening -> vietnam_stocks -> vnstock')
+        return out
+
+    pe = _to_json_number(screening.get('pe'))
+    pb = _to_json_number(screening.get('pb'))
+    roe = screening.get('roe')
+    market_cap = _to_json_number(screening.get('market_cap'))
+
+    if pe > 0:
+        out['pe'] = pe
+        out['pe_ratio'] = pe
+        out['pe_source'] = screening['source']
+    if pb > 0:
+        out['pb'] = pb
+        out['pb_ratio'] = pb
+        out['pb_source'] = screening['source']
+    if roe is not None and roe != 0:
+        out['roe'] = float(roe)
+        out['roe_source'] = screening['source']
+    if market_cap > 0:
+        out['market_cap'] = market_cap
+        out['marketCap'] = market_cap
+        out['market_cap_source'] = screening['source']
+
+    out['fresh_metrics_source'] = screening['source']
+    out['source_priority'] = 'vci_screening -> vietnam_stocks -> vnstock'
+    return out
+
+
+def _fetch_batch_price_symbol(provider, symbol: str) -> tuple[str, dict]:
+    try:
+        price_data = provider.get_current_price_with_change(symbol)
+
+        cached_data = provider._stock_data_cache.get(symbol, {})
+        company_name = cached_data.get('company_name') or cached_data.get('short_name') or symbol
+        exchange = cached_data.get('exchange', 'HOSE')
+
+        if price_data:
+            current_price = price_data.get('current_price')
+            change_percent = price_data.get('price_change_percent', 0)
+        else:
+            current_price = None
+            change_percent = 0
+
+        return symbol, {
+            "price": current_price,
+            "changePercent": change_percent,
+            "companyName": company_name,
+            "exchange": exchange,
+        }
+    except Exception as e:
+        logger.warning(f"Error getting data for {symbol}: {e}")
+        return symbol, {
+            "price": None,
+            "changePercent": 0,
+            "companyName": symbol,
+            "exchange": "HOSE",
+        }
 
 
 def _get_latest_financial_ratios_row(symbol: str, period: str) -> dict | None:
@@ -293,33 +441,19 @@ def api_batch_price():
         if len(symbols) > 20:
             symbols = symbols[:20]
         
-        result = {}
-        for symbol in symbols:
-            try:
-                # Optimized batch fetch could be implemented in provider
-                price_data = provider.get_current_price_with_change(symbol)
-                
-                cached_data = provider._stock_data_cache.get(symbol, {})
-                company_name = cached_data.get('company_name') or cached_data.get('short_name') or symbol
-                exchange = cached_data.get('exchange', 'HOSE')
-                
-                if price_data:
-                    current_price = price_data.get('current_price')
-                    change_percent = price_data.get('price_change_percent', 0)
-                else:
-                    current_price = None
-                    change_percent = 0
-                
-                result[symbol] = {
-                    "price": current_price,
-                    "changePercent": change_percent,
-                    "companyName": company_name,
-                    "exchange": exchange
-                }
-            except Exception as e:
-                logger.warning(f"Error getting data for {symbol}: {e}")
-                result[symbol] = {"price": None, "changePercent": 0, "companyName": symbol, "exchange": "HOSE"}
-        
+        workers = min(8, max(2, len(symbols)))
+        mapped: dict[str, dict] = {}
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(_fetch_batch_price_symbol, provider, symbol) for symbol in symbols]
+            for future in as_completed(futures):
+                sym, payload = future.result()
+                mapped[sym] = payload
+
+        # Keep response order stable with request order.
+        result = {
+            sym: mapped.get(sym, {"price": None, "changePercent": 0, "companyName": sym, "exchange": "HOSE"})
+            for sym in symbols
+        }
         return jsonify(result)
     except Exception as exc:
         logger.error(f"API /stock/batch-price error: {exc}")
@@ -345,7 +479,8 @@ def api_stock(symbol):
                 return obj
                 
         enriched_data = _enrich_with_financial_ratios(data=data, symbol=symbol, period=period)
-        clean_data = convert_nan_to_none(enriched_data)
+        prioritized_data = _apply_source_priority(enriched_data, symbol)
+        clean_data = convert_nan_to_none(prioritized_data)
         return jsonify(clean_data)
     except Exception as exc:
         logger.error(f"API /stock error {symbol}: {exc}")
@@ -359,6 +494,7 @@ def api_app(symbol):
         period = request.args.get("period", "year")
         fetch_price = request.args.get("fetch_price", "false").lower() == "true"
         data = provider.get_stock_data(symbol, period, fetch_current_price=fetch_price)
+        data = _apply_source_priority(data, symbol)
         
         # Fallback logic for ROE/ROA if quarter data missing
         if data.get("success") and period == "quarter":
