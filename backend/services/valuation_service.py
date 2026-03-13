@@ -383,6 +383,37 @@ def _load_overview_metrics_map(db_path: str, symbols: list[str]) -> dict[str, di
     return out
 
 
+def _load_valuation_datamart_row(db_path: str, symbol: str) -> dict | None:
+    symbol = str(symbol or '').upper().strip()
+    if not symbol:
+        return None
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    try:
+        exists = cur.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='valuation_datamart'"
+        ).fetchone()
+        if not exists:
+            return None
+
+        row = cur.execute(
+            """
+            SELECT *
+            FROM valuation_datamart
+            WHERE UPPER(symbol) = ?
+            LIMIT 1
+            """,
+            (symbol,),
+        ).fetchone()
+        return dict(row) if row else None
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
 def _merge_peer_details(screening_peers: list[dict], overview_peers: list[dict]) -> list[dict]:
     merged: dict[str, dict] = {}
 
@@ -887,32 +918,54 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
     required_return = _to_float(request_data.get('requiredReturn'), 12.0) / 100.0
     wacc = _to_float(request_data.get('wacc'), 10.5) / 100.0
 
-    # Industry comparables (cached)
+    # Industry comparables: prefer precomputed valuation_datamart for fast request path.
     screening_db_path = resolve_vci_screening_db_path()
     screening_key = inputs.get('industry_screening_key')
     screening_name = inputs.get('industry_screening_name')
+    datamart_row = _load_valuation_datamart_row(db_path, inputs['symbol'])
 
     rows: list[tuple[str, float, float]] = []
-    comparables_source = 'sqlite.overview (industry cohort cached; symbol excluded)'
+    ps_rows: list[tuple[str, float]] = []
+    comparables_source = 'sqlite.valuation_datamart (precomputed medians/counts per symbol)'
     comparables_group = {'type': 'overview.industry', 'key': industry}
 
-    if screening_key:
-        try:
-            rows = _screening_industry_cache.get_rows(screening_db_path, str(screening_key))
-            comparables_source = (
-                'sqlite.vci_screening.screening_data '
-                '(icbCodeLv2 cohort cached; rows with either ttmPe or ttmPb; symbol excluded)'
-            )
-            comparables_group = {
-                'type': 'vci_screening.icbCodeLv2',
-                'key': str(screening_key),
-                'name': screening_name,
-            }
-        except Exception:
-            rows = []
+    dm_screening_key = str((datamart_row or {}).get('industry_screening_key') or '').strip()
+    dm_screening_name = str((datamart_row or {}).get('industry_screening_name') or '').strip()
+    if dm_screening_key:
+        comparables_group = {
+            'type': 'vci_screening.icbCodeLv2',
+            'key': dm_screening_key,
+            'name': dm_screening_name or screening_name,
+        }
 
-    if not rows and industry and industry != 'Unknown':
-        rows = _industry_cache.get_rows(db_path, industry)
+    # Build full samples only when caller needs detailed comparables lists,
+    # or when datamart row is unavailable.
+    if include_lists or not datamart_row:
+        comparables_source = 'sqlite.overview (industry cohort cached; symbol excluded)'
+        comparables_group = {'type': 'overview.industry', 'key': industry}
+
+        if screening_key:
+            try:
+                rows = _screening_industry_cache.get_rows(screening_db_path, str(screening_key))
+                comparables_source = (
+                    'sqlite.vci_screening.screening_data '
+                    '(icbCodeLv2 cohort cached; rows with either ttmPe or ttmPb; symbol excluded)'
+                )
+                comparables_group = {
+                    'type': 'vci_screening.icbCodeLv2',
+                    'key': str(screening_key),
+                    'name': screening_name,
+                }
+            except Exception:
+                rows = []
+
+        if not rows and industry and industry != 'Unknown':
+            rows = _industry_cache.get_rows(db_path, industry)
+
+        try:
+            ps_rows = _industry_ps_cache.get_ps_rows(db_path, industry)
+        except Exception:
+            ps_rows = []
 
     # PE/PB should use their own valid samples independently.
     pe_values_all = [pe for sym, pe, _pb in rows if sym != inputs['symbol'] and 0 < pe <= 80]
@@ -920,6 +973,21 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
 
     industry_median_pe = _median(pe_values_all)
     industry_median_pb = _median(pb_values_all)
+
+    pe_sample_size = len(pe_values_all)
+    pb_sample_size = len(pb_values_all)
+
+    if datamart_row:
+        dm_pe = _to_float(datamart_row.get('pe_median'))
+        dm_pb = _to_float(datamart_row.get('pb_median'))
+        dm_pe_count = int(_to_float(datamart_row.get('pe_count')))
+        dm_pb_count = int(_to_float(datamart_row.get('pb_count')))
+        if dm_pe > 0 and dm_pe_count > 0:
+            industry_median_pe = float(dm_pe)
+            pe_sample_size = dm_pe_count
+        if dm_pb > 0 and dm_pb_count > 0:
+            industry_median_pb = float(dm_pb)
+            pb_sample_size = dm_pb_count
 
     pe_used = float(industry_median_pe) if industry_median_pe is not None else 15.0
     pb_used = float(industry_median_pb) if industry_median_pb is not None else 1.5
@@ -939,77 +1007,86 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
     price_for_ps = implied_price_rw if implied_price_rw > 0 else current_price
     rev_per_share = (price_for_ps / ps_company) if (ps_company > 0 and price_for_ps > 0) else 0.0
 
-    ps_rows: list[tuple[str, float]] = []
-    try:
-        ps_rows = _industry_ps_cache.get_ps_rows(db_path, industry)
-    except Exception:
-        ps_rows = []
-
     ps_values_all = [ps for sym, ps in ps_rows if sym != inputs['symbol'] and 0 < ps <= 200]
     industry_median_ps = _median(ps_values_all)
+    ps_sample_size = len(ps_values_all)
+
+    if datamart_row:
+        dm_ps = _to_float(datamart_row.get('ps_median'))
+        dm_ps_count = int(_to_float(datamart_row.get('ps_count')))
+        if dm_ps > 0 and dm_ps_count > 0:
+            industry_median_ps = float(dm_ps)
+            ps_sample_size = dm_ps_count
+
     ps_used = float(industry_median_ps) if industry_median_ps is not None else 3.0
 
     justified_ps = float(rev_per_share * ps_used) if rev_per_share > 0 else 0.0
 
-    screening_peers: list[dict] = []
-    overview_peers: list[dict] = []
-    if screening_key:
-        try:
-            screening_peers = _load_screening_peer_details(screening_db_path, str(screening_key), inputs['symbol'])
-        except Exception:
-            screening_peers = []
-    if industry and industry != 'Unknown':
-        try:
-            overview_peers = _load_overview_peer_details(db_path, industry, inputs['symbol'])
-        except Exception:
-            overview_peers = []
+    peers_detailed: list[dict] = []
+    pe_peers: list[dict] = []
+    pb_peers: list[dict] = []
+    ps_peers: list[dict] = []
 
-    peers_detailed = _merge_peer_details(screening_peers, overview_peers)
+    if include_lists:
+        screening_peers: list[dict] = []
+        overview_peers: list[dict] = []
+        if screening_key:
+            try:
+                screening_peers = _load_screening_peer_details(screening_db_path, str(screening_key), inputs['symbol'])
+            except Exception:
+                screening_peers = []
+        if industry and industry != 'Unknown':
+            try:
+                overview_peers = _load_overview_peer_details(db_path, industry, inputs['symbol'])
+            except Exception:
+                overview_peers = []
 
-    ps_map = {sym: _to_float(ps) for sym, ps in ps_rows if sym != inputs['symbol'] and 0 < _to_float(ps) <= 200}
-    for p in peers_detailed:
-        sym = str(p.get('symbol') or '').upper()
-        ps_val = _to_float(ps_map.get(sym))
-        if ps_val > 0:
-            p['ps'] = ps_val
+        peers_detailed = _merge_peer_details(screening_peers, overview_peers)
 
-    # Ensure ROA and other fallback fields are present where possible.
-    missing_roa_symbols = [
-        str(p.get('symbol')).upper()
-        for p in peers_detailed
-        if p.get('symbol') and _to_float(p.get('roa')) == 0
-    ]
-    if missing_roa_symbols:
-        overview_map = _load_overview_metrics_map(db_path, missing_roa_symbols)
+        ps_map = {sym: _to_float(ps) for sym, ps in ps_rows if sym != inputs['symbol'] and 0 < _to_float(ps) <= 200}
         for p in peers_detailed:
             sym = str(p.get('symbol') or '').upper()
-            ov = overview_map.get(sym)
-            if not ov:
-                continue
-            if _to_float(p.get('roa')) == 0 and _to_float(ov.get('roa')) != 0:
-                p['roa'] = _to_float(ov.get('roa'))
-            if _to_float(p.get('roe')) == 0 and _to_float(ov.get('roe')) != 0:
-                p['roe'] = _to_float(ov.get('roe'))
-            if _to_float(p.get('market_cap')) == 0 and _to_float(ov.get('market_cap')) != 0:
-                p['market_cap'] = _to_float(ov.get('market_cap'))
-            if not p.get('sector') and ov.get('sector'):
-                p['sector'] = ov.get('sector')
+            ps_val = _to_float(ps_map.get(sym))
+            if ps_val > 0:
+                p['ps'] = ps_val
 
-    pe_peers = [
-        {'symbol': str(p['symbol']).upper(), 'pe': float(_to_float(p.get('pe')))}
-        for p in peers_detailed
-        if _to_float(p.get('pe')) > 0 and _to_float(p.get('pe')) <= 80
-    ]
-    pb_peers = [
-        {'symbol': str(p['symbol']).upper(), 'pb': float(_to_float(p.get('pb')))}
-        for p in peers_detailed
-        if _to_float(p.get('pb')) > 0 and _to_float(p.get('pb')) <= 20
-    ]
-    ps_peers = [
-        {'symbol': str(p['symbol']).upper(), 'ps': float(_to_float(p.get('ps')))}
-        for p in peers_detailed
-        if _to_float(p.get('ps')) > 0 and _to_float(p.get('ps')) <= 200
-    ]
+        # Ensure ROA and other fallback fields are present where possible.
+        missing_roa_symbols = [
+            str(p.get('symbol')).upper()
+            for p in peers_detailed
+            if p.get('symbol') and _to_float(p.get('roa')) == 0
+        ]
+        if missing_roa_symbols:
+            overview_map = _load_overview_metrics_map(db_path, missing_roa_symbols)
+            for p in peers_detailed:
+                sym = str(p.get('symbol') or '').upper()
+                ov = overview_map.get(sym)
+                if not ov:
+                    continue
+                if _to_float(p.get('roa')) == 0 and _to_float(ov.get('roa')) != 0:
+                    p['roa'] = _to_float(ov.get('roa'))
+                if _to_float(p.get('roe')) == 0 and _to_float(ov.get('roe')) != 0:
+                    p['roe'] = _to_float(ov.get('roe'))
+                if _to_float(p.get('market_cap')) == 0 and _to_float(ov.get('market_cap')) != 0:
+                    p['market_cap'] = _to_float(ov.get('market_cap'))
+                if not p.get('sector') and ov.get('sector'):
+                    p['sector'] = ov.get('sector')
+
+        pe_peers = [
+            {'symbol': str(p['symbol']).upper(), 'pe': float(_to_float(p.get('pe')))}
+            for p in peers_detailed
+            if _to_float(p.get('pe')) > 0 and _to_float(p.get('pe')) <= 80
+        ]
+        pb_peers = [
+            {'symbol': str(p['symbol']).upper(), 'pb': float(_to_float(p.get('pb')))}
+            for p in peers_detailed
+            if _to_float(p.get('pb')) > 0 and _to_float(p.get('pb')) <= 20
+        ]
+        ps_peers = [
+            {'symbol': str(p['symbol']).upper(), 'ps': float(_to_float(p.get('ps')))}
+            for p in peers_detailed
+            if _to_float(p.get('ps')) > 0 and _to_float(p.get('ps')) <= 200
+        ]
 
     fcfe_value, fcfe_details = _dcf_per_share(
         base_cashflow_per_share=float(eps),
@@ -1069,9 +1146,9 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
 
     quality = _build_quality_score(
         inputs=inputs,
-        pe_count=len(pe_values_all),
-        pb_count=len(pb_values_all),
-        ps_count=len(ps_values_all),
+        pe_count=pe_sample_size,
+        pb_count=pb_sample_size,
+        ps_count=ps_sample_size,
     )
 
     pe_values_export = pe_values_all[:comparable_list_limit]
@@ -1086,6 +1163,20 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
     ps_truncated = len(ps_values_all) > len(ps_values_export)
     peers_detailed_truncated = len(peers_detailed) > len(detailed_peers_export)
 
+    pe_summary = _summarize(pe_values_all, industry_median_pe)
+    pb_summary = _summarize(pb_values_all, industry_median_pb)
+    ps_summary = _summarize(ps_values_all, industry_median_ps)
+
+    if pe_sample_size > pe_summary.get('count', 0):
+        pe_summary['count'] = int(pe_sample_size)
+        pe_summary['median_computed'] = industry_median_pe
+    if pb_sample_size > pb_summary.get('count', 0):
+        pb_summary['count'] = int(pb_sample_size)
+        pb_summary['median_computed'] = industry_median_pb
+    if ps_sample_size > ps_summary.get('count', 0):
+        ps_summary['count'] = int(ps_sample_size)
+        ps_summary['median_computed'] = industry_median_ps
+
     export = {
         'market': {
             'current_price': float(current_price),
@@ -1095,7 +1186,7 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
             'industry': industry,
             'group': comparables_group,
             'pe_ttm': {
-                **_summarize(pe_values_all, industry_median_pe),
+                **pe_summary,
                 'used': float(pe_used),
                 'values': [float(v) for v in pe_values_export] if include_lists else [],
                 'peers': pe_peers_export if include_lists else [],
@@ -1103,7 +1194,7 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
                 'filter': {'min_exclusive': 0, 'max_inclusive': 80},
             },
             'pb': {
-                **_summarize(pb_values_all, industry_median_pb),
+                **pb_summary,
                 'used': float(pb_used),
                 'values': [float(v) for v in pb_values_export] if include_lists else [],
                 'peers': pb_peers_export if include_lists else [],
@@ -1111,7 +1202,7 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
                 'filter': {'min_exclusive': 0, 'max_inclusive': 20},
             },
             'ps': {
-                **_summarize(ps_values_all, industry_median_ps),
+                **ps_summary,
                 'used': float(ps_used),
                 'values': [float(v) for v in ps_values_export] if include_lists else [],
                 'peers': ps_peers_export if include_lists else [],
@@ -1170,7 +1261,7 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
                 'rev_per_share': float(rev_per_share),
                 'ps_used': float(ps_used),
                 'formula': 'rev_per_share * industry_median_ps',
-                'industry_ps_sample_size': int(len(ps_values_all)),
+                'industry_ps_sample_size': int(ps_sample_size),
                 'result': float(justified_ps),
             },
         },
@@ -1199,12 +1290,12 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
             'industry': industry,
             'industry_median_pe_ttm_used': float(pe_used),
             'industry_median_pb_used': float(pb_used),
-            'industry_pe_sample_size': int(len(pe_values_all)),
-            'industry_pb_sample_size': int(len(pb_values_all)),
+            'industry_pe_sample_size': int(pe_sample_size),
+            'industry_pb_sample_size': int(pb_sample_size),
             'ps_company': float(ps_company),
             'rev_per_share': float(rev_per_share),
             'industry_median_ps_used': float(ps_used),
-            'industry_ps_sample_size': int(len(ps_values_all)),
+            'industry_ps_sample_size': int(ps_sample_size),
             'shares_outstanding': float(inputs.get('shares_outstanding', 0.0)),
             'eps_ttm_current': float(eps),
             'eps_history_yearly': inputs.get('eps_history_yearly', []),

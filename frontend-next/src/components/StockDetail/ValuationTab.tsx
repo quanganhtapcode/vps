@@ -297,17 +297,17 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
         justified_ps: models.justified_ps.enabled ? models.justified_ps.weight : 0,
     }), [models]);
 
-    const buildValuationPayload = useCallback(() => ({
+    const buildValuationPayload = useCallback((includeComparableLists = false) => ({
         ...assumptions,
         modelWeights: getModelWeights(),
         currentPrice: manualPrice,
-        includeComparableLists: true,
+        includeComparableLists,
     }), [assumptions, getModelWeights, manualPrice]);
 
     const handleFullExport = async () => {
         setExportLoading(true);
         try {
-            const fresh = await calculateValuation(symbol, buildValuationPayload());
+            const fresh = await calculateValuation(symbol, buildValuationPayload(true));
             const exportResult = fresh?.success ? fresh : result;
 
             if (fresh?.success) {
@@ -332,7 +332,7 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
     const handleCalculate = async () => {
         setLoading(true);
         try {
-            const data = await calculateValuation(symbol, buildValuationPayload());
+            const data = await calculateValuation(symbol, buildValuationPayload(false));
             if (data && data.success) {
                 setResult(data);
             }
@@ -400,6 +400,32 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
     }, [models, result]);
 
     const finalUpside = getUpside(weightedAvg);
+
+    const quality = result?.quality || null;
+    const qualityScore = Number(quality?.score || 0);
+    const qualityGrade = String(quality?.grade || 'N/A');
+    const qualityChecks = Array.isArray(quality?.checks) ? quality.checks : [];
+    const qualityPassed = qualityChecks.filter((c: any) => Boolean(c?.passed)).length;
+
+    const scenarios = result?.scenarios || null;
+    const scenarioRows = scenarios
+        ? [
+            { key: 'bear', label: 'Bear', data: scenarios.bear },
+            { key: 'base', label: 'Base', data: scenarios.base },
+            { key: 'bull', label: 'Bull', data: scenarios.bull },
+        ]
+        : [];
+
+    const confidenceBars = qualityScore >= 85 ? 5 : qualityScore >= 70 ? 4 : qualityScore >= 55 ? 3 : qualityScore >= 40 ? 2 : 1;
+    const confidenceLabel = qualityGrade === 'A'
+        ? 'Very High'
+        : qualityGrade === 'B'
+            ? 'High'
+            : qualityGrade === 'C'
+                ? 'Medium'
+                : qualityGrade === 'D'
+                    ? 'Low'
+                    : 'Very Low';
 
     const handleReset = () => {
         setAssumptions(defaultAssumptions);
@@ -590,10 +616,10 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                                                 <Text className="text-slate-400 text-xs uppercase mb-1">Confidence</Text>
                                                 <div className="flex justify-end gap-1">
                                                     {[1, 2, 3, 4, 5].map(i => (
-                                                        <div key={i} className={classNames("h-2 w-6 rounded-full", i <= 4 ? "bg-blue-500" : "bg-slate-700")} />
+                                                        <div key={i} className={classNames("h-2 w-6 rounded-full", i <= confidenceBars ? "bg-blue-500" : "bg-slate-700")} />
                                                     ))}
                                                 </div>
-                                                <Text className="text-xs text-slate-500 mt-1">High</Text>
+                                                <Text className="text-xs text-slate-500 mt-1">{confidenceLabel}</Text>
                                             </div>
                                         </div>
                                     </div>
@@ -666,6 +692,110 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </Card>
+            )}
+
+            {scenarioRows.length > 0 && (
+                <Card className="rounded-tremor-default overflow-hidden">
+                    <div className="mb-4 flex items-center justify-between">
+                        <div>
+                            <Title>Scenario Analysis</Title>
+                            <Text className="mt-1 text-xs text-gray-500">Bull/Base/Bear with adjusted growth, discount rates, and comparables factor</Text>
+                        </div>
+                        <Badge color="blue" size="sm">3 scenarios</Badge>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        {scenarioRows.map((row) => {
+                            const sc = row.data || {};
+                            const scVal = Number(sc?.valuations?.weighted_average || 0);
+                            const scUp = Number(sc?.upside_pct || 0);
+                            return (
+                                <div
+                                    key={row.key}
+                                    className={classNames(
+                                        'rounded-lg border p-4',
+                                        row.key === 'base'
+                                            ? 'border-blue-300 bg-blue-50/60 dark:border-blue-700 dark:bg-blue-900/20'
+                                            : row.key === 'bull'
+                                                ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-900/20'
+                                                : 'border-rose-200 bg-rose-50/50 dark:border-rose-800 dark:bg-rose-900/20'
+                                    )}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <Text className="text-xs font-semibold uppercase tracking-wide">{row.label}</Text>
+                                        <Badge color={scUp >= 0 ? 'emerald' : 'rose'} size="xs">{scUp > 0 ? '+' : ''}{scUp.toFixed(1)}%</Badge>
+                                    </div>
+                                    <Metric className="mt-2">{formatPrice(scVal)}</Metric>
+                                    <div className="mt-3 space-y-1 text-[11px] text-gray-600 dark:text-gray-300">
+                                        <div>Growth: {(Number(sc?.assumptions?.growth || 0) * 100).toFixed(2)}%</div>
+                                        <div>WACC: {(Number(sc?.assumptions?.wacc || 0) * 100).toFixed(2)}%</div>
+                                        <div>Req. Return: {(Number(sc?.assumptions?.required_return || 0) * 100).toFixed(2)}%</div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </Card>
+            )}
+
+            {quality && (
+                <Card className="rounded-tremor-default">
+                    <div className="mb-4 flex items-center justify-between">
+                        <div>
+                            <Title>Model Quality</Title>
+                            <Text className="mt-1 text-xs text-gray-500">Input coverage and peer sample quality for current valuation run</Text>
+                        </div>
+                        <Badge color={qualityScore >= 70 ? 'emerald' : qualityScore >= 55 ? 'amber' : 'rose'} size="sm">
+                            Grade {qualityGrade}
+                        </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <div className="sm:col-span-1">
+                            <Metric>{qualityScore.toFixed(1)}</Metric>
+                            <Text>Score / 100</Text>
+                            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
+                                <div
+                                    className={classNames(
+                                        'h-full rounded-full',
+                                        qualityScore >= 70 ? 'bg-emerald-500' : qualityScore >= 55 ? 'bg-amber-500' : 'bg-rose-500'
+                                    )}
+                                    style={{ width: `${Math.max(0, Math.min(100, qualityScore))}%` }}
+                                />
+                            </div>
+                            <Text className="mt-2 text-xs text-gray-500">
+                                Passed {qualityPassed}/{qualityChecks.length} checks
+                            </Text>
+                        </div>
+                        <div className="sm:col-span-2 overflow-x-auto">
+                            <table className="w-full text-xs">
+                                <thead>
+                                    <tr className="border-b border-gray-200 dark:border-gray-800">
+                                        <th className="py-2 pr-3 text-left font-medium text-gray-500">Check</th>
+                                        <th className="py-2 px-3 text-center font-medium text-gray-500">Status</th>
+                                        <th className="py-2 px-3 text-right font-medium text-gray-500">Points</th>
+                                        <th className="py-2 pl-3 text-left font-medium text-gray-500">Detail</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {qualityChecks.map((check: any, idx: number) => (
+                                        <tr key={`${check?.name || 'check'}-${idx}`} className="border-b border-gray-100 dark:border-gray-900 last:border-0">
+                                            <td className="py-2 pr-3 text-gray-700 dark:text-gray-300">{String(check?.name || '-')}</td>
+                                            <td className="py-2 px-3 text-center">
+                                                <span className={classNames('font-semibold', check?.passed ? 'text-emerald-600' : 'text-rose-600')}>
+                                                    {check?.passed ? 'PASS' : 'MISS'}
+                                                </span>
+                                            </td>
+                                            <td className="py-2 px-3 text-right text-gray-600 dark:text-gray-300">
+                                                {Number(check?.points || 0)}/{Number(check?.max_points || 0)}
+                                            </td>
+                                            <td className="py-2 pl-3 text-gray-500">{String(check?.detail || '')}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </Card>
             )}
