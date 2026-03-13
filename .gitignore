@@ -4,11 +4,25 @@
 # ========================================
 # LOCAL/VPS-ONLY FOLDERS (not tracked here)
 # ========================================
-automation/
 deployment/
 notebooks/
 jobs/
-scripts/
+automation/*
+scripts/*
+
+# Keep critical deploy/ops scripts versioned while preserving local-only script ignore defaults.
+!automation/deploy.ps1
+!automation/setup_cron_vps.sh
+!automation/setup_systemd.sh
+!automation/loop_screener.sh
+!automation/stock-fetch.service
+!automation/stock-fetch.timer
+!automation/update_peers.py
+!scripts/test_local.ps1
+!scripts/create_compat_views.py
+!scripts/telegram_uptime_report.sh
+!scripts/send_telegram_message.sh
+!scripts/summarize_deploy_perf_history.py
 
 # Documentation with sensitive info
 docs/DEPLOYMENT_GUIDE.md
