@@ -42,6 +42,74 @@ def _cache_set(key, data):
             del _cache[k]
 
 
+def _holder_group(name: str) -> str:
+    n = (name or '').strip().lower()
+    if not n:
+        return 'individual'
+
+    institutional_keywords = [
+        'công ty', 'ctcp', 'tnhh', 'ngân hàng', 'quỹ', 'bảo hiểm', 'chứng khoán',
+        'fund', 'capital', 'asset management', 'bank', 'insurance', 'securities',
+        'investment', 'investor', 'holdings', 'corp', 'corporation', 'inc', 'llc',
+        'ltd', 'plc', 'group', 'partners', 'trust', 'etf',
+    ]
+    if any(k in n for k in institutional_keywords):
+        return 'institutional'
+    return 'individual'
+
+
+def _compute_change_pct(current_qty: float, prev_qty: float | None) -> float | None:
+    try:
+        cur = float(current_qty or 0)
+        prev = float(prev_qty) if prev_qty is not None else 0.0
+        if prev <= 0:
+            return None
+        return float(((cur - prev) / prev) * 100.0)
+    except Exception:
+        return None
+
+
+def _query_previous_quantity(
+    conn: sqlite3.Connection,
+    table: str,
+    symbol: str,
+    name_field: str,
+    name_value: str,
+    before_date: str,
+    qty_field: str = 'quantity',
+) -> float | None:
+    try:
+        row = conn.execute(
+            f"""
+            SELECT {qty_field} AS qty
+            FROM {table}
+            WHERE symbol = ?
+              AND {name_field} = ?
+              AND update_date < ?
+            ORDER BY update_date DESC
+            LIMIT 1
+            """,
+            (symbol, name_value, before_date),
+        ).fetchone()
+        if not row:
+            return None
+        return float(row['qty']) if row['qty'] is not None else None
+    except Exception:
+        return None
+
+
+def _to_json_number(value, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        v = float(value)
+        if np.isnan(v) or np.isinf(v):
+            return default
+        return v
+    except Exception:
+        return default
+
+
 def _get_latest_financial_ratios_row(symbol: str, period: str) -> dict | None:
     """Read latest row from financial_ratios for the requested period.
 
@@ -947,6 +1015,181 @@ def api_valuation(symbol):
 
     except Exception as e:
         logger.error(f"Valuation error for {symbol}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@stock_bp.route("/stock/holders/<symbol>", methods=['GET'])
+@stock_bp.route("/holders/<symbol>", methods=['GET'])
+def api_stock_holders(symbol):
+    """Return holders data for stock detail page (institutional + insiders)."""
+    try:
+        is_valid, clean_symbol = validate_stock_symbol(symbol)
+        if not is_valid:
+            return jsonify({'success': False, 'error': clean_symbol}), 400
+
+        cache_key = f"holders_{clean_symbol}"
+        cached = _cache_get(cache_key)
+        if cached:
+            return jsonify(cached)
+
+        db_path = resolve_stocks_db_path()
+        if not db_path or not os.path.exists(db_path):
+            return jsonify({'success': False, 'error': 'Database not found'}), 503
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        # Resolve current price from overview for value calculation.
+        current_price = 0.0
+        try:
+            row_cp = cur.execute(
+                "SELECT current_price FROM overview WHERE symbol = ? LIMIT 1",
+                (clean_symbol,),
+            ).fetchone()
+            if row_cp and row_cp['current_price'] is not None:
+                current_price = _to_json_number(row_cp['current_price'])
+        except Exception:
+            current_price = 0.0
+
+        latest_holder_date = None
+        latest_officer_date = None
+        try:
+            row = cur.execute(
+                "SELECT MAX(update_date) AS d FROM shareholders WHERE symbol = ?",
+                (clean_symbol,),
+            ).fetchone()
+            latest_holder_date = row['d'] if row else None
+        except Exception:
+            latest_holder_date = None
+
+        try:
+            row = cur.execute(
+                "SELECT MAX(update_date) AS d FROM officers WHERE symbol = ?",
+                (clean_symbol,),
+            ).fetchone()
+            latest_officer_date = row['d'] if row else None
+        except Exception:
+            latest_officer_date = None
+
+        institutional: list[dict] = []
+        all_shareholders: list[dict] = []
+        individuals: list[dict] = []
+        if latest_holder_date:
+            holder_rows = cur.execute(
+                """
+                SELECT share_holder, quantity, share_own_percent, update_date
+                FROM shareholders
+                WHERE symbol = ?
+                  AND update_date = ?
+                ORDER BY quantity DESC
+                """,
+                (clean_symbol, latest_holder_date),
+            ).fetchall()
+
+            for r in holder_rows:
+                manager = (r['share_holder'] or '').strip()
+                shares = _to_json_number(r['quantity'])
+                own_pct = _to_json_number(r['share_own_percent'])
+                prev_qty = _query_previous_quantity(
+                    conn=conn,
+                    table='shareholders',
+                    symbol=clean_symbol,
+                    name_field='share_holder',
+                    name_value=manager,
+                    before_date=latest_holder_date,
+                    qty_field='quantity',
+                )
+                item = {
+                    'manager': manager,
+                    'shares': shares,
+                    'ownership_percent': own_pct,
+                    'value': _to_json_number(shares * current_price),
+                    'change_percent': _compute_change_pct(shares, prev_qty),
+                    'update_date': r['update_date'],
+                }
+                all_shareholders.append(item)
+
+                if _holder_group(manager) == 'institutional':
+                    institutional.append(item)
+                else:
+                    individuals.append(item)
+
+        # Keep page useful if strict name classification is too sparse.
+        if len(institutional) < 10 and all_shareholders:
+            seen = {str(x.get('manager') or '').strip().lower() for x in institutional}
+            for item in all_shareholders:
+                key = str(item.get('manager') or '').strip().lower()
+                if key in seen:
+                    continue
+                institutional.append(item)
+                seen.add(key)
+                if len(institutional) >= min(50, len(all_shareholders)):
+                    break
+
+        insiders: list[dict] = []
+        if latest_officer_date:
+            officer_rows = cur.execute(
+                """
+                SELECT officer_name, officer_position, quantity, officer_own_percent, update_date
+                FROM officers
+                WHERE symbol = ?
+                  AND update_date = ?
+                ORDER BY quantity DESC
+                """,
+                (clean_symbol, latest_officer_date),
+            ).fetchall()
+
+            for r in officer_rows:
+                name = (r['officer_name'] or '').strip()
+                shares = _to_json_number(r['quantity'])
+                own_pct = _to_json_number(r['officer_own_percent'])
+                prev_qty = _query_previous_quantity(
+                    conn=conn,
+                    table='officers',
+                    symbol=clean_symbol,
+                    name_field='officer_name',
+                    name_value=name,
+                    before_date=latest_officer_date,
+                    qty_field='quantity',
+                )
+                insiders.append(
+                    {
+                        'name': name,
+                        'position': (r['officer_position'] or '').strip(),
+                        'shares': shares,
+                        'ownership_percent': own_pct,
+                        'value': _to_json_number(shares * current_price),
+                        'change_percent': _compute_change_pct(shares, prev_qty),
+                        'update_date': r['update_date'],
+                    }
+                )
+
+        conn.close()
+
+        summary = {
+            'institutional_count': int(len(institutional)),
+            'insider_count': int(len(insiders)),
+            'institutional_total_shares': float(sum(_to_json_number(x.get('shares')) for x in institutional)),
+            'institutional_total_value': float(sum(_to_json_number(x.get('value')) for x in institutional)),
+        }
+
+        payload = {
+            'success': True,
+            'symbol': clean_symbol,
+            'current_price': float(current_price),
+            'as_of_shareholders': latest_holder_date,
+            'as_of_officers': latest_officer_date,
+            'summary': summary,
+            'institutional': institutional,
+            'insiders': insiders,
+            'politicians': [],
+        }
+
+        _cache_set(cache_key, payload)
+        return jsonify(payload)
+    except Exception as e:
+        logger.error(f"Holders endpoint error for {symbol}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

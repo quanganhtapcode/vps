@@ -91,6 +91,8 @@ const I = {
     roe: 12,
     roa: 13,
     marketCap: 14,
+    sharesOutstanding: 15,
+    revPerShare: 26,
     // DCF assumptions
     growthHigh: 19,
     growthTerminal: 20,
@@ -100,6 +102,7 @@ const I = {
     // Comparable multiples
     peMultiple: 27,
     pbMultiple: 28,
+    psMultiple: 29,
     // FCFE component inputs
     fcfe_netIncome: 33,
     fcfe_depreciation: 34,
@@ -120,6 +123,7 @@ const I = {
     wPE: 59,
     wPB: 60,
     wGraham: 61,
+    wPS: 62,
 };
 
 // Projection row start in FCFE/FCFF sheets
@@ -249,6 +253,7 @@ export class ReportGenerator {
             const wsFCFF = wb.addWorksheet('FCFF Model', { views: [{ showGridLines: false }] });
             const wsPE = wb.addWorksheet('PE Analysis', { views: [{ showGridLines: false }] });
             const wsPB = wb.addWorksheet('PB Analysis', { views: [{ showGridLines: false }] });
+            const wsPS = wb.addWorksheet('PS Analysis', { views: [{ showGridLines: false }] });
             const wsSummary = wb.addWorksheet('Summary', { views: [{ showGridLines: false }] });
             const wsPeers = wb.addWorksheet('Sector Peers', { views: [{ showGridLines: false }] });
 
@@ -257,6 +262,7 @@ export class ReportGenerator {
             this.createFCFFSheet(wsFCFF, valuationResults);
             this.createPESheet(wsPE, valuationResults);
             this.createPBSheet(wsPB, valuationResults);
+            this.createPSSheet(wsPS, valuationResults);
             this.createSummarySheet(wsSummary, stockData, valuationResults, modelWeights, symbol);
             this.createSectorPeersSheet(wsPeers, valuationResults);
 
@@ -355,6 +361,16 @@ export class ReportGenerator {
             toNumber(stockData.market_cap, 0) > 0
                 ? toNumber(stockData.market_cap, 0) / 1e9
                 : toNumber(stockData.marketCap, 0) / 1e9;
+        const rawSharesOutstanding = toNumber(
+            valuationResults?.inputs?.shares_outstanding
+            ?? stockData.shares_outstanding
+            ?? stockData.shareOutstanding,
+            0,
+        );
+        const sharesOutstanding = rawSharesOutstanding > 0 && rawSharesOutstanding < 1_000_000
+            ? rawSharesOutstanding * 1_000_000
+            : rawSharesOutstanding;
+        const revenuePerShare = toNumber(valuationResults?.inputs?.rev_per_share, 0);
 
         set(I.currentPrice, 'Current Market Price (VND)', cp, '#,##0', 'Live price');
         set(I.eps, 'EPS TTM (VND)', eps, '#,##0', 'Trailing 12-month EPS');
@@ -364,6 +380,7 @@ export class ReportGenerator {
         set(I.roe, 'ROE (%)', roePct, '0.00%');
         set(I.roa, 'ROA (%)', roaPct, '0.00%');
         set(I.marketCap, 'Market Cap (Billion VND)', marketCapBn, '#,##0.0');
+        set(I.sharesOutstanding, 'Shares Outstanding', sharesOutstanding, '#,##0', 'Used to convert FCFE/FCFF into per-share value');
 
         // ── DCF Assumptions ───────────────────────────────────────────────
         sectionHeader(sheet, 16, '  DCF / GROWTH ASSUMPTIONS', 5);
@@ -408,14 +425,26 @@ export class ReportGenerator {
             ?? valuationResults?.inputs?.industry_median_pb_used,
             0,
         );
+        const psVal = toNumber(valuationResults?.valuations?.justified_ps, 0);
+        const revPerShare = toNumber(valuationResults?.inputs?.rev_per_share, 0);
+        const psUsedFromExport = toNumber(
+            valuationResults?.export?.calculation?.justified_ps?.ps_used
+            ?? valuationResults?.inputs?.industry_median_ps_used,
+            0,
+        );
         const peMultipleDerived = peUsedFromExport > 0
             ? peUsedFromExport
             : ((peVal > 0 && toNumber(sdEps, 0) > 0) ? peVal / toNumber(sdEps, 1) : (a.peRatio ?? 15));
         const pbMultipleDerived = pbUsedFromExport > 0
             ? pbUsedFromExport
             : ((pbVal > 0 && toNumber(sdBvps, 0) > 0) ? pbVal / toNumber(sdBvps, 1) : (a.pbRatio ?? 2));
+        const psMultipleDerived = psUsedFromExport > 0
+            ? psUsedFromExport
+            : ((psVal > 0 && revPerShare > 0) ? psVal / revPerShare : (a.psRatio ?? 3));
+        set(I.revPerShare, 'Revenue / Share (VND)', revPerShare, '#,##0', 'Used by P/S valuation');
         setAssumption(I.peMultiple, 'P/E Multiple Used', peMultipleDerived, '0.00', 'Justified or sector median');
         setAssumption(I.pbMultiple, 'P/B Multiple Used', pbMultipleDerived, '0.00', 'Justified or sector median');
+        setAssumption(I.psMultiple, 'P/S Multiple Used', psMultipleDerived, '0.00', 'Justified or sector median');
 
         // ── FCFE Inputs ───────────────────────────────────────────────────
         sectionHeader(sheet, 30, '  FCFE RAW INPUTS (from latest financial statements)', 5);
@@ -478,12 +507,13 @@ export class ReportGenerator {
         setAssumption(I.wPE, 'P/E Weight (%)', wt.justified_pe ?? wt.pe ?? wt.PE ?? 20, '0.00');
         setAssumption(I.wPB, 'P/B Weight (%)', wt.justified_pb ?? wt.pb ?? wt.PB ?? 20, '0.00');
         setAssumption(I.wGraham, 'Graham Weight (%)', wt.graham ?? wt.Graham ?? 10, '0.00');
+        setAssumption(I.wPS, 'P/S Weight (%)', wt.justified_ps ?? wt.ps ?? wt.PS ?? 10, '0.00');
 
-        const sumRow = I.wGraham + 1;
+        const sumRow = I.wPS + 1;
         sheet.getCell(sumRow, 1).value = 'Sum of Weights (must = 100)';
         sheet.getCell(sumRow, 1).font = { bold: true };
         sheet.getCell(sumRow, 2).value = {
-            formula: `=B${I.wFCFE}+B${I.wFCFF}+B${I.wPE}+B${I.wPB}+B${I.wGraham}`
+            formula: `=B${I.wFCFE}+B${I.wFCFF}+B${I.wPE}+B${I.wPB}+B${I.wGraham}+B${I.wPS}`
         };
         sheet.getCell(sumRow, 2).numFmt = '0.00';
         sheet.getCell(sumRow, 2).font = { bold: true };
@@ -580,6 +610,16 @@ export class ReportGenerator {
             r++;
         });
 
+        const sharesRow = r;
+        sheet.getCell(r, 1).value = 'Shares Outstanding (for per-share conversion)';
+        const sharesCell = sheet.getCell(r, 2);
+        sharesCell.value = { formula: `=Inputs!B${I.sharesOutstanding}` };
+        sharesCell.numFmt = '#,##0';
+        applyBorders(sharesCell);
+        sheet.getCell(r, 3).value = 'Base FCF ÷ Shares Outstanding';
+        sheet.getCell(r, 3).font = { italic: true, color: { argb: '94A3B8' }, size: 9 };
+        r++;
+
         // Divider
         sheet.getCell(r, 1).value = '─'.repeat(60);
         sheet.getCell(r, 1).font = { color: { argb: 'CBD5E1' } };
@@ -589,11 +629,11 @@ export class ReportGenerator {
         const baseRow = r;
         let baseFml: string;
         if (isFCFE) {
-            baseFml = `=B${compStartRow}+B${compStartRow + 1}-B${compStartRow + 2}-B${compStartRow + 3}+B${compStartRow + 4}`;
+            baseFml = `=(B${compStartRow}+B${compStartRow + 1}-B${compStartRow + 2}-B${compStartRow + 3}+B${compStartRow + 4})/IF(B${sharesRow}>0,B${sharesRow},1)`;
         } else {
-            baseFml = `=B${compStartRow}+B${compStartRow + 1}+B${compStartRow + 2}-B${compStartRow + 3}-B${compStartRow + 4}`;
+            baseFml = `=(B${compStartRow}+B${compStartRow + 1}+B${compStartRow + 2}-B${compStartRow + 3}-B${compStartRow + 4})/IF(B${sharesRow}>0,B${sharesRow},1)`;
         }
-        sheet.getCell(r, 1).value = `Base ${type} (Year 0)`;
+        sheet.getCell(r, 1).value = `Base ${type} Per Share (Year 0)`;
         sheet.getCell(r, 1).font = { bold: true };
         const baseCell = sheet.getCell(r, 2);
         const baseCachedResult = detailsData?.baseFCFE ?? detailsData?.baseFCFF ?? undefined;
@@ -792,6 +832,7 @@ export class ReportGenerator {
     // ═══════════════════════════════════════════════════════════════════════
     private createPESheet(sheet: ExcelJS.Worksheet, valuationResults: any) {
         this.buildMultipleSheet(sheet, 'PE', valuationResults);
+        this.appendPEPeerAndEPSSection(sheet, valuationResults);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -801,17 +842,27 @@ export class ReportGenerator {
         this.buildMultipleSheet(sheet, 'PB', valuationResults);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // SHEET 5b – P/S ANALYSIS
+    // ═══════════════════════════════════════════════════════════════════════
+    private createPSSheet(sheet: ExcelJS.Worksheet, valuationResults: any) {
+        this.buildMultipleSheet(sheet, 'PS', valuationResults);
+    }
+
     /**
      * Shared builder for P/E and P/B sheets + sensitivity table.
      * Fair value cell is always at B9 (used by Summary cross-sheet formula).
      */
-    private buildMultipleSheet(sheet: ExcelJS.Worksheet, type: 'PE' | 'PB', valuationResults: any) {
+    private buildMultipleSheet(sheet: ExcelJS.Worksheet, type: 'PE' | 'PB' | 'PS', valuationResults: any) {
         const isPE = type === 'PE';
-        const baseMetricRow = isPE ? I.eps : I.bvps;
-        const multipleRow = isPE ? I.peMultiple : I.pbMultiple;
-        const label = isPE ? 'P/E' : 'P/B';
-        const metricLabel = isPE ? 'EPS TTM (VND)' : 'BVPS (VND)';
-        const multipleLabelFull = isPE ? 'P/E Multiple Applied' : 'P/B Multiple Applied';
+        const isPB = type === 'PB';
+        const baseMetricRow = isPE ? I.eps : (isPB ? I.bvps : I.revPerShare);
+        const multipleRow = isPE ? I.peMultiple : (isPB ? I.pbMultiple : I.psMultiple);
+        const label = isPE ? 'P/E' : (isPB ? 'P/B' : 'P/S');
+        const metricLabel = isPE ? 'EPS TTM (VND)' : (isPB ? 'BVPS (VND)' : 'Revenue/Share (VND)');
+        const multipleLabelFull = isPE
+            ? 'P/E Multiple Applied'
+            : (isPB ? 'P/B Multiple Applied' : 'P/S Multiple Applied');
 
         sheet.mergeCells('A1:F1');
         const t = sheet.getCell('A1');
@@ -860,7 +911,7 @@ export class ReportGenerator {
         const fairCell = sheet.getCell(9, 2);
         const fairCachedResult = isPE
             ? valuationResults?.valuations?.justified_pe ?? undefined
-            : valuationResults?.valuations?.justified_pb ?? undefined;
+            : (isPB ? valuationResults?.valuations?.justified_pb ?? undefined : valuationResults?.valuations?.justified_ps ?? undefined);
         fairCell.value = fairCachedResult != null
             ? { formula: `=B${epsRow}*B${multRow}`, result: fairCachedResult }
             : { formula: `=B${epsRow}*B${multRow}` };
@@ -941,6 +992,116 @@ export class ReportGenerator {
         for (let ci = 2; ci <= 8; ci++) sheet.getColumn(ci).width = 16;
     }
 
+    private appendPEPeerAndEPSSection(sheet: ExcelJS.Worksheet, valuationResults: any) {
+        const comparables = valuationResults?.export?.comparables ?? {};
+        const detailedPeers = Array.isArray(comparables?.peers_detailed) ? comparables.peers_detailed : [];
+        const pePeers = Array.isArray(comparables?.pe_ttm?.peers) ? comparables.pe_ttm.peers : [];
+        const peList = (pePeers.length > 0 ? pePeers : detailedPeers)
+            .map((p: any) => ({
+                symbol: String(p?.symbol ?? '').toUpperCase(),
+                pe: toNumber(p?.pe ?? p?.pe_ratio, 0),
+            }))
+            .filter((p: any) => p.symbol && p.pe > 0 && p.pe <= 80);
+
+        let r = 23;
+        sectionHeader(sheet, r, '  PE PEER LIST (from latest VCI screening)', 6);
+        r++;
+
+        const peMedian = toNumber(comparables?.pe_ttm?.median_computed ?? comparables?.pe_ttm?.used, 0);
+        sheet.getCell(r, 1).value = 'Median P/E Used';
+        const med = sheet.getCell(r, 2);
+        med.value = peMedian;
+        med.numFmt = '0.00';
+        med.font = { bold: true };
+        med.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
+        applyBorders(med, 'medium');
+        r += 2;
+
+        ['#', 'Symbol', 'Peer P/E'].forEach((h, ci) => {
+            const c = sheet.getCell(r, ci + 1);
+            c.value = h;
+            c.font = { bold: true };
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+            c.alignment = { horizontal: 'center' };
+            applyBorders(c);
+        });
+        r++;
+
+        if (peList.length === 0) {
+            sheet.mergeCells(r, 1, r, 3);
+            const c = sheet.getCell(r, 1);
+            c.value = 'No peer P/E data available.';
+            c.font = { italic: true, color: { argb: '94A3B8' } };
+            c.alignment = { horizontal: 'center' };
+            r += 2;
+        } else {
+            peList.slice(0, 50).forEach((p: any, idx: number) => {
+                sheet.getCell(r, 1).value = idx + 1;
+                sheet.getCell(r, 1).alignment = { horizontal: 'center' };
+                applyBorders(sheet.getCell(r, 1));
+
+                sheet.getCell(r, 2).value = p.symbol;
+                sheet.getCell(r, 2).font = { bold: true };
+                applyBorders(sheet.getCell(r, 2));
+
+                const c = sheet.getCell(r, 3);
+                c.value = p.pe;
+                c.numFmt = '0.00';
+                applyBorders(c);
+                r++;
+            });
+            r += 1;
+        }
+
+        sectionHeader(sheet, r, '  EPS HISTORY (Company)', 6);
+        r++;
+
+        const epsTtm = toNumber(valuationResults?.inputs?.eps_ttm_current ?? valuationResults?.inputs?.eps_ttm, 0);
+        sheet.getCell(r, 1).value = 'EPS TTM (Current)';
+        const epsTtmCell = sheet.getCell(r, 2);
+        epsTtmCell.value = epsTtm;
+        epsTtmCell.numFmt = '#,##0';
+        epsTtmCell.font = { bold: true };
+        epsTtmCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
+        applyBorders(epsTtmCell, 'medium');
+        r += 2;
+
+        ['Year', 'EPS (VND)'].forEach((h, ci) => {
+            const c = sheet.getCell(r, ci + 1);
+            c.value = h;
+            c.font = { bold: true };
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+            c.alignment = { horizontal: 'center' };
+            applyBorders(c);
+        });
+        r++;
+
+        const epsHistory = Array.isArray(valuationResults?.inputs?.eps_history_yearly)
+            ? valuationResults.inputs.eps_history_yearly
+            : [];
+        if (epsHistory.length === 0) {
+            sheet.mergeCells(r, 1, r, 2);
+            const c = sheet.getCell(r, 1);
+            c.value = 'No annual EPS history available.';
+            c.font = { italic: true, color: { argb: '94A3B8' } };
+            c.alignment = { horizontal: 'center' };
+        } else {
+            epsHistory.forEach((item: any) => {
+                const year = toNumber(item?.year, 0);
+                const eps = toNumber(item?.eps, 0);
+                sheet.getCell(r, 1).value = year;
+                sheet.getCell(r, 1).alignment = { horizontal: 'center' };
+                applyBorders(sheet.getCell(r, 1));
+
+                const c = sheet.getCell(r, 2);
+                c.value = eps;
+                c.numFmt = '#,##0';
+                applyBorders(c);
+                r++;
+            });
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // SHEET 6 – SUMMARY (cross-sheet formulas link all models)
     // ═══════════════════════════════════════════════════════════════════════
@@ -962,7 +1123,7 @@ export class ReportGenerator {
         const now = new Date();
         sheet.mergeCells('A2:F2');
         sheet.getCell('A2').value =
-            `Generated: ${now.toLocaleDateString('vi-VN')}  |  All values VND/share  |  Formulas link to FCFE Model, FCFF Model, PE Analysis, PB Analysis, Inputs`;
+            `Generated: ${now.toLocaleDateString('vi-VN')}  |  All values VND/share  |  Formulas link to FCFE Model, FCFF Model, PE Analysis, PB Analysis, PS Analysis, Inputs`;
         sheet.getCell('A2').font = { italic: true, color: { argb: '64748B' }, size: 9 };
         sheet.getCell('A2').alignment = { horizontal: 'center' };
 
@@ -977,6 +1138,7 @@ export class ReportGenerator {
             ['Trailing P/E', `=Inputs!B${I.pe}`, '0.00'],
             ['Trailing P/B', `=Inputs!B${I.pb}`, '0.00'],
             ['ROE (%)', `=Inputs!B${I.roe}`, '0.00%'],
+            ['ROA (%)', `=Inputs!B${I.roa}`, '0.00%'],
             ['Market Cap (Bn VND)', `=Inputs!B${I.marketCap}`, '#,##0.0'],
         ];
         mktRows.forEach(([lbl, fml, fmt]) => {
@@ -1012,12 +1174,14 @@ export class ReportGenerator {
         const fcffIR = this.computeDCFIntrinsicRow('FCFF');
         const peIR = 9;
         const pbIR = 9;
+        const psIR = 9;
 
         const models: [string, string, number][] = [
             ['FCFE (Free Cash Flow to Equity)', `='FCFE Model'!B${fcfeIR}`, I.wFCFE],
             ['FCFF (Free Cash Flow to Firm)', `='FCFF Model'!B${fcffIR}`, I.wFCFF],
             ['P/E Comparable', `='PE Analysis'!B${peIR}`, I.wPE],
             ['P/B Comparable', `='PB Analysis'!B${pbIR}`, I.wPB],
+            ['P/S Comparable', `='PS Analysis'!B${psIR}`, I.wPS],
             ['Graham Formula', `=Inputs!B${I.grahamValue}`, I.wGraham],
         ];
 
@@ -1130,32 +1294,33 @@ export class ReportGenerator {
     /**
      * Simulates row counter in buildDCFSheet to find the intrinsicRow without writing cells.
      * Must mirror the exact row increments in buildDCFSheet.
-     * Verified: intrinsicRow = 41 for both FCFE and FCFF (10-year model).
+     * Verified: intrinsicRow = 42 for both FCFE and FCFF (10-year model).
      */
     private computeDCFIntrinsicRow(_type: 'FCFE' | 'FCFF'): number {
         let r = 5;
         r += 1;      // component header row r++ → 6
         r += 5;      // 5 component rows → 11
-        r += 1;      // divider r++ → 12
-        // baseRow = r = 12 (no separate r increment for assignment)
-        r += 2;      // r+=2 after writing base row → 14 (step2 sectionHeader at 14)
-        r += 1;      // r++ after step2 sectionHeader → 15 (discRateRow)
-        r += 1;      // r++ after discRate → 16 (growthHighRow)
-        r += 1;      // r++ after growthHigh → 17 (growthTermRow)
-        r += 2;      // r+=2 after growthTerm → 19 (step3 sectionHeader at 19)
-        r += 1;      // r++ after step3 sectionHeader → 20 (proj header row)
-        r += 1;      // r++ after proj header → 21 (projDataStart)
+        r += 1;      // shares row r++ → 12
+        r += 1;      // divider r++ → 13
+        // baseRow = r = 13 (no separate r increment for assignment)
+        r += 2;      // r+=2 after writing base row → 15 (step2 sectionHeader at 15)
+        r += 1;      // r++ after step2 sectionHeader → 16 (discRateRow)
+        r += 1;      // r++ after discRate → 17 (growthHighRow)
+        r += 1;      // r++ after growthHigh → 18 (growthTermRow)
+        r += 2;      // r+=2 after growthTerm → 20 (step3 sectionHeader at 20)
+        r += 1;      // r++ after step3 sectionHeader → 21 (proj header row)
+        r += 1;      // r++ after proj header → 22 (projDataStart)
         r += PROJ_YEARS; // 10 projection rows each r++ → 31
-        r += 1;      // r+=1 blank → 32 (step4 sectionHeader at 32)
-        r += 1;      // r++ after step4 sectionHeader → 33 (tvRow)
-        r += 1;      // r++ after tvRow → 34 (tvGGRow)
-        r += 1;      // r++ after tvGGRow → 35 (pvTvRow)
-        r += 2;      // r+=2 after pvTvRow → 37 (step5 sectionHeader at 37)
-        r += 1;      // r++ after step5 sectionHeader → 38 (sumPVRow)
-        r += 1;      // r++ after sumPVRow → 39 (pvTvRefRow)
-        r += 1;      // r++ after pvTvRefRow → 40 (divider)
-        r += 1;      // r++ after divider → 41 = intrinsicRow
-        return r;    // 41
+        r += 1;      // r+=1 blank → 33 (step4 sectionHeader at 33)
+        r += 1;      // r++ after step4 sectionHeader → 34 (tvRow)
+        r += 1;      // r++ after tvRow → 35 (tvGGRow)
+        r += 1;      // r++ after tvGGRow → 36 (pvTvRow)
+        r += 2;      // r+=2 after pvTvRow → 38 (step5 sectionHeader at 38)
+        r += 1;      // r++ after step5 sectionHeader → 39 (sumPVRow)
+        r += 1;      // r++ after sumPVRow → 40 (pvTvRefRow)
+        r += 1;      // r++ after pvTvRefRow → 41 (divider)
+        r += 1;      // r++ after divider → 42 = intrinsicRow
+        return r;    // 42
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1169,19 +1334,27 @@ export class ReportGenerator {
         let peers: any[] = detailedPeers;
 
         if (peers.length === 0) {
-            const peValues = Array.isArray(comparables?.pe_ttm?.values) ? comparables.pe_ttm.values : [];
-            const pbValues = Array.isArray(comparables?.pb?.values) ? comparables.pb.values : [];
-            peers = peValues.map((pe: number, idx: number) => ({
-                symbol: `Peer ${idx + 1}`,
-                market_cap: null,
-                pe_ratio: pe,
-                pb_ratio: pbValues[idx] ?? null,
-                roe: null,
-                sector: comparables?.industry ?? sp.sector ?? '',
-            }));
+            const pePeers = Array.isArray(comparables?.pe_ttm?.peers) ? comparables.pe_ttm.peers : [];
+            const pbPeers = Array.isArray(comparables?.pb?.peers) ? comparables.pb.peers : [];
+            const psPeers = Array.isArray(comparables?.ps?.peers) ? comparables.ps.peers : [];
+            const pbMap = new Map<string, number>(pbPeers.map((p: any) => [String(p?.symbol ?? '').toUpperCase(), toNumber(p?.pb, 0)]));
+            const psMap = new Map<string, number>(psPeers.map((p: any) => [String(p?.symbol ?? '').toUpperCase(), toNumber(p?.ps, 0)]));
+            peers = pePeers.map((p: any) => {
+                const sym = String(p?.symbol ?? '').toUpperCase();
+                return {
+                    symbol: sym,
+                    market_cap: null,
+                    pe_ratio: toNumber(p?.pe, 0),
+                    pb_ratio: pbMap.get(sym) ?? null,
+                    ps_ratio: psMap.get(sym) ?? null,
+                    roe: null,
+                    roa: null,
+                    sector: comparables?.industry ?? sp.sector ?? '',
+                };
+            });
         }
 
-        sheet.mergeCells('A1:G1');
+        sheet.mergeCells('A1:I1');
         const t = sheet.getCell('A1');
         t.value = 'SECTOR PEERS COMPARISON';
         t.font = { bold: true, size: 15, color: { argb: 'FFFFFF' } };
@@ -1190,13 +1363,14 @@ export class ReportGenerator {
         sheet.getRow(1).height = 30;
 
         let r = 3;
-        sectionHeader(sheet, r, '  SECTOR SUMMARY', 7);
+        sectionHeader(sheet, r, '  SECTOR SUMMARY', 9);
         r++;
 
         const summaryData: [string, any, string][] = [
             ['Sector', comparables?.industry ?? sp.sector ?? 'N/A', ''],
             ['Median P/E', comparables?.pe_ttm?.used ?? sp.median_pe ?? 0, '0.00'],
             ['Median P/B', comparables?.pb?.used ?? sp.median_pb ?? 0, '0.00'],
+            ['Median P/S', comparables?.ps?.used ?? 0, '0.00'],
             ['Peers Count', peers.length, '0'],
         ];
         summaryData.forEach(([lbl, val, fmt]) => {
@@ -1209,10 +1383,10 @@ export class ReportGenerator {
         });
         r++;
 
-        sectionHeader(sheet, r, '  PEER COMPANIES', 7);
+        sectionHeader(sheet, r, '  PEER COMPANIES', 9);
         r++;
 
-        const headers = ['#', 'Symbol', 'Market Cap (Bn VND)', 'P/E', 'P/B', 'ROE (%)', 'Sector'];
+        const headers = ['#', 'Symbol', 'Market Cap (Bn VND)', 'P/E', 'P/B', 'P/S', 'ROE (%)', 'ROA (%)', 'Sector'];
         headers.forEach((h, ci) => {
             const c = sheet.getCell(r, ci + 1);
             c.value = h;
@@ -1225,7 +1399,7 @@ export class ReportGenerator {
         r++;
 
         if (peers.length === 0) {
-            sheet.mergeCells(r, 1, r, 7);
+            sheet.mergeCells(r, 1, r, 9);
             sheet.getCell(r, 1).value = 'No peer data available.';
             sheet.getCell(r, 1).font = { italic: true, color: { argb: '94A3B8' } };
             sheet.getCell(r, 1).alignment = { horizontal: 'center' };
@@ -1241,30 +1415,40 @@ export class ReportGenerator {
                 applyBorders(sheet.getCell(r, 2));
 
                 const mc = sheet.getCell(r, 3);
-                mc.value = p.market_cap ?? 0;
+                mc.value = p.market_cap ?? p.marketCap ?? 0;
                 mc.numFmt = '#,##0.0';
                 applyBorders(mc);
 
                 const pe = sheet.getCell(r, 4);
-                pe.value = p.pe_ratio ?? 0;
+                pe.value = p.pe_ratio ?? p.pe ?? 0;
                 pe.numFmt = '0.00';
                 applyBorders(pe);
 
                 const pb = sheet.getCell(r, 5);
-                pb.value = p.pb_ratio ?? 0;
+                pb.value = p.pb_ratio ?? p.pb ?? 0;
                 pb.numFmt = '0.00';
                 applyBorders(pb);
 
-                const roe = sheet.getCell(r, 6);
-                roe.value = p.roe ?? 0;
+                const ps = sheet.getCell(r, 6);
+                ps.value = p.ps_ratio ?? p.ps ?? 0;
+                ps.numFmt = '0.00';
+                applyBorders(ps);
+
+                const roe = sheet.getCell(r, 7);
+                roe.value = normalizePercentValue(p.roe ?? 0);
                 roe.numFmt = '0.00%';
                 applyBorders(roe);
 
-                sheet.getCell(r, 7).value = p.sector ?? '';
-                applyBorders(sheet.getCell(r, 7));
+                const roa = sheet.getCell(r, 8);
+                roa.value = normalizePercentValue(p.roa ?? 0);
+                roa.numFmt = '0.00%';
+                applyBorders(roa);
+
+                sheet.getCell(r, 9).value = p.sector ?? '';
+                applyBorders(sheet.getCell(r, 9));
 
                 if (idx % 2 === 0) {
-                    for (let ci = 1; ci <= 7; ci++) {
+                    for (let ci = 1; ci <= 9; ci++) {
                         sheet.getCell(r, ci).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F8FAFC' } };
                     }
                 }
@@ -1293,12 +1477,26 @@ export class ReportGenerator {
             medPb.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
             applyBorders(medPb, 'medium');
 
-            const medRoe = sheet.getCell(r, 6);
-            medRoe.value = { formula: `=MEDIAN(F${peerDataStart}:F${peerDataEnd})` };
+            const medPs = sheet.getCell(r, 6);
+            medPs.value = { formula: `=MEDIAN(F${peerDataStart}:F${peerDataEnd})` };
+            medPs.numFmt = '0.00';
+            medPs.font = { bold: true };
+            medPs.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
+            applyBorders(medPs, 'medium');
+
+            const medRoe = sheet.getCell(r, 7);
+            medRoe.value = { formula: `=MEDIAN(G${peerDataStart}:G${peerDataEnd})` };
             medRoe.numFmt = '0.00%';
             medRoe.font = { bold: true };
             medRoe.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
             applyBorders(medRoe, 'medium');
+
+            const medRoa = sheet.getCell(r, 8);
+            medRoa.value = { formula: `=MEDIAN(H${peerDataStart}:H${peerDataEnd})` };
+            medRoa.numFmt = '0.00%';
+            medRoa.font = { bold: true };
+            medRoa.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
+            applyBorders(medRoa, 'medium');
         }
 
         sheet.getColumn(1).width = 5;
@@ -1307,6 +1505,8 @@ export class ReportGenerator {
         sheet.getColumn(4).width = 10;
         sheet.getColumn(5).width = 10;
         sheet.getColumn(6).width = 10;
-        sheet.getColumn(7).width = 22;
+        sheet.getColumn(7).width = 10;
+        sheet.getColumn(8).width = 10;
+        sheet.getColumn(9).width = 22;
     }
 }

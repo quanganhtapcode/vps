@@ -11,6 +11,7 @@ import FinancialsTab from '@/components/StockDetail/FinancialsTab';
 import PriceHistoryTab from '@/components/StockDetail/PriceHistoryTab';
 import ValuationTab from '@/components/StockDetail/ValuationTab';
 import AnalysisTab from '@/components/StockDetail/AnalysisTab';
+import HoldersTab from '@/components/StockDetail/HoldersTab';
 import { Select, SelectItem } from '@tremor/react';
 import { getTickerData } from '@/lib/tickerCache';
 import { siteConfig } from '@/app/siteConfig';
@@ -32,7 +33,6 @@ interface StockInfo {
         description?: string;
     };
 }
-
 interface PriceData {
     price: number;
     change: number;
@@ -101,7 +101,7 @@ export default function StockDetailPage() {
 
     const [error, setError] = useState<string | null>(null);
     const [isDescExpanded, setIsDescExpanded] = useState(false);
-    const [activeTab, setActiveTab] = useState<'overview' | 'financials' | 'valuation' | 'priceHistory' | 'analysis'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'financials' | 'holders' | 'valuation' | 'priceHistory' | 'analysis'>('overview');
     const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(['overview']));
     const [, startTransition] = useTransition();
     const [financialPeriod, setFinancialPeriod] = useState<'quarter' | 'year'>('quarter');
@@ -116,7 +116,7 @@ export default function StockDetailPage() {
     const [prefetchedChartData, setPrefetchedChartData] = useState<any>(null); // Shared between FinancialsTab & AnalysisTab
     const [isHistoryLoading, setIsHistoryLoading] = useState(true);
 
-    const handleTabChange = useCallback((nextTab: 'overview' | 'financials' | 'valuation' | 'priceHistory' | 'analysis') => {
+    const handleTabChange = useCallback((nextTab: 'overview' | 'financials' | 'holders' | 'valuation' | 'priceHistory' | 'analysis') => {
         if (nextTab === activeTab) return;
         startTransition(() => {
             setActiveTab(nextTab);
@@ -573,6 +573,7 @@ export default function StockDetailPage() {
                             {[
                                 { id: 'overview', label: 'Overview' },
                                 { id: 'financials', label: 'Financials' },
+                                { id: 'holders', label: 'Holders' },
                                 { id: 'priceHistory', label: 'Price History' },
                                 { id: 'analysis', label: 'Analysis' },
                                 { id: 'valuation', label: 'Valuation' }
@@ -580,7 +581,7 @@ export default function StockDetailPage() {
                                 <button
                                     key={tab.id}
                                     type="button"
-                                    onClick={() => handleTabChange(tab.id as 'overview' | 'financials' | 'valuation' | 'priceHistory' | 'analysis')}
+                                    onClick={() => handleTabChange(tab.id as 'overview' | 'financials' | 'holders' | 'valuation' | 'priceHistory' | 'analysis')}
                                     className={classNames(
                                         activeTab === tab.id
                                             ? 'border-tremor-brand text-tremor-brand dark:border-dark-tremor-brand dark:text-dark-tremor-brand'
@@ -655,6 +656,18 @@ export default function StockDetailPage() {
                             initialOverviewData={rawOverviewData}
                             isLoading={isHistoryLoading}
                         />
+                    </div>
+                )}
+
+                {/* Holders Tab - Lazy & Persistent */}
+                {visitedTabs.has('holders') && (
+                    <div className={activeTab === 'holders' ? 'block' : 'hidden'}>
+                        <div className="mb-4 flex items-center justify-between gap-4">
+                            <h3 className="text-tremor-title font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong whitespace-nowrap">
+                                Holders
+                            </h3>
+                        </div>
+                        <HoldersTab symbol={symbol} />
                     </div>
                 )}
 
