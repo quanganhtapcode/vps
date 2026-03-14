@@ -71,11 +71,13 @@ function formatCompactCurrencyVnd(value: number): string {
     return n.toFixed(0);
 }
 
-function formatChangePct(value?: number | null): string {
+function formatOwnershipPct(value?: number | null): string {
     if (value == null || !Number.isFinite(value)) return '-';
-    const n = Number(value);
-    const sign = n > 0 ? '+' : '';
-    return `${sign}${n.toFixed(1)}%`;
+    const pct = Number(value) * 100;
+    const abs = Math.abs(pct);
+    if (abs >= 1) return `${pct.toFixed(2)}%`;
+    if (abs >= 0.01) return `${pct.toFixed(4)}%`;
+    return `${pct.toFixed(6)}%`;
 }
 
 export default function HoldersTab({ symbol }: HoldersTabProps) {
@@ -156,34 +158,51 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
         });
     }, [activeView, institutional, individuals, insiders, query]);
 
-    const filings = activeView === 'institutional'
-        ? (data?.summary?.institutional_count ?? institutional.length)
-        : activeView === 'individuals'
-            ? (data?.summary?.individual_count ?? individuals.length)
-            : (data?.summary?.insider_count ?? insiders.length);
+    const allRowsForDownload = useMemo(() => {
+        const institutionalRows = institutional.map((r) => ({
+            group: 'Institutional',
+            name: r.manager || '',
+            position: '',
+            shares: Number(r.shares || 0),
+            value: Number(r.value || 0),
+            ownership_percent: r.ownership_percent,
+            update_date: r.update_date || '',
+        }));
 
-    const totalValue = activeView === 'institutional'
-        ? (data?.summary?.institutional_total_value ?? institutional.reduce((s, x) => s + Number(x.value || 0), 0))
-        : activeView === 'individuals'
-            ? (data?.summary?.individual_total_value ?? individuals.reduce((s, x) => s + Number(x.value || 0), 0))
-            : rows.reduce((s: number, x: any) => s + Number(x.value || 0), 0);
+        const regularRows = individuals.map((r) => ({
+            group: 'Regular Shareholders',
+            name: r.manager || '',
+            position: '',
+            shares: Number(r.shares || 0),
+            value: Number(r.value || 0),
+            ownership_percent: r.ownership_percent,
+            update_date: r.update_date || '',
+        }));
 
-    const asOf = activeView === 'insiders' ? data?.as_of_officers : data?.as_of_shareholders;
-    const sourceLabel = activeView === 'insiders'
-        ? (data?.sources?.officers || 'sqlite')
-        : (data?.sources?.shareholders || 'sqlite');
+        const insiderRows = insiders.map((r) => ({
+            group: 'Insiders',
+            name: r.name || '',
+            position: r.position || '',
+            shares: Number(r.shares || 0),
+            value: Number(r.value || 0),
+            ownership_percent: r.ownership_percent,
+            update_date: r.update_date || '',
+        }));
+
+        return [...institutionalRows, ...regularRows, ...insiderRows];
+    }, [institutional, individuals, insiders]);
 
     const downloadCsv = () => {
-        if (!rows.length) return;
+        if (!allRowsForDownload.length) return;
 
-        const headers = ['Name', 'Position', 'Shares', 'ValueVND', 'ChangePercent', 'OwnershipPercent', 'UpdateDate'];
-        const body = rows.map((r: any) => [
-            JSON.stringify(r.manager || r.name || ''),
+        const headers = ['Group', 'Name', 'Position', 'SharesOwned', 'CurrentValueVND', 'OwnershipPercent', 'UpdateDate'];
+        const body = allRowsForDownload.map((r) => [
+            JSON.stringify(r.group || ''),
+            JSON.stringify(r.name || ''),
             JSON.stringify(r.position || ''),
             String(Number(r.shares || 0)),
             String(Number(r.value || 0)),
-            r.change_percent == null ? '' : String(Number(r.change_percent)),
-            r.ownership_percent == null ? '' : String(Number(r.ownership_percent)),
+            r.ownership_percent == null ? '' : String(Number(r.ownership_percent) * 100),
             r.update_date || '',
         ].join(','));
 
@@ -192,7 +211,7 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${symbol}_holders_${activeView}.csv`;
+        a.download = `${symbol}_all_shareholders.csv`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -242,22 +261,14 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                         />
                     </div>
 
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                            <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Filings: {filings}</span>
-                            <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Total Reported Value: {formatCompactCurrencyVnd(totalValue)} VND</span>
-                            {asOf ? <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">As of: {asOf}</span> : null}
-                            {data?.updated_at ? <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Updated at: {data.updated_at}</span> : null}
-                            <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Source: {sourceLabel}</span>
-                        </div>
-
+                    <div className="mt-3 flex justify-end">
                         <button
                             type="button"
                             onClick={downloadCsv}
-                            disabled={rows.length === 0}
+                            disabled={allRowsForDownload.length === 0}
                             className="rounded-tremor-default border border-gray-200 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:hover:bg-gray-800"
                         >
-                            Download
+                            Download All Shareholders
                         </button>
                     </div>
                 </div>
@@ -267,23 +278,24 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                         <thead>
                             <tr className="border-b border-gray-100 text-left text-gray-600 dark:border-gray-800 dark:text-gray-300">
                                 <th className="px-4 py-3 font-medium">Manager</th>
-                                <th className="px-4 py-3 text-right font-medium">Shares</th>
-                                <th className="px-4 py-3 text-right font-medium">Value</th>
-                                <th className="px-4 py-3 text-right font-medium">Change</th>
+                                <th className="px-4 py-3 text-right font-medium">Shares Owned</th>
+                                <th className="px-4 py-3 text-right font-medium">Current Value</th>
+                                <th className="px-4 py-3 text-right font-medium">Ownership (%)</th>
+                                <th className="px-4 py-3 text-right font-medium">Updated At</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500">Loading holders...</td>
+                                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">Loading holders...</td>
                                 </tr>
                             ) : error ? (
                                 <tr>
-                                    <td colSpan={4} className="px-4 py-8 text-center text-red-500">{error}</td>
+                                    <td colSpan={5} className="px-4 py-8 text-center text-red-500">{error}</td>
                                 </tr>
                             ) : rows.length === 0 ? (
                                 <tr>
-                                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500">No data for this section.</td>
+                                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No data for this section.</td>
                                 </tr>
                             ) : rows.map((row: any, idx) => (
                                 <tr key={`${row.manager || row.name || 'row'}-${idx}`} className="border-b border-gray-100 last:border-b-0 dark:border-gray-800">
@@ -293,8 +305,11 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                                     </td>
                                     <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-200">{formatCompactShares(Number(row.shares || 0))}</td>
                                     <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-200">{formatCompactCurrencyVnd(Number(row.value || 0))}</td>
-                                    <td className={`px-4 py-3 text-right font-medium ${Number(row.change_percent || 0) > 0 ? 'text-emerald-600' : Number(row.change_percent || 0) < 0 ? 'text-red-600' : 'text-gray-500'}`}>
-                                        {formatChangePct(row.change_percent)}
+                                    <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-200">
+                                        {formatOwnershipPct(row.ownership_percent)}
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-200">
+                                        {row.update_date || '-'}
                                     </td>
                                 </tr>
                             ))}
