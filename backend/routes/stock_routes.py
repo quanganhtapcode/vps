@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import json
 import os
 import re
+import time as _time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from backend.extensions import get_provider, get_valuation_service
 from backend.utils import validate_stock_symbol
@@ -1104,13 +1105,13 @@ def api_valuation(symbol):
 @stock_bp.route("/stock/holders/<symbol>", methods=['GET'])
 @stock_bp.route("/holders/<symbol>", methods=['GET'])
 def api_stock_holders(symbol):
-    """Return holders data for stock detail page (institutional + insiders)."""
+    """Return holders data from DB (all owners, grouped by institutional/individual/insider)."""
     try:
         is_valid, clean_symbol = validate_stock_symbol(symbol)
         if not is_valid:
             return jsonify({'success': False, 'error': clean_symbol}), 400
 
-        cache_key = f"holders_{clean_symbol}"
+        cache_key = f"holders_v2_{clean_symbol}"
         cached = _cache_get(cache_key)
         if cached:
             return jsonify(cached)
@@ -1134,22 +1135,6 @@ def api_stock_holders(symbol):
                 current_price = _to_json_number(row_cp['current_price'])
         except Exception:
             current_price = 0.0
-
-        latest_holder_date, latest_holder_raw, holder_row_count, holder_latest_count = _select_snapshot_date(
-            conn=conn,
-            table='shareholders',
-            symbol=clean_symbol,
-            min_rows_for_complete=5,
-            max_candidates=12,
-        )
-
-        latest_officer_date, latest_officer_raw, officer_row_count, officer_latest_count = _select_snapshot_date(
-            conn=conn,
-            table='officers',
-            symbol=clean_symbol,
-            min_rows_for_complete=3,
-            max_candidates=12,
-        )
 
         if current_price <= 0:
             try:
@@ -1185,247 +1170,175 @@ def api_stock_holders(symbol):
             except Exception:
                 pass
 
-        def _choose_snapshot_from_items(items: list[dict], min_rows: int) -> tuple[str | None, str | None, int, int]:
-            counts: dict[str, int] = {}
-            latest_raw = None
-            for item in items:
-                d = str(item.get('update_date') or '').strip()
-                if not d:
-                    continue
-                counts[d] = counts.get(d, 0) + 1
-                if latest_raw is None or d > latest_raw:
-                    latest_raw = d
-
-            if not counts or latest_raw is None:
-                return None, None, 0, 0
-
-            latest_count = int(counts.get(latest_raw, 0))
-            selected = latest_raw
-            for d in sorted(counts.keys(), reverse=True):
-                if int(counts[d]) >= int(min_rows):
-                    selected = d
-                    break
-
-            return selected, latest_raw, int(counts.get(selected, 0)), latest_count
-
-        shareholders_source = 'sqlite'
-        officers_source = 'sqlite'
-
-        institutional: list[dict] = []
-        all_shareholders: list[dict] = []
-        individuals: list[dict] = []
-        if latest_holder_date:
-            holder_rows = cur.execute(
+        outstanding_shares = 0.0
+        try:
+            row_os = cur.execute(
                 """
-                SELECT share_holder, quantity, share_own_percent, update_date
-                FROM shareholders
+                SELECT outstanding_share
+                FROM ratio_wide
                 WHERE symbol = ?
-                  AND update_date = ?
-                ORDER BY quantity DESC
+                  AND outstanding_share IS NOT NULL
+                  AND outstanding_share > 0
+                ORDER BY year DESC,
+                         CASE WHEN quarter IS NULL THEN -1 ELSE quarter END DESC
+                LIMIT 1
                 """,
-                (clean_symbol, latest_holder_date),
-            ).fetchall()
+                (clean_symbol,),
+            ).fetchone()
+            if row_os and row_os['outstanding_share'] is not None:
+                outstanding_shares = _to_json_number(row_os['outstanding_share'])
+        except Exception:
+            outstanding_shares = 0.0
 
-            for r in holder_rows:
-                manager = (r['share_holder'] or '').strip()
-                shares = _to_json_number(r['quantity'])
-                own_pct = _to_json_number(r['share_own_percent'])
-                prev_qty = _query_previous_quantity(
-                    conn=conn,
-                    table='shareholders',
-                    symbol=clean_symbol,
-                    name_field='share_holder',
-                    name_value=manager,
-                    before_date=latest_holder_date,
-                    qty_field='quantity',
-                )
-                item = {
-                    'manager': manager,
+        # Load all rows from DB and keep latest row per holder/person.
+        holder_rows = cur.execute(
+            """
+            SELECT share_holder, quantity, share_own_percent, update_date
+            FROM shareholders
+            WHERE symbol = ?
+            ORDER BY update_date DESC, quantity DESC
+            """,
+            (clean_symbol,),
+        ).fetchall() or []
+
+        officer_rows = cur.execute(
+            """
+            SELECT officer_name, officer_position, quantity, officer_own_percent, update_date
+            FROM officers
+            WHERE symbol = ?
+            ORDER BY update_date DESC, quantity DESC
+            """,
+            (clean_symbol,),
+        ).fetchall() or []
+
+        latest_holders_by_name: dict[str, sqlite3.Row] = {}
+        for r in holder_rows:
+            manager = str((r['share_holder'] or '')).strip()
+            if not manager:
+                continue
+            key = manager.lower()
+            update_date = str(r['update_date'] or '').strip()
+            if key not in latest_holders_by_name:
+                latest_holders_by_name[key] = r
+                continue
+            existing_date = str(latest_holders_by_name[key]['update_date'] or '').strip()
+            if update_date > existing_date:
+                latest_holders_by_name[key] = r
+
+        all_shareholders: list[dict] = []
+        institutional: list[dict] = []
+        individuals: list[dict] = []
+        for r in latest_holders_by_name.values():
+            manager = str((r['share_holder'] or '')).strip()
+            shares = _to_json_number(r['quantity'])
+            if shares <= 0:
+                continue
+            own_pct = _to_json_number(shares / outstanding_shares) if outstanding_shares > 0 else None
+            update_date = str(r['update_date'] or '').strip() or None
+            prev_qty = _query_previous_quantity(
+                conn=conn,
+                table='shareholders',
+                symbol=clean_symbol,
+                name_field='share_holder',
+                name_value=manager,
+                before_date=update_date or '',
+                qty_field='quantity',
+            ) if update_date else None
+            item = {
+                'manager': manager,
+                'shares': shares,
+                'ownership_percent': own_pct,
+                'value': _to_json_number(shares * current_price),
+                'change_percent': _compute_change_pct(shares, prev_qty),
+                'update_date': update_date,
+            }
+            all_shareholders.append(item)
+            if _holder_group(manager) == 'institutional':
+                institutional.append(item)
+            else:
+                individuals.append(item)
+
+        latest_officers_by_name: dict[str, sqlite3.Row] = {}
+        for r in officer_rows:
+            name = str((r['officer_name'] or '')).strip()
+            if not name:
+                continue
+            key = name.lower()
+            update_date = str(r['update_date'] or '').strip()
+            if key not in latest_officers_by_name:
+                latest_officers_by_name[key] = r
+                continue
+            existing_date = str(latest_officers_by_name[key]['update_date'] or '').strip()
+            if update_date > existing_date:
+                latest_officers_by_name[key] = r
+
+        insiders: list[dict] = []
+        for r in latest_officers_by_name.values():
+            name = str((r['officer_name'] or '')).strip()
+            shares = _to_json_number(r['quantity'])
+            if shares <= 0:
+                continue
+            own_pct = _to_json_number(shares / outstanding_shares) if outstanding_shares > 0 else None
+            update_date = str(r['update_date'] or '').strip() or None
+            prev_qty = _query_previous_quantity(
+                conn=conn,
+                table='officers',
+                symbol=clean_symbol,
+                name_field='officer_name',
+                name_value=name,
+                before_date=update_date or '',
+                qty_field='quantity',
+            ) if update_date else None
+            insiders.append(
+                {
+                    'name': name,
+                    'position': str((r['officer_position'] or '')).strip(),
                     'shares': shares,
                     'ownership_percent': own_pct,
                     'value': _to_json_number(shares * current_price),
                     'change_percent': _compute_change_pct(shares, prev_qty),
-                    'update_date': r['update_date'],
+                    'update_date': update_date,
                 }
-                all_shareholders.append(item)
+            )
 
-                if _holder_group(manager) == 'institutional':
-                    institutional.append(item)
-                else:
-                    individuals.append(item)
+        institutional.sort(key=lambda x: _to_json_number(x.get('shares')), reverse=True)
+        individuals.sort(key=lambda x: _to_json_number(x.get('shares')), reverse=True)
+        insiders.sort(key=lambda x: _to_json_number(x.get('shares')), reverse=True)
 
-        # Live fallback if DB has no usable shareholder rows.
-        if not all_shareholders:
-            try:
-                live_stock = Vnstock().stock(symbol=clean_symbol, source='VCI')
-                sh_df = live_stock.company.shareholders()
-                if sh_df is not None and not sh_df.empty:
-                    live_items: list[dict] = []
-                    for _, row in sh_df.iterrows():
-                        live_items.append(
-                            {
-                                'manager': str(row.get('share_holder') or '').strip(),
-                                'shares': _to_json_number(row.get('quantity')),
-                                'ownership_percent': _to_json_number(row.get('share_own_percent')),
-                                'update_date': str(row.get('update_date') or '').strip(),
-                            }
-                        )
-
-                    selected, latest_raw, selected_count, latest_count = _choose_snapshot_from_items(
-                        live_items,
-                        min_rows=5,
-                    )
-                    if selected:
-                        latest_holder_date = selected
-                        latest_holder_raw = latest_raw
-                        holder_row_count = selected_count
-                        holder_latest_count = latest_count
-                        shareholders_source = 'live_vci_fallback'
-
-                        filtered = [x for x in live_items if str(x.get('update_date') or '') == selected]
-                        for x in sorted(filtered, key=lambda a: _to_json_number(a.get('shares')), reverse=True):
-                            manager = str(x.get('manager') or '').strip()
-                            shares = _to_json_number(x.get('shares'))
-                            own_pct = _to_json_number(x.get('ownership_percent'))
-                            item = {
-                                'manager': manager,
-                                'shares': shares,
-                                'ownership_percent': own_pct,
-                                'value': _to_json_number(shares * current_price),
-                                'change_percent': None,
-                                'update_date': selected,
-                            }
-                            all_shareholders.append(item)
-                            if _holder_group(manager) == 'institutional':
-                                institutional.append(item)
-                            else:
-                                individuals.append(item)
-            except Exception as live_sh_exc:
-                logger.debug(f"live shareholders fallback failed for {clean_symbol}: {live_sh_exc}")
-
-        # Keep page useful if strict name classification is too sparse.
-        if len(institutional) < 10 and all_shareholders:
-            seen = {str(x.get('manager') or '').strip().lower() for x in institutional}
-            for item in all_shareholders:
-                key = str(item.get('manager') or '').strip().lower()
-                if key in seen:
-                    continue
-                institutional.append(item)
-                seen.add(key)
-                if len(institutional) >= min(50, len(all_shareholders)):
-                    break
-
-        insiders: list[dict] = []
-        if latest_officer_date:
-            officer_rows = cur.execute(
-                """
-                SELECT officer_name, officer_position, quantity, officer_own_percent, update_date
-                FROM officers
-                WHERE symbol = ?
-                  AND update_date = ?
-                ORDER BY quantity DESC
-                """,
-                (clean_symbol, latest_officer_date),
-            ).fetchall()
-
-            for r in officer_rows:
-                name = (r['officer_name'] or '').strip()
-                shares = _to_json_number(r['quantity'])
-                own_pct = _to_json_number(r['officer_own_percent'])
-                prev_qty = _query_previous_quantity(
-                    conn=conn,
-                    table='officers',
-                    symbol=clean_symbol,
-                    name_field='officer_name',
-                    name_value=name,
-                    before_date=latest_officer_date,
-                    qty_field='quantity',
-                )
-                insiders.append(
-                    {
-                        'name': name,
-                        'position': (r['officer_position'] or '').strip(),
-                        'shares': shares,
-                        'ownership_percent': own_pct,
-                        'value': _to_json_number(shares * current_price),
-                        'change_percent': _compute_change_pct(shares, prev_qty),
-                        'update_date': r['update_date'],
-                    }
-                )
-
-        # Live fallback if officers snapshot is absent in DB.
-        if not insiders:
-            try:
-                live_stock = Vnstock().stock(symbol=clean_symbol, source='VCI')
-                of_df = live_stock.company.officers()
-                if of_df is not None and not of_df.empty:
-                    live_items: list[dict] = []
-                    for _, row in of_df.iterrows():
-                        live_items.append(
-                            {
-                                'name': str(row.get('officer_name') or '').strip(),
-                                'position': str(row.get('officer_position') or '').strip(),
-                                'shares': _to_json_number(row.get('quantity')),
-                                'ownership_percent': _to_json_number(row.get('officer_own_percent')),
-                                'update_date': str(row.get('update_date') or '').strip(),
-                            }
-                        )
-
-                    selected, latest_raw, selected_count, latest_count = _choose_snapshot_from_items(
-                        live_items,
-                        min_rows=3,
-                    )
-                    if selected:
-                        latest_officer_date = selected
-                        latest_officer_raw = latest_raw
-                        officer_row_count = selected_count
-                        officer_latest_count = latest_count
-                        officers_source = 'live_vci_fallback'
-
-                        filtered = [x for x in live_items if str(x.get('update_date') or '') == selected]
-                        insiders = [
-                            {
-                                'name': x.get('name') or '',
-                                'position': x.get('position') or '',
-                                'shares': _to_json_number(x.get('shares')),
-                                'ownership_percent': _to_json_number(x.get('ownership_percent')),
-                                'value': _to_json_number(_to_json_number(x.get('shares')) * current_price),
-                                'change_percent': None,
-                                'update_date': selected,
-                            }
-                            for x in sorted(filtered, key=lambda a: _to_json_number(a.get('shares')), reverse=True)
-                            if str(x.get('name') or '').strip()
-                        ]
-            except Exception as live_of_exc:
-                logger.debug(f"live officers fallback failed for {clean_symbol}: {live_of_exc}")
+        as_of_shareholders = max((str(x.get('update_date') or '') for x in all_shareholders), default='') or None
+        as_of_officers = max((str(x.get('update_date') or '') for x in insiders), default='') or None
+        updated_at = max(
+            [d for d in [as_of_shareholders, as_of_officers] if d],
+            default=None,
+        )
 
         conn.close()
 
         summary = {
             'institutional_count': int(len(institutional)),
+            'individual_count': int(len(individuals)),
             'insider_count': int(len(insiders)),
             'institutional_total_shares': float(sum(_to_json_number(x.get('shares')) for x in institutional)),
             'institutional_total_value': float(sum(_to_json_number(x.get('value')) for x in institutional)),
+            'individual_total_shares': float(sum(_to_json_number(x.get('shares')) for x in individuals)),
+            'individual_total_value': float(sum(_to_json_number(x.get('value')) for x in individuals)),
         }
 
         payload = {
             'success': True,
             'symbol': clean_symbol,
             'current_price': float(current_price),
-            'as_of_shareholders': latest_holder_date,
-            'as_of_officers': latest_officer_date,
-            'as_of_shareholders_latest_raw': latest_holder_raw,
-            'as_of_officers_latest_raw': latest_officer_raw,
-            'shareholders_snapshot_rows': int(holder_row_count),
-            'shareholders_latest_rows': int(holder_latest_count),
-            'officers_snapshot_rows': int(officer_row_count),
-            'officers_latest_rows': int(officer_latest_count),
+            'outstanding_shares': float(outstanding_shares),
+            'updated_at': updated_at,
+            'as_of_shareholders': as_of_shareholders,
+            'as_of_officers': as_of_officers,
             'sources': {
-                'shareholders': shareholders_source,
-                'officers': officers_source,
+                'shareholders': 'sqlite_all_rows_latest_per_holder',
+                'officers': 'sqlite_all_rows_latest_per_officer',
             },
             'summary': summary,
             'institutional': institutional,
+            'individuals': individuals,
             'insiders': insiders,
             'politicians': [],
         }

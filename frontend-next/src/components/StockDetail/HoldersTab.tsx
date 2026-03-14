@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API_BASE } from '@/lib/api';
 
-type HolderView = 'institutional' | 'insiders';
+type HolderView = 'institutional' | 'individuals' | 'insiders';
 
 interface InstitutionalHolder {
     manager: string;
@@ -28,25 +28,24 @@ interface HoldersPayload {
     success: boolean;
     symbol: string;
     current_price: number;
+    updated_at?: string;
     as_of_shareholders?: string;
     as_of_officers?: string;
-    as_of_shareholders_latest_raw?: string;
-    as_of_officers_latest_raw?: string;
-    shareholders_snapshot_rows?: number;
-    shareholders_latest_rows?: number;
-    officers_snapshot_rows?: number;
-    officers_latest_rows?: number;
     sources?: {
         shareholders?: string;
         officers?: string;
     };
     summary?: {
         institutional_count?: number;
+        individual_count?: number;
         insider_count?: number;
         institutional_total_shares?: number;
         institutional_total_value?: number;
+        individual_total_shares?: number;
+        individual_total_value?: number;
     };
     institutional?: InstitutionalHolder[];
+    individuals?: InstitutionalHolder[];
     insiders?: InsiderHolder[];
 }
 
@@ -118,30 +117,34 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
     }, [symbol]);
 
     const institutional = data?.institutional || [];
+    const individuals = data?.individuals || [];
     const insiders = data?.insiders || [];
 
     useEffect(() => {
         const iCount = institutional.length;
+        const rCount = individuals.length;
         const inCount = insiders.length;
 
-        if (inCount > iCount && inCount > 0) {
-            setActiveView('insiders');
+        if (iCount >= rCount && iCount >= inCount && iCount > 0) {
+            setActiveView('institutional');
             return;
         }
-        if (iCount > 0) {
-            setActiveView('institutional');
+        if (rCount >= iCount && rCount >= inCount && rCount > 0) {
+            setActiveView('individuals');
             return;
         }
         if (inCount > 0) {
             setActiveView('insiders');
+            return;
         }
-    }, [institutional.length, insiders.length]);
+    }, [institutional.length, individuals.length, insiders.length]);
 
     const rows = useMemo(() => {
         const q = query.trim().toLowerCase();
         let base: Array<InstitutionalHolder | InsiderHolder> = [];
 
         if (activeView === 'institutional') base = institutional;
+        if (activeView === 'individuals') base = individuals;
         if (activeView === 'insiders') base = insiders;
 
         if (!q) return base;
@@ -151,20 +154,21 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
             const pos = String(item?.position || '').toLowerCase();
             return name.includes(q) || pos.includes(q);
         });
-    }, [activeView, institutional, insiders, query]);
+    }, [activeView, institutional, individuals, insiders, query]);
 
     const filings = activeView === 'institutional'
         ? (data?.summary?.institutional_count ?? institutional.length)
-        : (data?.summary?.insider_count ?? insiders.length);
+        : activeView === 'individuals'
+            ? (data?.summary?.individual_count ?? individuals.length)
+            : (data?.summary?.insider_count ?? insiders.length);
 
     const totalValue = activeView === 'institutional'
         ? (data?.summary?.institutional_total_value ?? institutional.reduce((s, x) => s + Number(x.value || 0), 0))
-        : rows.reduce((s: number, x: any) => s + Number(x.value || 0), 0);
+        : activeView === 'individuals'
+            ? (data?.summary?.individual_total_value ?? individuals.reduce((s, x) => s + Number(x.value || 0), 0))
+            : rows.reduce((s: number, x: any) => s + Number(x.value || 0), 0);
 
     const asOf = activeView === 'insiders' ? data?.as_of_officers : data?.as_of_shareholders;
-    const latestRawAsOf = activeView === 'insiders' ? data?.as_of_officers_latest_raw : data?.as_of_shareholders_latest_raw;
-    const selectedRows = activeView === 'insiders' ? Number(data?.officers_snapshot_rows || 0) : Number(data?.shareholders_snapshot_rows || 0);
-    const latestRows = activeView === 'insiders' ? Number(data?.officers_latest_rows || 0) : Number(data?.shareholders_latest_rows || 0);
     const sourceLabel = activeView === 'insiders'
         ? (data?.sources?.officers || 'sqlite')
         : (data?.sources?.shareholders || 'sqlite');
@@ -214,28 +218,36 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                         >
                             Insiders ({insiders.length})
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveView('individuals')}
+                            className={`rounded-full px-3 py-1 text-sm ${activeView === 'individuals' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}
+                        >
+                            Regular Shareholders ({individuals.length})
+                        </button>
                     </div>
 
                     <div className="mt-3">
                         <input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder={activeView === 'insiders' ? 'Find insiders by name or position' : 'Find institutional holders'}
+                            placeholder={
+                                activeView === 'insiders'
+                                    ? 'Find insiders by name or position'
+                                    : activeView === 'individuals'
+                                        ? 'Find regular shareholders'
+                                        : 'Find institutional holders'
+                            }
                             className="w-full rounded-tremor-default border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950"
                         />
                     </div>
-
-                    {!loading && !error && activeView === 'institutional' && institutional.length > 0 && institutional.length < 5 ? (
-                        <div className="mt-3 rounded-tremor-default border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300">
-                            Institutional disclosure is currently limited for this symbol. Check Insiders tab for more coverage.
-                        </div>
-                    ) : null}
 
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                             <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Filings: {filings}</span>
                             <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Total Reported Value: {formatCompactCurrencyVnd(totalValue)} VND</span>
                             {asOf ? <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">As of: {asOf}</span> : null}
+                            {data?.updated_at ? <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Updated at: {data.updated_at}</span> : null}
                             <span className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">Source: {sourceLabel}</span>
                         </div>
 
@@ -248,12 +260,6 @@ export default function HoldersTab({ symbol }: HoldersTabProps) {
                             Download
                         </button>
                     </div>
-
-                    {!loading && !error && asOf && latestRawAsOf && asOf !== latestRawAsOf ? (
-                        <div className="mt-3 rounded-tremor-default border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-300">
-                            Showing fuller snapshot ({selectedRows} rows) at {asOf} because latest raw snapshot ({latestRawAsOf}) has only {latestRows} rows.
-                        </div>
-                    ) : null}
                 </div>
 
                 <div className="overflow-x-auto">
