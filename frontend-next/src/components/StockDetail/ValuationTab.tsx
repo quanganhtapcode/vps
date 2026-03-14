@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { calculateValuation, fetchValuationSensitivity } from '@/lib/stockApi';
+import React, { useState, useEffect, useCallback } from 'react';
+import { calculateValuation } from '@/lib/stockApi';
 import { Card, Title, Text, Metric, Button, Badge, Grid, Col, TextInput, Callout } from '@tremor/react';
 import { RiRefreshLine, RiStackLine, RiMoneyDollarCircleLine, RiBuildingLine, RiBarChartLine, RiBookOpenLine, RiScales3Line, RiErrorWarningFill, RiFileZipLine, RiShoppingCart2Line } from '@remixicon/react';
 import { ReportGenerator } from '@/lib/reportGenerator';
@@ -24,9 +24,6 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
     const [result, setResult] = useState<any>(initialData || null);
     const [manualPrice, setManualPrice] = useState<number>(currentPrice || 0);
     const [userEditedPrice, setUserEditedPrice] = useState<boolean>(false);
-    const [sensitivityData, setSensitivityData] = useState<any>(null);
-    const [sensitivityLoading, setSensitivityLoading] = useState(false);
-    const [showSensitivity, setShowSensitivity] = useState(false);
 
 
 
@@ -113,181 +110,6 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
         });
     };
 
-    const handleExport = () => {
-        if (!result) return;
-
-        // 1. Prepare Data
-        const csvRows = [];
-
-        // Header
-        csvRows.push(['Valuation Report', symbol, new Date().toLocaleDateString('en-US')]);
-        csvRows.push([]);
-
-        // Assumptions
-        csvRows.push(['INPUT ASSUMPTIONS']);
-        csvRows.push(['Indicator', 'Value']);
-        csvRows.push(['Current Price', manualPrice]);
-        csvRows.push(['WACC (%)', assumptions.wacc]);
-        csvRows.push(['Required Return (%)', assumptions.requiredReturn]);
-        csvRows.push(['Revenue Growth (%)', assumptions.revenueGrowth]);
-        csvRows.push(['Terminal Growth (%)', assumptions.terminalGrowth]);
-        csvRows.push(['Tax Rate (%)', assumptions.taxRate]);
-        csvRows.push([]);
-
-        // Comparables breakdown (Industry median P/E TTM & P/B)
-        const exportData = result?.export;
-        const comparables = exportData?.comparables;
-        const peTtm = comparables?.pe_ttm;
-        const pb = comparables?.pb;
-        const calc = exportData?.calculation;
-
-        const industry = comparables?.industry || result?.inputs?.industry || '';
-        const epsTtm = calc?.justified_pe?.eps_ttm ?? result?.inputs?.eps_ttm ?? '';
-        const bvps = calc?.justified_pb?.bvps ?? result?.inputs?.bvps ?? '';
-
-        const peMedianComputed = peTtm?.median_computed ?? '';
-        const peUsed = peTtm?.used ?? result?.inputs?.industry_median_pe_ttm_used ?? '';
-        const peCount = peTtm?.count ?? result?.inputs?.industry_pe_sample_size ?? '';
-        const pbMedianComputed = pb?.median_computed ?? '';
-        const pbUsed = pb?.used ?? result?.inputs?.industry_median_pb_used ?? '';
-        const pbCount = pb?.count ?? result?.inputs?.industry_pb_sample_size ?? '';
-
-        const justifiedPeResult = calc?.justified_pe?.result ?? result?.valuations?.justified_pe ?? '';
-        const justifiedPbResult = calc?.justified_pb?.result ?? result?.valuations?.justified_pb ?? '';
-
-        const peValues = Array.isArray(peTtm?.values) ? peTtm.values : [];
-        const pbValues = Array.isArray(pb?.values) ? pb.values : [];
-        const peValuesText = peValues.length ? peValues.slice(0, 100).join(';') : '';
-        const pbValuesText = pbValues.length ? pbValues.slice(0, 100).join(';') : '';
-
-        csvRows.push(['COMPARABLES (INDUSTRY MEDIAN)']);
-        csvRows.push(['Field', 'Value']);
-        csvRows.push(['Industry', industry]);
-        csvRows.push(['EPS TTM', epsTtm]);
-        csvRows.push(['BVPS', bvps]);
-        csvRows.push(['PE TTM Median (Computed)', peMedianComputed]);
-        csvRows.push(['PE TTM Used', peUsed]);
-        csvRows.push(['PE Sample Size', peCount]);
-        csvRows.push(['PB Median (Computed)', pbMedianComputed]);
-        csvRows.push(['PB Used', pbUsed]);
-        csvRows.push(['PB Sample Size', pbCount]);
-        csvRows.push(['Justified PE Formula', 'EPS_TTM * PE_USED']);
-        csvRows.push(['Justified PE Result', justifiedPeResult]);
-        csvRows.push(['Justified PB Formula', 'BVPS * PB_USED']);
-        csvRows.push(['Justified PB Result', justifiedPbResult]);
-        if (peValuesText) csvRows.push(['PE values used (sample; max 100)', peValuesText]);
-        if (pbValuesText) csvRows.push(['PB values used (sample; max 100)', pbValuesText]);
-        csvRows.push([]);
-
-        if (exportData?.comparables?.peers_detailed && exportData.comparables.peers_detailed.length > 0) {
-            csvRows.push(['DETAILED COMPARABLES']);
-            csvRows.push(['Symbol', 'P/E', 'P/B']);
-            exportData.comparables.peers_detailed.forEach((peer: any) => {
-                csvRows.push([
-                    peer.symbol,
-                    peer.pe !== null ? peer.pe.toFixed(2) : '',
-                    peer.pb !== null ? peer.pb.toFixed(2) : ''
-                ]);
-            });
-            csvRows.push([]);
-        }
-
-        // DCF Steps
-        const fcfe = calc?.dcf_fcfe;
-        if (fcfe?.details) {
-            csvRows.push(['DCF FCFE CALCULATION']);
-            csvRows.push(['Field', 'Value']);
-            csvRows.push(['Base Cashflow (EPS)', fcfe.details.base_cashflow_per_share]);
-            csvRows.push(['Annual Growth (%)', (fcfe.details.annual_growth * 100).toFixed(2)]);
-            csvRows.push(['Discount Rate (Required Return) (%)', (fcfe.details.discount_rate * 100).toFixed(2)]);
-            csvRows.push(['Terminal Growth (%)', (fcfe.details.terminal_growth * 100).toFixed(2)]);
-            csvRows.push(['Years Projected', fcfe.details.years]);
-            if (fcfe.details.cashflows && Array.isArray(fcfe.details.cashflows)) {
-                fcfe.details.cashflows.forEach((cf: any) => {
-                    csvRows.push([`Year ${cf.t} Cashflow`, cf.cashflow.toFixed(2)]);
-                    csvRows.push([`Year ${cf.t} Present Value`, cf.pv.toFixed(2)]);
-                });
-            }
-            csvRows.push(['PV Sum', fcfe.details.pv_sum?.toFixed(2) || '']);
-            csvRows.push(['Terminal Value (TV)', fcfe.details.terminal_value?.toFixed(2) || '']);
-            csvRows.push(['Terminal Value Discounted', fcfe.details.terminal_value_discounted?.toFixed(2) || '']);
-            csvRows.push(['FCFE Result', fcfe.details.result?.toFixed(2) || '']);
-            if (fcfe.details.notes && fcfe.details.notes.length > 0) {
-                csvRows.push(['Notes', fcfe.details.notes.join('; ')]);
-            }
-            csvRows.push([]);
-        }
-
-        const fcff = calc?.dcf_fcff;
-        if (fcff?.details) {
-            csvRows.push(['DCF FCFF CALCULATION']);
-            csvRows.push(['Field', 'Value']);
-            csvRows.push(['Base Cashflow (EPS)', fcff.details.base_cashflow_per_share]);
-            csvRows.push(['Annual Growth (%)', (fcff.details.annual_growth * 100).toFixed(2)]);
-            csvRows.push(['Discount Rate (WACC) (%)', (fcff.details.discount_rate * 100).toFixed(2)]);
-            csvRows.push(['Terminal Growth (%)', (fcff.details.terminal_growth * 100).toFixed(2)]);
-            csvRows.push(['Years Projected', fcff.details.years]);
-            if (fcff.details.cashflows && Array.isArray(fcff.details.cashflows)) {
-                fcff.details.cashflows.forEach((cf: any) => {
-                    csvRows.push([`Year ${cf.t} Cashflow`, cf.cashflow.toFixed(2)]);
-                    csvRows.push([`Year ${cf.t} Present Value`, cf.pv.toFixed(2)]);
-                });
-            }
-            csvRows.push(['PV Sum', fcff.details.pv_sum?.toFixed(2) || '']);
-            csvRows.push(['Terminal Value (TV)', fcff.details.terminal_value?.toFixed(2) || '']);
-            csvRows.push(['Terminal Value Discounted', fcff.details.terminal_value_discounted?.toFixed(2) || '']);
-            csvRows.push(['FCFF Result', fcff.details.result?.toFixed(2) || '']);
-            if (fcff.details.notes && fcff.details.notes.length > 0) {
-                csvRows.push(['Notes', fcff.details.notes.join('; ')]);
-            }
-            csvRows.push([]);
-        }
-
-        // Graham Step
-        csvRows.push(['GRAHAM FORMULA CALCULATION']);
-        csvRows.push(['Field', 'Value']);
-        csvRows.push(['EPS', epsTtm]);
-        csvRows.push(['BVPS', bvps]);
-        csvRows.push(['Formula', 'SQRT(22.5 * EPS * BVPS)']);
-        csvRows.push(['Graham Result', result?.valuations?.graham?.toFixed(2) || '']);
-        csvRows.push([]);
-
-        // Models
-        csvRows.push(['VALUATION METHOD', 'Weight (%)', 'Value (CUR)', 'Upside (%)']);
-        Object.keys(models).forEach(key => {
-            const m = models[key as keyof typeof models];
-            if (m.enabled) {
-                const val = result.valuations[key] || 0;
-                const up = getUpside(val);
-                csvRows.push([m.name, m.weight.toFixed(0), val.toFixed(0), up.toFixed(2)]);
-            }
-        });
-        csvRows.push([]);
-
-        // Final Result
-        const weightedAvg = result?.valuations?.weighted_average || 0;
-        const finalUpside = getUpside(weightedAvg);
-        csvRows.push(['SUMMARY RESULTS']);
-        csvRows.push(['Intrinsic Value (VND)', weightedAvg.toFixed(0)]);
-        csvRows.push(['Upside (%)', finalUpside.toFixed(2)]);
-        csvRows.push(['Recommendation', finalUpside >= 15 ? 'STRONG BUY' : finalUpside >= 5 ? 'BUY' : finalUpside <= -10 ? 'SELL' : 'HOLD']);
-
-        // 2. Convert to CSV String
-        const csvString = csvRows.map(row => row.join(',')).join('\n');
-
-        // 3. Trigger Download
-        const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `Valuation_${symbol}_${new Date().toISOString().split('T')[0]}.csv`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        URL.revokeObjectURL(url);
-    };
-
     const getModelWeights = useCallback(() => ({
         fcfe: models.fcfe.enabled ? models.fcfe.weight : 0,
         fcff: models.fcff.enabled ? models.fcff.weight : 0,
@@ -302,25 +124,20 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
         modelWeights: getModelWeights(),
         currentPrice: manualPrice,
         includeComparableLists,
+        includeQuality: false,
     }), [assumptions, getModelWeights, manualPrice]);
 
     const handleFullExport = async () => {
         setExportLoading(true);
         try {
-            const fresh = await calculateValuation(symbol, buildValuationPayload(true));
-            const exportResult = fresh?.success ? fresh : result;
-
-            if (fresh?.success) {
-                setResult(fresh);
-            }
-
-            if (!exportResult) {
+            if (!result) {
                 alert('Chưa có dữ liệu định giá để xuất. Vui lòng Analyze trước.');
                 return;
             }
 
             const generator = new ReportGenerator();
-            await generator.exportReport(stockData || exportResult.metrics || exportResult, exportResult, assumptions, getModelWeights(), symbol);
+            // Export exactly what the user is currently seeing on screen (snapshot).
+            await generator.exportReport(stockData || result.metrics || result, result, assumptions, getModelWeights(), symbol);
         } catch (error) {
             console.error('Export error:', error);
             alert('Lỗi xuất báo cáo: ' + (error as any).message);
@@ -349,24 +166,6 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
             handleCalculate();
         }
     }, [symbol, manualPrice, result]); // eslint-disable-line
-
-    const handleLoadSensitivity = async () => {
-        setSensitivityLoading(true);
-        setShowSensitivity(true);
-        try {
-            const data = await fetchValuationSensitivity(symbol, {
-                baseWacc: assumptions.wacc,
-                baseGrowth: assumptions.revenueGrowth,
-                terminalGrowth: assumptions.terminalGrowth,
-                projectionYears: assumptions.projectionYears,
-            });
-            if (data?.success) setSensitivityData(data);
-        } catch (err) {
-            console.error('Sensitivity error:', err);
-        } finally {
-            setSensitivityLoading(false);
-        }
-    };
 
     const formatPrice = (val: number) => {
         if (!val) return '-';
@@ -400,12 +199,7 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
     }, [models, result]);
 
     const finalUpside = getUpside(weightedAvg);
-
-    const quality = result?.quality || null;
-    const qualityScore = Number(quality?.score || 0);
-    const qualityGrade = String(quality?.grade || 'N/A');
-    const qualityChecks = Array.isArray(quality?.checks) ? quality.checks : [];
-    const qualityPassed = qualityChecks.filter((c: any) => Boolean(c?.passed)).length;
+    const activeModelsCount = Object.values(models).filter(m => m.enabled).length;
 
     const scenarios = result?.scenarios || null;
     const scenarioRows = scenarios
@@ -415,17 +209,6 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
             { key: 'bull', label: 'Bull', data: scenarios.bull },
         ]
         : [];
-
-    const confidenceBars = qualityScore >= 85 ? 5 : qualityScore >= 70 ? 4 : qualityScore >= 55 ? 3 : qualityScore >= 40 ? 2 : 1;
-    const confidenceLabel = qualityGrade === 'A'
-        ? 'Very High'
-        : qualityGrade === 'B'
-            ? 'High'
-            : qualityGrade === 'C'
-                ? 'Medium'
-                : qualityGrade === 'D'
-                    ? 'Low'
-                    : 'Very Low';
 
     const handleReset = () => {
         setAssumptions(defaultAssumptions);
@@ -613,13 +396,11 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                                                 </Title>
                                             </div>
                                             <div className="text-right">
-                                                <Text className="text-slate-400 text-xs uppercase mb-1">Confidence</Text>
-                                                <div className="flex justify-end gap-1">
-                                                    {[1, 2, 3, 4, 5].map(i => (
-                                                        <div key={i} className={classNames("h-2 w-6 rounded-full", i <= confidenceBars ? "bg-blue-500" : "bg-slate-700")} />
-                                                    ))}
-                                                </div>
-                                                <Text className="text-xs text-slate-500 mt-1">{confidenceLabel}</Text>
+                                                <Text className="text-slate-400 text-xs uppercase mb-1">Active Models</Text>
+                                                <Title className="text-2xl sm:text-3xl font-black text-blue-300">
+                                                    {activeModelsCount}
+                                                </Title>
+                                                <Text className="text-xs text-slate-500 mt-1">Weight-based blend</Text>
                                             </div>
                                         </div>
                                     </div>
@@ -633,68 +414,6 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                     </div>
                 </Col>
             </Grid>
-
-
-            {/* ── Individual model breakdown ── */}
-            {result?.valuations && (
-                <Card className="rounded-tremor-default overflow-hidden">
-                    <div className="flex items-center justify-between mb-4">
-                        <Title>Model Breakdown</Title>
-                        <Badge size="sm" color="blue">{Object.values(models).filter(m => m.enabled).length} active models</Badge>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-gray-200 dark:border-gray-800">
-                                    <th className="text-left py-2 pr-4 font-medium text-gray-600 dark:text-gray-400">Model</th>
-                                    <th className="text-right py-2 px-4 font-medium text-gray-600 dark:text-gray-400">Est. Value</th>
-                                    <th className="text-right py-2 px-4 font-medium text-gray-600 dark:text-gray-400">Upside</th>
-                                    <th className="text-right py-2 pl-4 font-medium text-gray-600 dark:text-gray-400">Weight</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(Object.keys(models) as Array<keyof typeof models>).filter(k => models[k].enabled).map(key => {
-                                    const m = models[key];
-                                    const val = result.valuations[key] || 0;
-                                    const up = getUpside(val);
-                                    return (
-                                        <tr key={key} className="border-b border-gray-100 dark:border-gray-900 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-900/50">
-                                            <td className="py-3 pr-4">
-                                                <div className="flex items-center gap-2">
-                                                    <m.icon className="h-4 w-4 text-gray-400" />
-                                                    <span className="font-medium text-gray-800 dark:text-gray-200">{m.name}</span>
-                                                </div>
-                                                <span className="text-xs text-gray-400">{m.desc}</span>
-                                            </td>
-                                            <td className="text-right px-4 font-mono font-semibold text-gray-900 dark:text-gray-100">
-                                                {formatPrice(val)}
-                                            </td>
-                                            <td className={classNames(
-                                                'text-right px-4 font-semibold tabular-nums',
-                                                up >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                                            )}>
-                                                {up > 0 ? '+' : ''}{up.toFixed(1)}%
-                                            </td>
-                                            <td className="text-right pl-4 text-gray-500">{m.weight.toFixed(0)}%</td>
-                                        </tr>
-                                    );
-                                })}
-                                <tr className="bg-gray-50 dark:bg-gray-900/50 font-bold">
-                                    <td className="py-3 pr-4 text-gray-900 dark:text-gray-100">Weighted Average</td>
-                                    <td className="text-right px-4 font-mono text-gray-900 dark:text-gray-100">{formatPrice(weightedAvg)}</td>
-                                    <td className={classNames(
-                                        'text-right px-4 tabular-nums',
-                                        finalUpside >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                                    )}>
-                                        {finalUpside > 0 ? '+' : ''}{finalUpside.toFixed(1)}%
-                                    </td>
-                                    <td className="text-right pl-4 text-gray-500">100%</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </Card>
-            )}
 
             {scenarioRows.length > 0 && (
                 <Card className="rounded-tremor-default overflow-hidden">
@@ -738,161 +457,6 @@ const ValuationTab: React.FC<ValuationTabProps> = ({ symbol, currentPrice, initi
                     </div>
                 </Card>
             )}
-
-            {quality && (
-                <Card className="rounded-tremor-default">
-                    <div className="mb-4 flex items-center justify-between">
-                        <div>
-                            <Title>Model Quality</Title>
-                            <Text className="mt-1 text-xs text-gray-500">Input coverage and peer sample quality for current valuation run</Text>
-                        </div>
-                        <Badge color={qualityScore >= 70 ? 'emerald' : qualityScore >= 55 ? 'amber' : 'rose'} size="sm">
-                            Grade {qualityGrade}
-                        </Badge>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <div className="sm:col-span-1">
-                            <Metric>{qualityScore.toFixed(1)}</Metric>
-                            <Text>Score / 100</Text>
-                            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
-                                <div
-                                    className={classNames(
-                                        'h-full rounded-full',
-                                        qualityScore >= 70 ? 'bg-emerald-500' : qualityScore >= 55 ? 'bg-amber-500' : 'bg-rose-500'
-                                    )}
-                                    style={{ width: `${Math.max(0, Math.min(100, qualityScore))}%` }}
-                                />
-                            </div>
-                            <Text className="mt-2 text-xs text-gray-500">
-                                Passed {qualityPassed}/{qualityChecks.length} checks
-                            </Text>
-                        </div>
-                        <div className="sm:col-span-2 overflow-x-auto">
-                            <table className="w-full text-xs">
-                                <thead>
-                                    <tr className="border-b border-gray-200 dark:border-gray-800">
-                                        <th className="py-2 pr-3 text-left font-medium text-gray-500">Check</th>
-                                        <th className="py-2 px-3 text-center font-medium text-gray-500">Status</th>
-                                        <th className="py-2 px-3 text-right font-medium text-gray-500">Points</th>
-                                        <th className="py-2 pl-3 text-left font-medium text-gray-500">Detail</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {qualityChecks.map((check: any, idx: number) => (
-                                        <tr key={`${check?.name || 'check'}-${idx}`} className="border-b border-gray-100 dark:border-gray-900 last:border-0">
-                                            <td className="py-2 pr-3 text-gray-700 dark:text-gray-300">{String(check?.name || '-')}</td>
-                                            <td className="py-2 px-3 text-center">
-                                                <span className={classNames('font-semibold', check?.passed ? 'text-emerald-600' : 'text-rose-600')}>
-                                                    {check?.passed ? 'PASS' : 'MISS'}
-                                                </span>
-                                            </td>
-                                            <td className="py-2 px-3 text-right text-gray-600 dark:text-gray-300">
-                                                {Number(check?.points || 0)}/{Number(check?.max_points || 0)}
-                                            </td>
-                                            <td className="py-2 pl-3 text-gray-500">{String(check?.detail || '')}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </Card>
-            )}
-
-            {/* ── DCF Sensitivity Analysis ── */}
-            <Card className="rounded-tremor-default">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <Title>DCF Sensitivity Analysis</Title>
-                        <Text className="mt-1 text-xs">Intrinsic value matrix: rows = EPS Growth, columns = WACC</Text>
-                    </div>
-                    <Button
-                        variant="secondary"
-                        size="xs"
-                        onClick={handleLoadSensitivity}
-                        loading={sensitivityLoading}
-                        icon={RiBarChartLine}
-                    >
-                        {sensitivityData ? 'Refresh' : 'Load Matrix'}
-                    </Button>
-                </div>
-
-                {showSensitivity && sensitivityLoading && (
-                    <div className="mt-6 flex items-center justify-center h-32 text-gray-400">
-                        <RiRefreshLine className="animate-spin h-6 w-6 mr-2" />
-                        <span>Computing sensitivity matrix…</span>
-                    </div>
-                )}
-
-                {sensitivityData?.success && !sensitivityLoading && (
-                    <div className="mt-4 overflow-x-auto">
-                        <p className="text-xs text-gray-500 mb-3">
-                            EPS used: <strong>{sensitivityData.eps_used?.toLocaleString()}</strong> &nbsp;·&nbsp;
-                            Base WACC: <strong>{sensitivityData.base_wacc}%</strong> &nbsp;·&nbsp;
-                            Base Growth: <strong>{sensitivityData.base_growth}%</strong>
-                        </p>
-                        <table className="min-w-full text-xs border-collapse" style={{ minWidth: '640px' }}>
-                            <thead>
-                                <tr>
-                                    <th className="p-2 text-right text-gray-500 border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
-                                        Growth↓ / WACC→
-                                    </th>
-                                    {sensitivityData.wacc_axis.map((w: number) => (
-                                        <th key={w} className={classNames(
-                                            'p-2 font-semibold text-center border border-gray-200 dark:border-gray-800',
-                                            w === sensitivityData.base_wacc
-                                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
-                                                : 'bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400'
-                                        )}>{w}%</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {sensitivityData.growth_axis.map((g: number, gi: number) => (
-                                    <tr key={g}>
-                                        <td className={classNames(
-                                            'p-2 font-semibold text-right whitespace-nowrap border border-gray-200 dark:border-gray-800',
-                                            g === sensitivityData.base_growth
-                                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
-                                                : 'bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400'
-                                        )}>{g}%</td>
-                                        {sensitivityData.matrix[gi].map((val: number, wi: number) => {
-                                            const up = manualPrice > 0 ? ((val - manualPrice) / manualPrice) * 100 : 0;
-                                            const isBase = sensitivityData.wacc_axis[wi] === sensitivityData.base_wacc && g === sensitivityData.base_growth;
-                                            return (
-                                                <td key={wi} className={classNames(
-                                                    'p-2 text-center tabular-nums font-mono border border-gray-200 dark:border-gray-800 transition-colors',
-                                                    isBase ? 'ring-2 ring-inset ring-blue-500 font-bold' : '',
-                                                    val === 0
-                                                        ? 'bg-gray-100 dark:bg-gray-900 text-gray-400'
-                                                        : up >= 20 ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300'
-                                                        : up >= 5 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                                                        : up >= -5 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
-                                                        : up >= -15 ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400'
-                                                        : 'bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400'
-                                                )}>
-                                                    <span>{val > 0 ? val.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—'}</span>
-                                                    {manualPrice > 0 && val > 0 && (
-                                                        <span className="block text-[10px] opacity-70">{up > 0 ? '+' : ''}{up.toFixed(0)}%</span>
-                                                    )}
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-gray-500">
-                            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-emerald-100 dark:bg-emerald-900/30 inline-block"></span> ≥+20% upside</span>
-                            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-green-50 dark:bg-green-900/20 inline-block"></span> +5–20%</span>
-                            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-amber-50 dark:bg-amber-900/20 inline-block"></span> -5 to +5%</span>
-                            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-orange-50 dark:bg-orange-900/20 inline-block"></span> -15 to -5%</span>
-                            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-rose-50 dark:bg-rose-900/20 inline-block"></span> ≤-15%</span>
-                        </div>
-                    </div>
-                )}
-            </Card>
 
             {isBank && (
                 <Callout

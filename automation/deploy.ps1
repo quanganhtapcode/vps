@@ -480,18 +480,18 @@ try {
     }
 
     # Sync folders
-    if (-not (Sync-Folder "backend")) { Stop-DeployWithNotification -SshKey $SSHKey -Reason "sync backend" -Body "Failed to sync backend folder to $VPSHost:$VPSPath" }
-    if (-not (Sync-Folder "automation")) { Stop-DeployWithNotification -SshKey $SSHKey -Reason "sync automation" -Body "Failed to sync automation folder to $VPSHost:$VPSPath" }
-    if (-not (Sync-Folder "fetch_sqlite")) { Stop-DeployWithNotification -SshKey $SSHKey -Reason "sync fetch_sqlite" -Body "Failed to sync fetch_sqlite folder to $VPSHost:$VPSPath" }
+    if (-not (Sync-Folder "backend")) { Stop-DeployWithNotification -SshKey $SSHKey -Reason "sync backend" -Body "Failed to sync backend folder to ${VPSHost}:${VPSPath}" }
+    if (-not (Sync-Folder "automation")) { Stop-DeployWithNotification -SshKey $SSHKey -Reason "sync automation" -Body "Failed to sync automation folder to ${VPSHost}:${VPSPath}" }
+    if (-not (Sync-Folder "fetch_sqlite")) { Stop-DeployWithNotification -SshKey $SSHKey -Reason "sync fetch_sqlite" -Body "Failed to sync fetch_sqlite folder to ${VPSHost}:${VPSPath}" }
     Write-Host "Skipping frontend-next sync (frontend is deployed via Vercel from GitHub)" -ForegroundColor Gray
-    if (-not (Sync-Folder "scripts")) { Stop-DeployWithNotification -SshKey $SSHKey -Reason "sync scripts" -Body "Failed to sync scripts folder to $VPSHost:$VPSPath" }
+    if (-not (Sync-Folder "scripts")) { Stop-DeployWithNotification -SshKey $SSHKey -Reason "sync scripts" -Body "Failed to sync scripts folder to ${VPSHost}:${VPSPath}" }
 
     # Sync root files selectively
     Write-Host "Syncing root configs..." -ForegroundColor Yellow
     scp -i $SSHKey package.json requirements.txt run_pipeline.py symbols.txt MAINTENANCE_GUIDE.md README.md "${VPSHost}:${VPSPath}/" 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[FAIL] Failed to sync root config files" -ForegroundColor Red
-        Stop-DeployWithNotification -SshKey $SSHKey -Reason "sync root files" -Body "scp root configs failed for $VPSHost:$VPSPath"
+        Stop-DeployWithNotification -SshKey $SSHKey -Reason "sync root files" -Body "scp root configs failed for ${VPSHost}:${VPSPath}"
     }
 
     # Optional: Upload optimized SQLite DB (kept out of default sync to avoid huge transfers)

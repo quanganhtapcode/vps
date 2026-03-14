@@ -890,6 +890,7 @@ def load_inputs_from_sqlite(db_path: str, symbol: str, current_price_override: f
 
 def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
     include_lists = bool(request_data.get('includeComparableLists') or request_data.get('include_comparable_lists'))
+    include_quality = bool(request_data.get('includeQuality', True))
     try:
         comparable_list_limit = int(request_data.get('comparableListLimit') or (500 if include_lists else 50))
     except Exception:
@@ -1144,12 +1145,14 @@ def calculate_valuation(db_path: str, symbol: str, request_data: dict) -> dict:
         current_price=float(current_price),
     )
 
-    quality = _build_quality_score(
-        inputs=inputs,
-        pe_count=pe_sample_size,
-        pb_count=pb_sample_size,
-        ps_count=ps_sample_size,
-    )
+    quality = None
+    if include_quality:
+        quality = _build_quality_score(
+            inputs=inputs,
+            pe_count=pe_sample_size,
+            pb_count=pb_sample_size,
+            ps_count=ps_sample_size,
+        )
 
     pe_values_export = pe_values_all[:comparable_list_limit]
     pb_values_export = pb_values_all[:comparable_list_limit]

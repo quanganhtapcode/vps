@@ -245,7 +245,8 @@ export class ReportGenerator {
             const wb = new ExcelJS.Workbook();
             wb.creator = 'quanganh.org';
             wb.created = new Date();
-            wb.calcProperties.fullCalcOnLoad = true;
+            // Keep workbook values aligned with the exported valuation snapshot.
+            wb.calcProperties.fullCalcOnLoad = false;
 
             // Sheet order matters – Inputs must be first so cross-sheet refs resolve
             const wsInputs = wb.addWorksheet('Inputs', { views: [{ showGridLines: false }] });
@@ -796,7 +797,7 @@ export class ReportGenerator {
             ? valuationResults?.valuations?.fcfe ?? detailsData?.shareValue ?? undefined
             : valuationResults?.valuations?.fcff ?? detailsData?.shareValue ?? undefined;
         intrinsicCell.value = intrinsicCachedResult != null
-            ? { formula: `=B${sumPVRow}+B${pvTvRefRow}`, result: intrinsicCachedResult }
+            ? intrinsicCachedResult
             : { formula: `=B${sumPVRow}+B${pvTvRefRow}` };
         intrinsicCell.numFmt = '#,##0';
         intrinsicCell.font = { bold: true, size: 13, color: { argb: ACCENT } };
@@ -913,7 +914,7 @@ export class ReportGenerator {
             ? valuationResults?.valuations?.justified_pe ?? undefined
             : (isPB ? valuationResults?.valuations?.justified_pb ?? undefined : valuationResults?.valuations?.justified_ps ?? undefined);
         fairCell.value = fairCachedResult != null
-            ? { formula: `=B${epsRow}*B${multRow}`, result: fairCachedResult }
+            ? fairCachedResult
             : { formula: `=B${epsRow}*B${multRow}` };
         fairCell.numFmt = '#,##0';
         fairCell.font = { bold: true, size: 13, color: { argb: ACCENT } };
@@ -1176,37 +1177,91 @@ export class ReportGenerator {
         const pbIR = 9;
         const psIR = 9;
 
-        const models: [string, string, number][] = [
-            ['FCFE (Free Cash Flow to Equity)', `='FCFE Model'!B${fcfeIR}`, I.wFCFE],
-            ['FCFF (Free Cash Flow to Firm)', `='FCFF Model'!B${fcffIR}`, I.wFCFF],
-            ['P/E Comparable', `='PE Analysis'!B${peIR}`, I.wPE],
-            ['P/B Comparable', `='PB Analysis'!B${pbIR}`, I.wPB],
-            ['P/S Comparable', `='PS Analysis'!B${psIR}`, I.wPS],
-            ['Graham Formula', `=Inputs!B${I.grahamValue}`, I.wGraham],
+        const snapshotCurrentPrice = toNumber(
+            valuationResults?.export?.market?.current_price
+            ?? valuationResults?.inputs?.current_price
+            ?? stockData?.current_price
+            ?? stockData?.price
+            ?? 0,
+            0,
+        );
+
+        const snapshotModels = [
+            {
+                name: 'FCFE (Free Cash Flow to Equity)',
+                value: toNumber(valuationResults?.valuations?.fcfe, 0),
+                weight: toNumber(modelWeights?.fcfe, 0),
+                formulaRef: `='FCFE Model'!B${fcfeIR}`,
+            },
+            {
+                name: 'FCFF (Free Cash Flow to Firm)',
+                value: toNumber(valuationResults?.valuations?.fcff, 0),
+                weight: toNumber(modelWeights?.fcff, 0),
+                formulaRef: `='FCFF Model'!B${fcffIR}`,
+            },
+            {
+                name: 'P/E Comparable',
+                value: toNumber(valuationResults?.valuations?.justified_pe, 0),
+                weight: toNumber(modelWeights?.justified_pe, 0),
+                formulaRef: `='PE Analysis'!B${peIR}`,
+            },
+            {
+                name: 'P/B Comparable',
+                value: toNumber(valuationResults?.valuations?.justified_pb, 0),
+                weight: toNumber(modelWeights?.justified_pb, 0),
+                formulaRef: `='PB Analysis'!B${pbIR}`,
+            },
+            {
+                name: 'P/S Comparable',
+                value: toNumber(valuationResults?.valuations?.justified_ps, 0),
+                weight: toNumber(modelWeights?.justified_ps, 0),
+                formulaRef: `='PS Analysis'!B${psIR}`,
+            },
+            {
+                name: 'Graham Formula',
+                value: toNumber(valuationResults?.valuations?.graham, 0),
+                weight: toNumber(modelWeights?.graham, 0),
+                formulaRef: `=Inputs!B${I.grahamValue}`,
+            },
         ];
 
+        let snapshotWeightedContribution = 0;
+        let snapshotTotalWeight = 0;
+        snapshotModels.forEach((m) => {
+            if (m.value > 0 && m.weight > 0) {
+                snapshotWeightedContribution += (m.value * m.weight) / 100.0;
+                snapshotTotalWeight += m.weight;
+            }
+        });
+        const snapshotWeightedAverage = snapshotTotalWeight > 0
+            ? (snapshotWeightedContribution * 100.0) / snapshotTotalWeight
+            : 0;
+        const snapshotUpside = snapshotCurrentPrice > 0
+            ? ((snapshotWeightedAverage - snapshotCurrentPrice) / snapshotCurrentPrice)
+            : 0;
+
         const modelRowStart = r;
-        models.forEach(([name, valFml, wRow], idx) => {
-            sheet.getCell(r, 1).value = name;
+        snapshotModels.forEach((m, idx) => {
+            sheet.getCell(r, 1).value = m.name;
 
             const vc = sheet.getCell(r, 2);
-            vc.value = { formula: valFml };
+            vc.value = m.value > 0 ? m.value : { formula: m.formulaRef };
             vc.numFmt = '#,##0';
             applyBorders(vc);
 
             const wc = sheet.getCell(r, 3);
-            wc.value = { formula: `=Inputs!B${wRow}` };
+            wc.value = m.weight;
             wc.numFmt = '0.00';
             wc.alignment = { horizontal: 'center' };
             applyBorders(wc);
 
             const contribCell = sheet.getCell(r, 4);
-            contribCell.value = { formula: `=B${r}*C${r}/100` };
+            contribCell.value = (m.value > 0 && m.weight > 0) ? (m.value * m.weight) / 100.0 : 0;
             contribCell.numFmt = '#,##0';
             applyBorders(contribCell);
 
             const upCell = sheet.getCell(r, 5);
-            upCell.value = { formula: `=(B${r}-Inputs!B${I.currentPrice})/Inputs!B${I.currentPrice}` };
+            upCell.value = snapshotCurrentPrice > 0 ? ((toNumber(m.value, 0) - snapshotCurrentPrice) / snapshotCurrentPrice) : 0;
             upCell.numFmt = '+0.00%;-0.00%';
             applyBorders(upCell);
 
@@ -1223,28 +1278,24 @@ export class ReportGenerator {
         sheet.getCell(r, 1).font = { bold: true, size: 12, color: { argb: ACCENT } };
 
         const wavgCell = sheet.getCell(r, 2);
-        const wavgCachedResult = valuationResults?.valuations?.weighted_average ?? undefined;
-        wavgCell.value = wavgCachedResult != null
-            ? { formula: `=SUM(D${modelRowStart}:D${r - 2})`, result: wavgCachedResult }
-            : { formula: `=SUM(D${modelRowStart}:D${r - 2})` };
+        wavgCell.value = snapshotWeightedAverage;
         wavgCell.numFmt = '#,##0';
         wavgCell.font = { bold: true, size: 13, color: { argb: ACCENT } };
         wavgCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
         applyBorders(wavgCell, 'medium');
 
         const totalWtCell = sheet.getCell(r, 3);
-        totalWtCell.value = { formula: `=SUM(C${modelRowStart}:C${r - 2})` };
+        totalWtCell.value = snapshotTotalWeight;
         totalWtCell.numFmt = '0.00';
         totalWtCell.font = { bold: true };
         applyBorders(totalWtCell, 'medium');
 
         const totalUpsideCell = sheet.getCell(r, 5);
-        totalUpsideCell.value = { formula: `=(B${r}-Inputs!B${I.currentPrice})/Inputs!B${I.currentPrice}` };
+        totalUpsideCell.value = snapshotUpside;
         totalUpsideCell.numFmt = '+0.00%;-0.00%';
         totalUpsideCell.font = { bold: true, size: 12 };
         applyBorders(totalUpsideCell, 'medium');
 
-        const wavgRow = r;
         r += 2;
 
         // ── Verdict ───────────────────────────────────────────────────────
@@ -1253,24 +1304,22 @@ export class ReportGenerator {
 
         sheet.getCell(r, 1).value = 'Current Price';
         const cpVCell = sheet.getCell(r, 2);
-        cpVCell.value = { formula: `=Inputs!B${I.currentPrice}` };
+        cpVCell.value = snapshotCurrentPrice;
         cpVCell.numFmt = '#,##0';
         applyBorders(cpVCell);
-        const cpVRow = r;
         r++;
 
         sheet.getCell(r, 1).value = 'Analyst Consensus Fair Value';
         const wavgRefCell = sheet.getCell(r, 2);
-        wavgRefCell.value = { formula: `=B${wavgRow}` };
+        wavgRefCell.value = snapshotWeightedAverage;
         wavgRefCell.numFmt = '#,##0';
         wavgRefCell.font = { bold: true };
         applyBorders(wavgRefCell, 'medium');
-        const fairRow = r;
         r++;
 
         sheet.getCell(r, 1).value = 'Margin of Safety (Discount to Fair Value)';
         const mosCell = sheet.getCell(r, 2);
-        mosCell.value = { formula: `=(B${fairRow}-B${cpVRow})/B${fairRow}` };
+        mosCell.value = snapshotWeightedAverage > 0 ? ((snapshotWeightedAverage - snapshotCurrentPrice) / snapshotWeightedAverage) : 0;
         mosCell.numFmt = '+0.00%;-0.00%';
         mosCell.font = { bold: true };
         applyBorders(mosCell, 'medium');
@@ -1278,9 +1327,9 @@ export class ReportGenerator {
 
         sheet.getCell(r, 1).value = 'Signal (Undervalued if Upside > 15%)';
         const signalCell = sheet.getCell(r, 2);
-        signalCell.value = {
-            formula: `=IF((B${fairRow}-B${cpVRow})/B${cpVRow}>0.15,"BUY — Undervalued",IF((B${fairRow}-B${cpVRow})/B${cpVRow}<-0.15,"SELL / Overvalued","HOLD — Fair Value"))`
-        };
+        signalCell.value = snapshotUpside > 0.15
+            ? 'BUY — Undervalued'
+            : (snapshotUpside < -0.15 ? 'SELL / Overvalued' : 'HOLD — Fair Value');
         signalCell.font = { bold: true };
         applyBorders(signalCell, 'medium');
 
